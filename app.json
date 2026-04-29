@@ -26,6 +26,7 @@
         "backgroundColor": "#0A0A0B"
       },
       "package": "com.biorealign.app",
+      "newArchEnabled": false,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
