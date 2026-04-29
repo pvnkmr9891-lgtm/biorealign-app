@@ -20,7 +20,7 @@
         "expo-splash-screen",
         "expo-status-bar",
         "expo-router",
-"babel-preset-expo"
+"babel-preset-expo",
         "react",
         "react-native",
         "react-native-reanimated",
