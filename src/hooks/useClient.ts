@@ -255,10 +255,36 @@ export function useCheckinStreak() {
     enabled: !!user?.id,
     queryFn: async () => {
       const { data, error } = await supabase
-        .rpc('get_checkin_streak', { p_client_id: user!.id });
+        .from('daily_checkins')
+        .select('date')
+        .eq('client_id', user!.id)
+        .order('date', { ascending: false })
+        .limit(60);
 
       if (error) throw error;
-      return (data as number) ?? 0;
+
+      const dates = (data ?? []).map(d => d.date);
+      if (!dates.length) return 0;
+
+      // Allow streak to start from today OR yesterday
+      const today     = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+      let streak   = 0;
+      let expected = dates[0] === today ? today : yesterday;
+
+      for (const date of dates) {
+        if (date === expected) {
+          streak++;
+          const d = new Date(expected);
+          d.setDate(d.getDate() - 1);
+          expected = d.toISOString().split('T')[0];
+        } else {
+          break;
+        }
+      }
+
+      return streak;
     },
   });
 }

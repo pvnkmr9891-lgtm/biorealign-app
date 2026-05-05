@@ -45,21 +45,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   fetchProfile: async (userId: string) => {
-    set({ isLoading: true });
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+  set({ isLoading: true });
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
 
-    if (error) {
+  if (error) {
+    // "no rows" is not a real error for new users — just wait
+    if (error.code === 'PGRST116') {
+      console.log('[AuthStore] No profile yet for new user');
+    } else {
       console.error('[AuthStore] fetchProfile error:', error.message);
-      set({ isLoading: false });
-      return;
     }
+    set({ isLoading: false });
+    return;
+  }
 
-    set({ profile: data, role: data.role, isLoading: false });
-  },
+  set({ profile: data, role: data.role, isLoading: false });
+},
 
   signOut: async () => {
     await supabase.auth.signOut();

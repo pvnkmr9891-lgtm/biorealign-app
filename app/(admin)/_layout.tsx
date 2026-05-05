@@ -13,6 +13,9 @@ export default function AdminLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="users" />
       <Stack.Screen name="broadcast" />
+      <Stack.Screen name="coach-assignment" />
+      <Stack.Screen name="assessments" />
+      <Stack.Screen name="assessment-detail" />
     </Stack>
   );
 }

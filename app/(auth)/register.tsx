@@ -44,21 +44,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    // 2. Create profile row (role defaults to 'client')
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        role: 'client',
-        full_name: fullName.trim(),
-        phone: phone.trim() || null,
-        health_goals: [],
-        conditions: [],
-      });
-
-      if (profileError) {
-        console.error('[Register] profile insert error:', profileError.message);
-      }
-    }
+    
 
     setLoading(false);
     // AuthGuard handles redirect on session change

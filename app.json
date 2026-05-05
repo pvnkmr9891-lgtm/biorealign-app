@@ -3,10 +3,19 @@
     "name": "BioRealign",
     "slug": "biorealign-app",
     "version": "1.0.0",
+    "scheme": "biorealign",
+    "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "biorealign",
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "userInterfaceStyle": "dark",
+    "updates": {
+      "enabled": false,
+      "url": "https://u.expo.dev/b0d827ce-cc40-4260-9cf2-bedac9ee12ec"
+    },
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -21,17 +30,19 @@
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0A0B"
-      },
       "package": "com.biorealign.app",
-      "newArchEnabled": false,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0B"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -39,11 +50,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-  "expo-router",
-  "expo-secure-store",
-  "expo-font",
-  "expo-notifications"
-],
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-notifications",
+      "expo-asset",
+      "expo-web-browser",
+      "expo-video"
+    ],
     "experiments": {
       "typedRoutes": true
     },
@@ -53,6 +67,9 @@
         "projectId": "b0d827ce-cc40-4260-9cf2-bedac9ee12ec"
       }
     },
-    "owner": "pvnkmr9891-lgtm"
+    "owner": "pvnkmr9891-lgtm",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }

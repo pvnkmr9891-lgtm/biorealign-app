@@ -1,63 +1,53 @@
-import { Tabs } from 'expo-router';
+import { Stack } from 'expo-router';
 import { View } from 'react-native';
 import { THEME } from '@/constants/theme';
-
-// Simple icon placeholder — replace with a proper icon library (e.g. lucide-react-native)
-function TabIcon({ active, color }: { active: boolean; color: string }) {
-  return (
-    <View
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: active ? THEME.colors.teal : 'transparent',
-        marginTop: 2,
-      }}
-    />
-  );
-}
+import { SlidingTabBar } from '@/components/ui/SlidingTabBar';
 
 export default function ClientLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: THEME.colors.surface,
-          borderTopColor: THEME.colors.border,
-          borderTopWidth: 0.5,
-          height: 80,
-          paddingBottom: 20,
-          paddingTop: 10,
-        },
-        tabBarActiveTintColor: THEME.colors.teal,
-        tabBarInactiveTintColor: THEME.colors.textMuted,
-        tabBarLabelStyle: {
-          fontFamily: 'DMSans_500Medium',
-          fontSize: 11,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{ title: 'Home', tabBarIcon: ({ focused, color }) => <TabIcon active={focused} color={color} /> }}
-      />
-      <Tabs.Screen
-        name="programs"
-        options={{ title: 'Programs', tabBarIcon: ({ focused, color }) => <TabIcon active={focused} color={color} /> }}
-      />
-      <Tabs.Screen
-        name="checkin"
-        options={{ title: 'Check-in', tabBarIcon: ({ focused, color }) => <TabIcon active={focused} color={color} /> }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{ title: 'Progress', tabBarIcon: ({ focused, color }) => <TabIcon active={focused} color={color} /> }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{ title: 'Profile', tabBarIcon: ({ focused, color }) => <TabIcon active={focused} color={color} /> }}
-      />
-    </Tabs>
+    <View style={{ flex: 1, backgroundColor: THEME.colors.background }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: {
+            backgroundColor: THEME.colors.background,
+            // Add bottom padding so content doesn't hide behind dock
+            paddingBottom: 100,
+          },
+          animation: 'fade',
+        }}
+      >
+        {/* Main tabs */}
+        <Stack.Screen name="index" />
+        <Stack.Screen name="workout-plan" />
+        <Stack.Screen name="checkin" />
+        <Stack.Screen name="progress" />
+        <Stack.Screen name="programs" />
+        <Stack.Screen name="my-plan" />
+        <Stack.Screen name="messages" />
+        <Stack.Screen name="profile" />
+
+        {/* Sub-screens — no bottom padding needed */}
+        <Stack.Screen
+          name="workout-detail"
+          options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }}
+        />
+        <Stack.Screen
+          name="workout-player"
+          options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }}
+        />
+        <Stack.Screen
+          name="workout-interval"
+          options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }}
+        />
+        <Stack.Screen
+          name="content/player"
+          options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 }, animation: 'slide_from_bottom' }}
+        />
+      </Stack>
+
+      {/* Floating tab bar — hidden on workout player and interval screens */}
+      <SlidingTabBar />
+    </View>
   );
 }

@@ -1,0 +1,229 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+
+// ── Keys ─────────────────────────────────────────────────────────────────────
+export const progressKeys = {
+  bodyMetrics:   (uid: string) => ['progress', uid, 'body_metrics'] as const,
+  latestMetrics: (uid: string) => ['progress', uid, 'body_metrics', 'latest'] as const,
+  photos:        (uid: string) => ['progress', uid, 'photos'] as const,
+};
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+export interface BodyMetric {
+  id: string;
+  client_id: string;
+  recorded_date: string;
+  recorded_at: string;
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+  waist_cm: number | null;
+  hips_cm: number | null;
+  chest_cm: number | null;
+  left_arm_cm: number | null;
+  right_arm_cm: number | null;
+  left_thigh_cm: number | null;
+  right_thigh_cm: number | null;
+  pushup_count: number | null;
+  plank_seconds: number | null;
+  squat_reps: number | null;
+  notes: string | null;
+}
+
+export interface ProgressPhoto {
+  id: string;
+  client_id: string;
+  uploaded_at: string;
+  photo_date: string;
+  photo_type: 'front' | 'side' | 'back' | 'custom';
+  storage_path: string;
+  week_number: number;
+  phase: number;
+  coach_reviewed: boolean;
+  notes: string | null;
+  // Runtime only — signed URL
+  url?: string;
+}
+
+// ── Fetch body metrics history ─────────────────────────────────────────────
+export function useBodyMetrics(limit = 12) {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: progressKeys.bodyMetrics(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .select('*')
+        .eq('client_id', user!.id)
+        .order('recorded_date', { ascending: true })
+        .limit(limit);
+
+      if (error) throw error;
+      return (data ?? []) as BodyMetric[];
+    },
+  });
+}
+
+// ── Fetch latest body metric ───────────────────────────────────────────────
+export function useLatestBodyMetric() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: progressKeys.latestMetrics(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .select('*')
+        .eq('client_id', user!.id)
+        .order('recorded_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as BodyMetric | null;
+    },
+  });
+}
+
+// ── Save body metrics (upsert by date) ────────────────────────────────────
+export function useSaveBodyMetrics() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: Partial<Omit<BodyMetric, 'id' | 'client_id' | 'recorded_at'>>) => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .upsert(
+          { client_id: user!.id, recorded_date: today, ...payload },
+          { onConflict: 'client_id,recorded_date' }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as BodyMetric;
+    },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: progressKeys.bodyMetrics(user.id) });
+      qc.invalidateQueries({ queryKey: progressKeys.latestMetrics(user.id) });
+    },
+  });
+}
+
+// ── Fetch progress photos ──────────────────────────────────────────────────
+export function useProgressPhotos() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: progressKeys.photos(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('progress_photos')
+        .select('*')
+        .eq('client_id', user!.id)
+        .order('photo_date', { ascending: false });
+
+      if (error) throw error;
+
+      const photos = (data ?? []) as ProgressPhoto[];
+
+      // Generate signed URLs for each photo
+      const withUrls = await Promise.all(
+        photos.map(async (photo) => {
+          try {
+            const { data: urlData } = await supabase.storage
+              .from('progress-photos')
+              .createSignedUrl(photo.storage_path, 3600); // 1 hour
+            return { ...photo, url: urlData?.signedUrl };
+          } catch {
+            return photo;
+          }
+        })
+      );
+
+      return withUrls;
+    },
+  });
+}
+
+// ── Upload progress photo ──────────────────────────────────────────────────
+export function useUploadProgressPhoto() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+  uri,
+  photoType,
+  weekNumber = 0,
+  phase = 1,
+}: {
+  uri: string;
+  photoType: 'front' | 'side' | 'back' | 'custom';
+  weekNumber?: number;
+  phase?: number;
+}) => {
+  const today = new Date().toISOString().split('T')[0];
+  const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
+  const path = `${user!.id}/${today}_${photoType}_${Date.now()}.${ext}`;
+  const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+
+  // ✅ Use FormData — correct approach for React Native file uploads
+  const formData = new FormData();
+  formData.append('file', {
+    uri,
+    name: `photo.${ext}`,
+    type: contentType,
+  } as any);
+
+  // Upload using fetch directly with Supabase storage URL
+  const { data: { session } } = await supabase.auth.getSession();
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+
+  const uploadResponse = await fetch(
+    `${supabaseUrl}/storage/v1/object/progress-photos/${path}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session?.access_token}`,
+        'x-upsert': 'true',
+      },
+      body: formData,
+    }
+  );
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    throw new Error(`Upload failed: ${errorText}`);
+  }
+
+  // Save record to DB
+  const { data, error: dbError } = await supabase
+    .from('progress_photos')
+    .insert({
+      client_id: user!.id,
+      photo_type: photoType,
+      storage_path: path,
+      photo_date: today,
+      week_number: weekNumber,
+      phase,
+    })
+    .select()
+    .single();
+
+  if (dbError) throw dbError;
+  return data as ProgressPhoto;
+},
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: progressKeys.photos(user.id) });
+    },
+  });
+}

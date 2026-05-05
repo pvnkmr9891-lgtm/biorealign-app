@@ -15,6 +15,10 @@ export default function CoachLayout() {
       <Stack.Screen name="client-detail" />
       <Stack.Screen name="session-notes" />
       <Stack.Screen name="messaging" />
+      <Stack.Screen name="inbox" />
+      <Stack.Screen name="enrollment-requests" />
+      <Stack.Screen name="plan-builder" />
+      <Stack.Screen name="profile" />
     </Stack>
   );
 }

@@ -32,14 +32,26 @@ export default function CoachDashboard() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
 
         {/* Header */}
-        <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 20 }}>
-          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 14 }}>
-            Coach portal
-          </Text>
-          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 32, marginTop: 2 }}>
-            {greeting}, {firstName}
-          </Text>
-        </View>
+          <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 14 }}>
+                Coach portal
+              </Text>
+              <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 32, marginTop: 2 }}>
+                {greeting}, {firstName}
+              </Text>
+            </View>
+
+  {/* Profile button — ADD THIS */}
+  <TouchableOpacity
+    onPress={() => router.push('/(coach)/profile')}
+    style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: `${THEME.colors.amber}20`, borderWidth: 1, borderColor: `${THEME.colors.amber}40`, alignItems: 'center', justifyContent: 'center' }}
+  >
+    <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+      {firstName[0]}
+    </Text>
+  </TouchableOpacity>
+</View>
 
         {/* Stats */}
         <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 24, marginBottom: 24 }}>
@@ -100,13 +112,32 @@ export default function CoachDashboard() {
           )}
         </View>
 
+
+        {/* Enrollment requests */}
+<TouchableOpacity
+  onPress={() => router.push('/(coach)/enrollment-requests')}
+  style={{ marginHorizontal: 24, marginBottom: 24, backgroundColor: `${THEME.colors.amber}12`, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: `${THEME.colors.amber}30`, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+  activeOpacity={0.8}
+>
+  <Text style={{ fontSize: 22 }}>📋</Text>
+  <View style={{ flex: 1 }}>
+    <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+      Enrollment Requests
+    </Text>
+    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
+      Review and approve client program requests
+    </Text>
+  </View>
+  <Text style={{ color: THEME.colors.amber, fontSize: 18 }}>›</Text>
+</TouchableOpacity>
+
         {/* Recent clients */}
         <View style={{ marginHorizontal: 24 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
               Active clients
             </Text>
-            <TouchableOpacity onPress={() => router.push('/(coach)/clients')}>
+            <TouchableOpacity onPress={() => router.push('/(coach)/inbox')}>
               <Text style={{ color: THEME.colors.amber, fontFamily: THEME.fonts.sans, fontSize: 12 }}>
                 View all ›
               </Text>

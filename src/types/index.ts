@@ -36,6 +36,10 @@ export interface Profile {
   health_goals: string[];
   conditions: string[];
   avatar_url: string | null;
+  push_token: string | null;           
+  assigned_coach_id: string | null;    
+  onboarding_completed: boolean;       
+  onboarding_completed_at: string | null; 
   created_at: string;
   updated_at: string;
 }
@@ -135,6 +139,78 @@ export interface Message {
   sent_at: string;
   read_at: string | null;
 }
+// ============================================================
+// ADD THESE TO THE BOTTOM OF src/types/index.ts
+// (paste above the Database interface)
+// ============================================================
+
+export type PlanStatus = 'draft' | 'active' | 'completed' | 'archived';
+export type TrackType = 'workout' | 'nutrition' | 'recovery' | 'lifestyle' | 'posture_rehab' | 'mindset';
+export type ItemType = 'exercise' | 'meal_guide' | 'protocol' | 'habit' | 'note';
+
+export interface Plan {
+  id: string;
+  client_id: string;
+  coach_id: string;
+  title: string;
+  status: PlanStatus;
+  current_phase: number;
+  total_phases: number;
+  phase_duration_weeks: number;
+  start_date: string | null;
+  end_date: string | null;
+  coach_overview: string | null;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+  // Joined
+  client?: Profile;
+  tracks?: PlanTrack[];
+}
+
+export interface PlanTrack {
+  id: string;
+  plan_id: string;
+  track_type: TrackType;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  // Joined
+  items?: PlanItem[];
+}
+
+export interface PlanItem {
+  id: string;
+  track_id: string;
+  phase: number;
+  week_number: number;
+  day_of_week: string[];
+  item_type: ItemType;
+  title: string;
+  description: string | null;
+  duration_minutes: number | null;
+  sets: number | null;
+  reps: string | null;
+  rest_seconds: number | null;
+  video_url: string | null;
+  coach_note: string | null;
+  sort_order: number;
+  created_at: string;
+  // Joined
+  is_completed?: boolean;
+}
+
+export interface PlanItemCompletion {
+  id: string;
+  plan_item_id: string;
+  client_id: string;
+  completed_date: string;
+  completed_at: string;
+  notes: string | null;
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Supabase Database type (used with createClient<Database>)
@@ -182,6 +258,26 @@ export interface Database {
         Insert: Omit<Message, 'id' | 'sent_at' | 'read_at'>;
         Update: Pick<Message, 'read_at'>;
       };
+      plans: {
+        Row: Plan;
+        Insert: Omit<Plan, 'id' | 'created_at' | 'updated_at' | 'client' | 'tracks'>;
+        Update: Partial<Omit<Plan, 'id' | 'created_at' | 'client' | 'tracks'>>;
+      };
+      plan_tracks: {
+        Row: PlanTrack;
+        Insert: Omit<PlanTrack, 'id' | 'items'>;
+        Update: Partial<Omit<PlanTrack, 'id' | 'items'>>;
+      };
+      plan_items: {
+        Row: PlanItem;
+        Insert: Omit<PlanItem, 'id' | 'created_at' | 'is_completed'>;
+        Update: Partial<Omit<PlanItem, 'id' | 'created_at' | 'is_completed'>>;
+     };
+     plan_item_completions: {
+     Row: PlanItemCompletion;
+     Insert: Omit<PlanItemCompletion, 'id' | 'completed_at'>;
+     Update: Partial<Omit<PlanItemCompletion, 'id'>>;
+     };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
