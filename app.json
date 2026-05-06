@@ -13,7 +13,8 @@
     ],
     "userInterfaceStyle": "dark",
     "updates": {
-      "enabled": false,
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
       "url": "https://u.expo.dev/b0d827ce-cc40-4260-9cf2-bedac9ee12ec"
     },
     "splash": {
@@ -32,9 +33,6 @@
     "android": {
       "package": "com.biorealign.app",
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
