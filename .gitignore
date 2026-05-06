@@ -15,6 +15,7 @@ ios/
 .env
 .env.local
 .env.production
+src/assets/videos/
 
 # Build output
 build/
