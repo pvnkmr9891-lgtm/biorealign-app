@@ -18,12 +18,15 @@ export default function UsersScreen() {
   const { data: users = [], isLoading, refetch } = useAdminUsers();
   const { mutateAsync: updateRole } = useUpdateUserRole();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'client' | 'coach' | 'admin'>('all');
+  const [filter, setFilter] = useState<'client' | 'coach' | 'admin'>('client');
+  const [athleteFilter, setAthleteFilter] = useState<'all' | 'yes' | 'no'>('all');
 
   const filtered = users.filter((u: any) => {
     const matchSearch = u.full_name?.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === 'all' || u.role === filter;
-    return matchSearch && matchFilter;
+    const matchFilter = u.role === filter;
+    const matchAthlete = filter !== 'client' || athleteFilter === 'all'
+      || (athleteFilter === 'yes' ? u.is_athlete === true : u.is_athlete !== true);
+    return matchSearch && matchFilter && matchAthlete;
   });
 
   const handleRoleChange = (userId: string, currentRole: string, name: string) => {
@@ -66,7 +69,7 @@ export default function UsersScreen() {
 
         {/* Role filter pills */}
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(['all', 'client', 'coach', 'admin'] as const).map((r) => (
+          {(['client', 'coach', 'admin'] as const).map((r) => (
             <TouchableOpacity
               key={r}
               onPress={() => setFilter(r)}
@@ -78,6 +81,24 @@ export default function UsersScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Athlete quick filter — clients only */}
+        {filter === 'client' && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, alignSelf: 'center', marginRight: 2 }}>Athlete:</Text>
+            {(['all', 'yes', 'no'] as const).map((a) => (
+              <TouchableOpacity
+                key={a}
+                onPress={() => setAthleteFilter(a)}
+                style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16, backgroundColor: athleteFilter === a ? '#8b78e8' : THEME.colors.surface2, borderWidth: 0.5, borderColor: athleteFilter === a ? '#8b78e8' : THEME.colors.border }}
+              >
+                <Text style={{ color: athleteFilter === a ? THEME.colors.background : THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11.5, textTransform: 'capitalize' }}>
+                  {a}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {isLoading ? (
@@ -96,25 +117,51 @@ export default function UsersScreen() {
               const activeEnroll = u.enrollments?.find((e: any) => e.status === 'active');
               const initials     = u.full_name?.split(' ').map((n: string) => n[0]).slice(0, 2).join('') ?? '?';
 
+              const openProfile = () => {
+                if (u.role === 'client') {
+                  router.push({ pathname: '/(admin)/client-profile', params: { clientId: u.id, clientName: u.full_name } });
+                } else if (u.role === 'coach') {
+                  router.push({ pathname: '/(admin)/coach-profile', params: { coachId: u.id, coachName: u.full_name } });
+                }
+              };
+
               return (
                 <View
                   key={u.id}
                   style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${roleColor}18`, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: `${roleColor}30` }}>
-                      <Text style={{ color: roleColor, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>{initials}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>
-                        {u.full_name}
-                      </Text>
-                      {activeEnroll && (
-                        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 2 }}>
-                          {activeEnroll.program?.name} · Wk {activeEnroll.current_week}
-                        </Text>
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      onPress={openProfile}
+                      disabled={u.role === 'admin'}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${roleColor}18`, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: `${roleColor}30` }}>
+                        <Text style={{ color: roleColor, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>{initials}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>
+                            {u.full_name}
+                          </Text>
+                          {u.role === 'client' && u.is_athlete === true && (
+                            <View style={{ backgroundColor: '#8b78e818', borderRadius: 7, paddingHorizontal: 7, paddingVertical: 2 }}>
+                              <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sansMedium, color: '#8b78e8' }}>🏆 Athlete</Text>
+                            </View>
+                          )}
+                          {u.role === 'client' && u.has_pending_rehab_request && (
+                            <View style={{ backgroundColor: `${THEME.colors.amber}20`, borderRadius: 7, paddingHorizontal: 7, paddingVertical: 2 }}>
+                              <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>🩹 Pending Recovery Request</Text>
+                            </View>
+                          )}
+                        </View>
+                        {activeEnroll && (
+                          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 2 }}>
+                            {activeEnroll.program?.name} · Wk {activeEnroll.current_week}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleRoleChange(u.id, u.role, u.full_name)}
                       style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: `${roleColor}18`, borderWidth: 0.5, borderColor: `${roleColor}40` }}
