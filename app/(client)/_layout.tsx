@@ -26,7 +26,12 @@ export default function ClientLayout() {
         <Stack.Screen name="my-plan" />
         <Stack.Screen name="messages" />
         <Stack.Screen name="profile" />
-
+        <Stack.Screen name="routine-new"          options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
+        <Stack.Screen name="routine-category" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
+        <Stack.Screen name="routine-add-exercise" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
+        <Stack.Screen name="routine-explore" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
+        <Stack.Screen name="recovery" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
+        <Stack.Screen name="recovery-request" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         {/* Sub-screens — no bottom padding needed */}
         <Stack.Screen
           name="workout-detail"

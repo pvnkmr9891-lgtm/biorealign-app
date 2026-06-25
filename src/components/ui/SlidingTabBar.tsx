@@ -1,312 +1,539 @@
-import { useRef, useState, useCallback } from 'react';
+// src/components/ui/SlidingTabBar.tsx
+// ─────────────────────────────────────────────────────────────────────
+// 4-tab bottom bar  (Home · Workout · Progress · Menu)
+// + Hamburger side drawer for remaining navigation items
+// ─────────────────────────────────────────────────────────────────────
+
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView,
-  Animated, Dimensions, StyleSheet, Platform, useWindowDimensions,
+  View, Text, TouchableOpacity, StyleSheet, Platform,
+  Animated, Modal, Pressable, useWindowDimensions, ScrollView,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { THEME } from '@/constants/theme';
 import { useClientUnreadCount } from '@/hooks/useCoach';
 import { TAB_ICON_MAP } from '@/components/ui/NeonTabIcons';
+import { PROGRAMS_ENABLED, COACH_REQUEST_ENABLED } from '@/constants/featureFlags';
 
-// ── Tab definitions ───────────────────────────────────────────────────────────
-const TABS = [
-  { name: 'index',        label: 'Home',     icon: '🏠', route: '/(client)/' },
-  { name: 'workout-plan', label: 'Workout',  icon: '💪', route: '/(client)/workout-plan' },
-  { name: 'checkin',      label: 'Check-in', icon: '✅', route: '/(client)/checkin' },
-  { name: 'progress',     label: 'Progress', icon: '📊', route: '/(client)/progress' },
-  { name: 'programs',     label: 'Programs', icon: '🎯', route: '/(client)/programs' },
-  { name: 'my-plan',      label: 'My Plan',  icon: '📋', route: '/(client)/my-plan' },
-  { name: 'messages',     label: 'Messages', icon: '💬', route: '/(client)/messages', badge: true },
-  { name: 'profile',      label: 'Profile',  icon: '👤', route: '/(client)/profile' },
+// ── Navigation config ─────────────────────────────────────────────────
+
+/** 3 route tabs shown in the bottom bar (+ Menu button = 4 total) */
+const BOTTOM_TABS = [
+  { name: 'index',        label: 'Home',    icon: '🏠', route: '/(client)/' },
+  { name: 'workout-plan', label: 'Workout', icon: '💪', route: '/(client)/workout-plan' },
+  { name: 'progress',     label: 'Progress',icon: '📊', route: '/(client)/progress' },
 ];
 
-// Screens where the tab bar should hide completely
-const HIDDEN_SCREENS = ['workout-player', 'workout-interval', 'content/player'];
+/** Items inside the hamburger drawer */
+const DRAWER_ITEMS = [
+  { name: 'checkin',  label: 'Daily Pulse', icon: '💓', route: '/(client)/checkin' },
+  ...(PROGRAMS_ENABLED
+    ? [{ name: 'programs', label: 'Programs', icon: '🎯', route: '/(client)/programs' }]
+    : []),
+  { name: 'messages', label: 'Messages', icon: '💬', route: '/(client)/messages', badge: true },
+  ...(COACH_REQUEST_ENABLED
+    ? [{ name: 'coach-list', label: 'Need a Coach?', icon: '🧑‍🏫', route: '/(client)/coach-list' }]
+    : []),
+  { name: 'medical-records', label: 'Medical Records', icon: '🩺', route: '/(client)/medical-records' },
+  { name: 'recovery', label: 'Recovery', icon: '🩹', route: '/(client)/recovery' },
+  { name: 'profile',  label: 'Profile',  icon: '👤', route: '/(client)/profile' },
+];
 
-// ── Device detection ──────────────────────────────────────────────────────────
-function useDeviceType() {
-  const { width } = useWindowDimensions();
-  if (width >= 768) return 'ipad';
-  if (width >= 480) return 'tablet';
-  return 'phone';
-}
+/** Screens where the tab bar should be hidden entirely */
+const HIDDEN_SCREENS = [
+  'workout-player', 'workout-interval', 'content/player',
+  'routine-new', 'routine-add-exercise',
+  'routine-explore', 'routine-category',   // 
+];
 
-// ── Phone tab bar — 4 visible + peek + slide ──────────────────────────────────
-const PHONE_TAB_W   = 72;
-const PHONE_VISIBLE = 4;
-const PEEK_W        = 22;
-const PHONE_DOCK_W  = PHONE_TAB_W * PHONE_VISIBLE + PEEK_W;
+// ── Hamburger icon ────────────────────────────────────────────────────
+function HamburgerIcon({ color, isOpen }: { color: string; isOpen: boolean }) {
+  const rot1 = useRef(new Animated.Value(0)).current;
+  const rot2 = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(1)).current;
 
-function PhoneTabBar({ unreadCount }: { unreadCount: number }) {
-  const router    = useRouter();
-  const pathname  = usePathname();
-  const scrollRef = useRef<ScrollView>(null);
-  const fadeAnim  = useRef(new Animated.Value(1)).current;
-  const [showMore, setShowMore] = useState(true);
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(rot1, { toValue: isOpen ? 1 : 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(rot2, { toValue: isOpen ? 1 : 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: isOpen ? 0 : 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  }, [isOpen]);
 
-  const isActive = useCallback((tab: typeof TABS[0]) => {
-    if (tab.name === 'index') return pathname === '/' || pathname === '/(client)';
-    return pathname.includes(tab.name);
-  }, [pathname]);
-
-  const handleScroll = (e: any) => {
-    const x       = e.nativeEvent.contentOffset.x;
-    const hasMore = x < (TABS.length - PHONE_VISIBLE) * PHONE_TAB_W - 10;
-    if (hasMore !== showMore) {
-      setShowMore(hasMore);
-      Animated.timing(fadeAnim, { toValue: hasMore ? 1 : 0, duration: 200, useNativeDriver: true }).start();
-    }
-  };
+  const line1Rotate = rot1.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
+  const line3Rotate = rot2.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-45deg'] });
 
   return (
-    <View style={phoneStyles.wrapper}>
-      <View style={phoneStyles.dock}>
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          decelerationRate="fast"
-          snapToInterval={PHONE_TAB_W}
-          snapToAlignment="start"
-          contentContainerStyle={{ paddingRight: 8 }}
-          style={{ flex: 1 }}
-        >
-          {TABS.map(tab => {
-            const active   = isActive(tab);
-            const hasBadge = tab.badge && unreadCount > 0;
+    <View style={{ width: 22, height: 16, justifyContent: 'space-between', alignItems: 'center' }}>
+      <Animated.View style={[burgerStyles.line, { backgroundColor: color, transform: [{ rotate: line1Rotate }, { translateY: isOpen ? 7 : 0 }] }]} />
+      <Animated.View style={[burgerStyles.line, { backgroundColor: color, opacity: fade, width: 15 }]} />
+      <Animated.View style={[burgerStyles.line, { backgroundColor: color, transform: [{ rotate: line3Rotate }, { translateY: isOpen ? -7 : 0 }] }]} />
+    </View>
+  );
+}
+
+const burgerStyles = StyleSheet.create({
+  line: { height: 2, width: 22, borderRadius: 1 },
+});
+
+// ── Drawer overlay ────────────────────────────────────────────────────
+function DrawerMenu({
+  visible,
+  onClose,
+  unreadCount,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  unreadCount: number;
+}) {
+  const router    = useRouter();
+  const pathname  = usePathname();
+  const { width } = useWindowDimensions();
+  const DRAWER_W  = Math.min(300, width * 0.80);
+
+  // Internal modal visibility so close animation can complete
+  const [modalVisible, setModalVisible] = useState(visible);
+  const slideAnim   = useRef(new Animated.Value(DRAWER_W)).current;
+  const backdropFade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setModalVisible(true);
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 90,
+          friction: 12,
+        }),
+        Animated.timing(backdropFade, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: DRAWER_W,
+          duration: 230,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropFade, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setModalVisible(false));
+    }
+  }, [visible]);
+
+  const isActive = useCallback((name: string) => {
+    if (name === 'index') return pathname === '/' || pathname === '/(client)';
+    return pathname.includes(name);
+  }, [pathname]);
+
+  function navigate(route: string) {
+    onClose();
+    setTimeout(() => router.push(route as any), 160);
+  }
+
+  return (
+    <Modal
+      transparent
+      visible={modalVisible}
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      {/* Backdrop — tap to close */}
+      <Animated.View style={[drawerStyles.backdrop, { opacity: backdropFade }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
+
+      {/* Drawer panel — slides from right */}
+      <Animated.View style={[
+        drawerStyles.panel,
+        { width: DRAWER_W, transform: [{ translateX: slideAnim }] },
+      ]}>
+        {/* Header */}
+        <View style={drawerStyles.panelHeader}>
+          <Text style={drawerStyles.panelTitle}>Menu</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            style={drawerStyles.closeBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={drawerStyles.closeBtnText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={drawerStyles.panelDivider} />
+
+        {/* Navigation items */}
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          {DRAWER_ITEMS.map((item) => {
+            const active   = isActive(item.name);
+            const hasBadge = item.badge && unreadCount > 0;
+
             return (
               <TouchableOpacity
-                key={tab.name}
-                onPress={() => router.push(tab.route as any)}
-                activeOpacity={0.7}
-                style={[phoneStyles.tabItem, active && phoneStyles.tabItemActive]}
+                key={item.name}
+                style={[drawerStyles.item, active && drawerStyles.itemActive]}
+                onPress={() => navigate(item.route)}
+                activeOpacity={0.75}
               >
-                {active && <View style={phoneStyles.activeGlow} />}
-                <View style={{ position: 'relative' }}>
-                  {(() => {
-                    const IconComp = TAB_ICON_MAP[tab.name];
-                    return IconComp ? <IconComp active={active} size={26} /> : <Text style={{ fontSize: 22, opacity: active ? 1 : 0.4 }}>{tab.icon}</Text>;
-                  })()}
+                {/* Left accent bar when active */}
+                {active && <View style={drawerStyles.itemAccent} />}
+
+                {/* Icon */}
+                <View style={[drawerStyles.iconWrap, active && drawerStyles.iconWrapActive]}>
+                  <Text style={drawerStyles.itemIcon}>{item.icon}</Text>
                   {hasBadge && (
-                    <View style={phoneStyles.badge}>
-                      <Text style={phoneStyles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                    <View style={drawerStyles.badge}>
+                      <Text style={drawerStyles.badgeText}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </Text>
                     </View>
                   )}
                 </View>
-                <Text style={[phoneStyles.tabLabel, active && phoneStyles.tabLabelActive]}>
-                  {tab.label}
+
+                {/* Label */}
+                <Text style={[drawerStyles.itemLabel, active && drawerStyles.itemLabelActive]}>
+                  {item.label}
                 </Text>
-                {active && <View style={phoneStyles.activeDot} />}
+
+                {/* Chevron */}
+                <Text style={drawerStyles.itemChevron}>›</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        {/* Peek indicator */}
-        <Animated.View style={[phoneStyles.peekIndicator, { opacity: fadeAnim }]} pointerEvents="none">
-          <View style={phoneStyles.peekGradient} />
-          <View style={phoneStyles.peekArrow}>
-            <Text style={phoneStyles.peekArrowText}>›</Text>
-          </View>
-        </Animated.View>
-      </View>
-    </View>
+        {/* Footer */}
+        <View style={drawerStyles.panelFooter}>
+          <View style={drawerStyles.panelDivider} />
+          <Text style={drawerStyles.footerText}>BioRealign</Text>
+        </View>
+      </Animated.View>
+    </Modal>
   );
 }
 
-// ── Tablet / iPad tab bar — all tabs visible ──────────────────────────────────
-function TabletTabBar({ unreadCount, isIPad }: { unreadCount: number; isIPad: boolean }) {
+// ── Bottom tab bar ────────────────────────────────────────────────────
+function BottomBar({
+  unreadCount,
+  menuOpen,
+  onMenuToggle,
+}: {
+  unreadCount: number;
+  menuOpen: boolean;
+  onMenuToggle: () => void;
+}) {
   const router   = useRouter();
   const pathname = usePathname();
 
-  const tabW     = isIPad ? 88 : 76;
-  const dockW    = tabW * TABS.length;
-  const iconSize = isIPad ? 26 : 22;
-  const labelSz  = isIPad ? 11 : 9;
-  const dockH    = isIPad ? 80 : 72;
-
-  const isActive = useCallback((tab: typeof TABS[0]) => {
+  const isActive = useCallback((tab: typeof BOTTOM_TABS[0]) => {
     if (tab.name === 'index') return pathname === '/' || pathname === '/(client)';
     return pathname.includes(tab.name);
   }, [pathname]);
 
+  // Is any drawer item currently active?
+  const isMenuActive = DRAWER_ITEMS.some(item => pathname.includes(item.name));
+
   return (
-    <View style={[tabletStyles.wrapper, { bottom: Platform.OS === 'ios' ? 28 : 16 }]}>
-      <View style={[tabletStyles.dock, { width: Math.min(dockW, Dimensions.get('window').width - 32), height: dockH }]}>
-        {TABS.map(tab => {
-          const active   = isActive(tab);
-          const hasBadge = tab.badge && unreadCount > 0;
+    <View style={barStyles.wrapper}>
+      <View style={barStyles.dock}>
+        {/* 3 route tabs */}
+        {BOTTOM_TABS.map((tab) => {
+          const active = isActive(tab);
+          const IconComp = TAB_ICON_MAP[tab.name];
 
           return (
             <TouchableOpacity
               key={tab.name}
+              style={barStyles.tabItem}
               onPress={() => router.push(tab.route as any)}
-              activeOpacity={0.7}
-              style={[tabletStyles.tabItem, { width: tabW }]}
+              activeOpacity={0.75}
             >
-              {active && (
-                <View style={[tabletStyles.activeGlow, { backgroundColor: `${THEME.colors.teal}18` }]} />
-              )}
-              <View style={{ position: 'relative' }}>
-                <Text style={{ fontSize: iconSize, opacity: active ? 1 : 0.4, transform: active ? [{ scale: 1.1 }] : [] }}>
-                  {tab.icon}
-                </Text>
-                {hasBadge && (
-                  <View style={tabletStyles.badge}>
-                    <Text style={tabletStyles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                  </View>
-                )}
+              {active && <View style={barStyles.activeGlow} />}
+
+              {/* Icon */}
+              <View style={barStyles.iconContainer}>
+                {IconComp
+                  ? <IconComp active={active} size={24} />
+                  : <Text style={{ fontSize: 22, opacity: active ? 1 : 0.38 }}>{tab.icon}</Text>
+                }
               </View>
-              <Text style={{
-                fontSize: labelSz,
-                fontFamily: 'DMSans_500Medium',
-                color: active ? THEME.colors.teal : 'rgba(255,255,255,0.35)',
-                marginTop: 2,
-                letterSpacing: 0.3,
-              }}>
+
+              {/* Label */}
+              <Text style={[barStyles.label, active && barStyles.labelActive]}>
                 {tab.label}
               </Text>
-              {active && <View style={tabletStyles.activeDot} />}
+
+              {/* Active dot */}
+              {active && <View style={barStyles.dot} />}
             </TouchableOpacity>
           );
         })}
+
+        {/* Hamburger menu button */}
+        <TouchableOpacity
+          style={barStyles.tabItem}
+          onPress={onMenuToggle}
+          activeOpacity={0.75}
+        >
+          {(menuOpen || isMenuActive) && <View style={barStyles.activeGlow} />}
+
+          <View style={barStyles.iconContainer}>
+            <HamburgerIcon
+              color={(menuOpen || isMenuActive) ? THEME.colors.teal : 'rgba(255,255,255,0.38)'}
+              isOpen={menuOpen}
+            />
+          </View>
+
+          <Text style={[barStyles.label, (menuOpen || isMenuActive) && barStyles.labelActive]}>
+            Menu
+          </Text>
+
+          {(menuOpen || isMenuActive) && <View style={barStyles.dot} />}
+        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────
 export function SlidingTabBar() {
-  const pathname              = usePathname();
-  const deviceType            = useDeviceType();
+  const pathname  = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
   const { data: unreadCount = 0 } = useClientUnreadCount();
 
   // Hide on full-screen screens
   if (HIDDEN_SCREENS.some(s => pathname.includes(s))) return null;
 
-  if (deviceType === 'phone') {
-    return <PhoneTabBar unreadCount={unreadCount} />;
-  }
-
-  return <TabletTabBar unreadCount={unreadCount} isIPad={deviceType === 'ipad'} />;
+  return (
+    <>
+      <BottomBar
+        unreadCount={unreadCount}
+        menuOpen={menuOpen}
+        onMenuToggle={() => setMenuOpen(o => !o)}
+      />
+      <DrawerMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        unreadCount={unreadCount}
+      />
+    </>
+  );
 }
 
-// ── Phone styles ──────────────────────────────────────────────────────────────
-const phoneStyles = StyleSheet.create({
+// ── Bottom bar styles ─────────────────────────────────────────────────
+const TAB_W    = 76;
+const DOCK_W   = TAB_W * 4;    // 4 buttons
+const DOCK_H   = 72;
+
+const barStyles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 28 : 16,
-    left: 0, right: 0,
+    left: 0,
+    right: 0,
     alignItems: 'center',
     zIndex: 100,
+    pointerEvents: 'box-none',
   },
   dock: {
-    width: PHONE_DOCK_W,
-    height: 72,
-    backgroundColor: 'rgba(18, 18, 20, 0.93)',
-    borderRadius: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.10)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 20,
-    overflow: 'hidden',
+    width:           DOCK_W,
+    height:          DOCK_H,
+    backgroundColor: 'rgba(18, 18, 20, 0.94)',
+    borderRadius:    36,
+    flexDirection:   'row',
+    alignItems:      'center',
+    borderWidth:     0.5,
+    borderColor:     'rgba(255,255,255,0.10)',
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 8 },
+    shadowOpacity:   0.45,
+    shadowRadius:    24,
+    elevation:       20,
   },
   tabItem: {
-    width: PHONE_TAB_W,
-    height: 64,
-    alignItems: 'center',
+    width:          TAB_W,
+    height:         DOCK_H,
+    alignItems:     'center',
     justifyContent: 'center',
-    gap: 3,
-    borderRadius: 28,
-    position: 'relative',
+    gap:            3,
+    position:       'relative',
   },
-  tabItemActive: {},
   activeGlow: {
-    position: 'absolute',
-    top: 6, left: 8, right: 8, bottom: 6,
-    borderRadius: 24,
+    position:        'absolute',
+    top: 8, left: 8, right: 8, bottom: 8,
+    borderRadius:    20,
     backgroundColor: `${THEME.colors.teal}18`,
   },
-  tabIcon:        { fontSize: 22, opacity: 0.4 },
-  tabIconActive:  { opacity: 1, transform: [{ scale: 1.12 }] },
-  tabLabel:       { fontSize: 9, fontFamily: 'DMSans_500Medium', color: 'rgba(255,255,255,0.35)', letterSpacing: 0.3 },
-  tabLabelActive: { color: THEME.colors.teal },
-  activeDot:      { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2, backgroundColor: THEME.colors.teal },
-  badge: {
-    position: 'absolute', top: -4, right: -8,
-    backgroundColor: THEME.colors.teal, borderRadius: 8,
-    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3, borderWidth: 1.5, borderColor: 'rgba(18,18,20,0.9)',
-  },
-  badgeText: { fontSize: 9, fontFamily: 'DMSans_500Medium', color: '#0A0A0B' },
-  peekIndicator: {
-    position: 'absolute', right: 0, top: 0, bottom: 0, width: 40,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  peekGradient: {
-    position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(18,18,20,0.88)',
-    borderTopRightRadius: 36, borderBottomRightRadius: 36,
-  },
-  peekArrow: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: `${THEME.colors.teal}30`,
-    borderWidth: 1, borderColor: `${THEME.colors.teal}60`,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  peekArrowText: { fontSize: 14, color: THEME.colors.teal, fontFamily: 'DMSans_500Medium' },
-});
-
-// ── Tablet styles ─────────────────────────────────────────────────────────────
-const tabletStyles = StyleSheet.create({
-  wrapper: {
-    position: 'absolute',
-    left: 0, right: 0,
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  dock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(18, 18, 20, 0.93)',
-    borderRadius: 40,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.10)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 20,
-    overflow: 'hidden',
-  },
-  tabItem: {
+  iconContainer: {
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    position: 'relative',
   },
-  activeGlow: {
-    position: 'absolute',
-    top: 6, left: 8, right: 8, bottom: 6,
-    borderRadius: 24,
+  label: {
+    fontSize:    9,
+    fontFamily:  THEME.fonts.sansMedium,
+    color:       'rgba(255,255,255,0.35)',
+    letterSpacing: 0.3,
   },
-  activeDot: {
-    position: 'absolute', bottom: 5,
-    width: 4, height: 4, borderRadius: 2,
+  labelActive: {
+    color: THEME.colors.teal,
+  },
+  dot: {
+    position:        'absolute',
+    bottom:          5,
+    width:           4,
+    height:          4,
+    borderRadius:    2,
     backgroundColor: THEME.colors.teal,
   },
-  badge: {
-    position: 'absolute', top: -4, right: -8,
-    backgroundColor: THEME.colors.teal, borderRadius: 8,
-    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3, borderWidth: 1.5, borderColor: 'rgba(18,18,20,0.9)',
+});
+
+// ── Drawer styles ─────────────────────────────────────────────────────
+const drawerStyles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    zIndex: 200,
   },
-  badgeText: { fontSize: 9, fontFamily: 'DMSans_500Medium', color: '#0A0A0B' },
+  panel: {
+    position:        'absolute',
+    top:             0,
+    right:           0,
+    bottom:          0,
+    backgroundColor: '#111113',
+    zIndex:          201,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.08)',
+    shadowColor:     '#000',
+    shadowOffset:    { width: -8, height: 0 },
+    shadowOpacity:   0.4,
+    shadowRadius:    24,
+    elevation:       24,
+  },
+  panelHeader: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop:  Platform.OS === 'ios' ? 60 : 44,
+    paddingBottom: 16,
+  },
+  panelTitle: {
+    fontSize:    20,
+    fontFamily:  THEME.fonts.serif,
+    color:       THEME.colors.textPrimary,
+    letterSpacing: 0.3,
+  },
+  closeBtn: {
+    width:          34,
+    height:         34,
+    borderRadius:   17,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    alignItems:     'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    color:    THEME.colors.textMuted,
+    fontSize: 14,
+    fontFamily: THEME.fonts.sansMedium,
+  },
+  panelDivider: {
+    height:          1,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    marginHorizontal: 0,
+  },
+
+  // Items
+  item: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            14,
+    paddingHorizontal: 22,
+    paddingVertical:   16,
+    position:       'relative',
+  },
+  itemActive: {
+    backgroundColor: `${THEME.colors.teal}0C`,
+  },
+  itemAccent: {
+    position: 'absolute',
+    left:     0,
+    top:      8,
+    bottom:   8,
+    width:    3,
+    borderRadius: 2,
+    backgroundColor: THEME.colors.teal,
+  },
+  iconWrap: {
+    width:          42,
+    height:         42,
+    borderRadius:   12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems:     'center',
+    justifyContent: 'center',
+    position:       'relative',
+    flexShrink:     0,
+  },
+  iconWrapActive: {
+    backgroundColor: `${THEME.colors.teal}18`,
+  },
+  itemIcon:  { fontSize: 20 },
+  itemLabel: {
+    flex:      1,
+    fontSize:  15,
+    fontFamily: THEME.fonts.sans,
+    color:     THEME.colors.textMuted,
+    letterSpacing: 0.2,
+  },
+  itemLabelActive: {
+    color:     THEME.colors.textPrimary,
+    fontFamily: THEME.fonts.sansMedium,
+  },
+  itemChevron: {
+    color:    THEME.colors.textMuted,
+    fontSize: 18,
+    opacity:  0.5,
+  },
+
+  // Badge
+  badge: {
+    position:        'absolute',
+    top: -3, right: -6,
+    backgroundColor: THEME.colors.teal,
+    borderRadius:    8,
+    minWidth:        16,
+    height:          16,
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingHorizontal: 3,
+    borderWidth:     1.5,
+    borderColor:     '#111113',
+  },
+  badgeText: {
+    fontSize:  9,
+    fontFamily: THEME.fonts.sansMedium,
+    color:     '#0A0A0B',
+  },
+
+  // Footer
+  panelFooter: {
+    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+  },
+  footerText: {
+    textAlign:  'center',
+    fontSize:   12,
+    fontFamily: THEME.fonts.serif,
+    color:      `${THEME.colors.teal}50`,
+    paddingTop: 14,
+    letterSpacing: 1,
+  },
 });
