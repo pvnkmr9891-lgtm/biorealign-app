@@ -1,7 +1,17 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Text as SvgText, G, Polygon } from 'react-native-svg';
 import { THEME } from '@/constants/theme';
+
+function starPoints(cx: number, cy: number, outerR: number, innerR: number, n = 5): string {
+  const pts: string[] = [];
+  for (let i = 0; i < n * 2; i++) {
+    const angle = (Math.PI / n) * i - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    pts.push(`${(cx + r * Math.cos(angle)).toFixed(2)},${(cy + r * Math.sin(angle)).toFixed(2)}`);
+  }
+  return pts.join(' ');
+}
 
 export interface LineSeries {
   key: string;
@@ -113,9 +123,11 @@ export function LineChart({ series, labels, height = 180, showDots = true }: Lin
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-              {/* Dots */}
+              {/* Dots — skip indices that will get a star */}
               {showDots &&
                 s.data.map((v, i) => {
+                  const allMax = series.every(ser => (ser.data[i] ?? 0) >= 100);
+                  if (allMax) return null;
                   const cx = PAD.left + i * xStep;
                   const cy = PAD.top + plotH - (v / 100) * plotH;
                   return (
@@ -128,6 +140,31 @@ export function LineChart({ series, labels, height = 180, showDots = true }: Lin
             </G>
           );
         })}
+
+        {/* Stars — one per x-index where every series == 100 */}
+        {(() => {
+          const n = series[0]?.data.length ?? 0;
+          if (n < 1) return null;
+          const xStep = n > 1 ? plotW / (n - 1) : 0;
+          const starY = PAD.top + plotH - plotH; // y at value=100
+          return Array.from({ length: n }, (_, i) => {
+            const allMax = series.length > 0 && series.every(s => (s.data[i] ?? 0) >= 100);
+            if (!allMax) return null;
+            const cx = PAD.left + i * xStep;
+            return (
+              <G key={`star-${i}`}>
+                {/* Glow halo */}
+                <Circle cx={cx} cy={starY} r={11} fill="rgba(255,215,0,0.18)" />
+                <Polygon
+                  points={starPoints(cx, starY, 9, 4)}
+                  fill="#FFD700"
+                  stroke="#FFA500"
+                  strokeWidth={0.8}
+                />
+              </G>
+            );
+          });
+        })()}
       </Svg>
     </View>
   );

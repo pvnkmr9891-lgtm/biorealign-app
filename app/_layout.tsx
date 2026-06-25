@@ -38,16 +38,16 @@ function AuthGuard() {
     if (!role) return;
 
     // ── Client: check onboarding first ────────────────────────────────────
-   if (role === 'client') {
+  if (role === 'client') {
   const onboardingDone = profile?.onboarding_completed ?? false;
 
-  // Never interfere with the onboarding flow —
-  // let the screens handle their own navigation
+  // Never interfere with onboarding or the new auth-group intro screens
   if (inOnboarding) return;
+  if (inAuthGroup && !onboardingDone) return;  // ← allows welcome, program-select etc.
 
-  // Outside onboarding: route based on completion status
+  // Not yet in onboarding flow → send to welcome
   if (!onboardingDone) {
-    router.replace('/onboarding');
+    router.replace('/(auth)/welcome' as any);  // ← was '/onboarding'
     return;
   }
 

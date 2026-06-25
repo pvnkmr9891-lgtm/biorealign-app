@@ -1,0 +1,223 @@
+// 18-day rotating nutrition plan — Future Body Reset, Age 9–12, Non-Vegetarian, Hard Intensity
+// 7 meals/day — Pre-Activity (order 3) + Post-Activity Recovery (order 5). Strings verbatim from Excel.
+
+import type { NutritionDay } from './index';
+
+export const FBR_AGE9TO12_NONVEG_HARD: NutritionDay[] = [
+  {
+    day: 1,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Idli (4-5 pcs) with sambar and chutney + 1 glass milk with almonds' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana or 2-3 dates' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + chicken curry (generous portion) + bottle gourd curry + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: 'Roasted chana (handful)' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + egg curry + cucumber salad' },
+    ],
+  },
+  {
+    day: 2,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable poha + 1 glass milk + almonds' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates (3-4)' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + dal (1 cup) + mixed vegetable + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Small piece grilled chicken with fruit' },
+      { order: 6, label: 'Evening Snack', name: 'Murmura chaat' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + fish curry (generous portion) + bhindi sabzi' },
+    ],
+  },
+  {
+    day: 3,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable dosa (2-3) with chutney + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + chicken curry (generous portion) + cabbage poriyal + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: '1 apple' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + paneer curry + carrot-beans sabzi' },
+    ],
+  },
+  {
+    day: 4,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Wheat dalia with milk and walnuts' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates with milk' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + dal (1 cup) + onion-tomato salad + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Banana with peanut butter' },
+      { order: 6, label: 'Evening Snack', name: 'Vegetable cutlet' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + fish curry (generous portion) + lauki sabzi' },
+    ],
+  },
+  {
+    day: 5,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Paratha (2) with curd + 1 glass milk with almonds' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana or dates' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + chicken curry (generous portion) + palak sabzi + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Small piece grilled chicken with fruit' },
+      { order: 6, label: 'Evening Snack', name: 'Roasted peanuts (handful)' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + dal + mixed vegetable curry' },
+    ],
+  },
+  {
+    day: 6,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Semiya upma + 1 glass milk + walnuts' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates (3-4)' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + dal (1 cup) + beetroot poriyal + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: 'Vegetable soup (bowl)' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + chicken curry (generous portion) + cauliflower sabzi' },
+    ],
+  },
+  {
+    day: 7,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable uttapam (2-3) with chutney + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + fish curry (generous portion) + ridge gourd curry + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Banana with almonds' },
+      { order: 6, label: 'Evening Snack', name: '1 orange' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + paneer tikka + salad' },
+    ],
+  },
+  {
+    day: 8,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Bread toast with peanut butter + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates with milk' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + chicken curry (generous portion) + mixed vegetable + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Small piece grilled chicken with fruit' },
+      { order: 6, label: 'Evening Snack', name: 'Roasted chana (handful)' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + dal + drumstick curry' },
+    ],
+  },
+  {
+    day: 9,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Rava idli (4-5) with sambar + 1 glass milk with almonds' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + dal (1 cup) + capsicum sabzi + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: 'Fruit salad (bowl)' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + egg bhurji + onion salad' },
+    ],
+  },
+  {
+    day: 10,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable paratha (2) with curd + 1 glass milk + walnuts' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates (3-4)' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + fish curry (generous portion) + bhindi sabzi + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Banana with peanut butter' },
+      { order: 6, label: 'Evening Snack', name: 'Vegetable cutlet' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + chicken curry (generous portion) + cabbage sabzi' },
+    ],
+  },
+  {
+    day: 11,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Idli (4-5 pcs) with tomato chutney + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + dal (1 cup) + beans poriyal + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Small piece grilled chicken with fruit' },
+      { order: 6, label: 'Evening Snack', name: '1 banana' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + paneer curry + carrot salad' },
+    ],
+  },
+  {
+    day: 12,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable dalia upma + 1 glass milk with almonds' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates with milk' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + chicken curry (generous portion) + cucumber-tomato salad + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: 'Roasted peanuts (handful)' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + dal tadka + lauki sabzi' },
+    ],
+  },
+  {
+    day: 13,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable dosa (2-3) with sambar + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + fish curry (generous portion) + cabbage poriyal + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Banana with almonds' },
+      { order: 6, label: 'Evening Snack', name: 'Murmura chaat' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + dal + mixed vegetable curry' },
+    ],
+  },
+  {
+    day: 14,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Bread toast with paneer spread + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates (3-4)' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + dal (1 cup) + beetroot sabzi + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Small piece grilled chicken with fruit' },
+      { order: 6, label: 'Evening Snack', name: '1 banana' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + chicken curry (generous portion) + carrot-beans sabzi' },
+    ],
+  },
+  {
+    day: 15,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Semiya upma + 1 glass milk + walnuts' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + dal (1 cup) + ridge gourd curry + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: 'Vegetable soup (bowl)' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + fish curry (generous portion) + onion-tomato salad' },
+    ],
+  },
+  {
+    day: 16,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Vegetable uttapam (2-3) with chutney + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates with milk' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + chicken curry (generous portion) + mixed vegetable + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Banana with almonds' },
+      { order: 6, label: 'Evening Snack', name: 'Roasted chana (handful)' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + dal + bhindi sabzi' },
+    ],
+  },
+  {
+    day: 17,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Rava idli (4-5) with chutney + 1 glass milk with almonds' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Banana' },
+      { order: 4, label: 'Lunch',         name: 'Rice (2 cups) + dal (1 cup) + palak sabzi + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Small piece grilled chicken with fruit' },
+      { order: 6, label: 'Evening Snack', name: 'Vegetable cutlet' },
+      { order: 7, label: 'Dinner',        name: 'Roti (2-3) + egg curry + cucumber salad' },
+    ],
+  },
+  {
+    day: 18,
+    meals: [
+      { order: 1, label: 'Breakfast',     name: 'Paratha (2) with curd + 1 glass milk' },
+      { order: 2, label: 'Mid-Morning',   name: '2 boiled eggs' },
+      { order: 3, label: 'Pre-Activity',  name: 'Dates (3-4)' },
+      { order: 4, label: 'Lunch',         name: 'Roti (2-3) + fish curry (generous portion) + cabbage sabzi + curd (1/2 cup)' },
+      { order: 5, label: 'Post-Activity', name: 'Milk with banana' },
+      { order: 6, label: 'Evening Snack', name: '1 orange' },
+      { order: 7, label: 'Dinner',        name: 'Rice (1.5-2 cups) + chicken curry (generous portion) + cauliflower sabzi' },
+    ],
+  },
+];

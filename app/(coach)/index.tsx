@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useCoachClients, useTodaySessions } from '@/hooks/useCoach';
+import { usePendingCoachRequests } from '@/hooks/useCoachRequests';
 import { THEME } from '@/constants/theme';
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
@@ -19,6 +20,7 @@ export default function CoachDashboard() {
 
   const { data: clients = [],  isLoading: clientsLoading } = useCoachClients();
   const { data: sessions = [], isLoading: sessionsLoading } = useTodaySessions();
+  const { data: coachRequests = [] } = usePendingCoachRequests();
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -32,26 +34,26 @@ export default function CoachDashboard() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
 
         {/* Header */}
-          <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View>
+          <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1 }}>
               <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 14 }}>
                 Coach portal
               </Text>
-              <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 32, marginTop: 2 }}>
+              <Text numberOfLines={1} style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 32, marginTop: 2 }}>
                 {greeting}, {firstName}
               </Text>
             </View>
 
-  {/* Profile button — ADD THIS */}
-  <TouchableOpacity
-    onPress={() => router.push('/(coach)/profile')}
-    style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: `${THEME.colors.amber}20`, borderWidth: 1, borderColor: `${THEME.colors.amber}40`, alignItems: 'center', justifyContent: 'center' }}
-  >
-    <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
-      {firstName[0]}
-    </Text>
-  </TouchableOpacity>
-</View>
+            {/* Profile button */}
+            <TouchableOpacity
+              onPress={() => router.push('/(coach)/profile')}
+              style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: `${THEME.colors.amber}20`, borderWidth: 1, borderColor: `${THEME.colors.amber}40`, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+                {firstName[0]}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
         {/* Stats */}
         <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 24, marginBottom: 24 }}>
@@ -112,6 +114,39 @@ export default function CoachDashboard() {
           )}
         </View>
 
+
+        {/* Coach requests (Need a Coach? flow) */}
+<TouchableOpacity
+  onPress={() => router.push('/(coach)/coach-requests')}
+  style={{ marginHorizontal: 24, marginBottom: 14, backgroundColor: `${THEME.colors.teal}12`, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: `${THEME.colors.teal}30`, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+  activeOpacity={0.8}
+>
+  <Text style={{ fontSize: 22 }}>🧑‍🏫</Text>
+  <View style={{ flex: 1 }}>
+    <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+      Coach Requests {coachRequests.length > 0 ? `(${coachRequests.length})` : ''}
+    </Text>
+    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
+      Clients asking you to be their coach
+    </Text>
+  </View>
+  <Text style={{ color: THEME.colors.textMuted, fontSize: 18 }}>›</Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  onPress={() => router.push('/(coach)/lite-clients')}
+  style={{ marginHorizontal: 24, marginBottom: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+  activeOpacity={0.8}
+>
+  <Text style={{ fontSize: 22 }}>🙋</Text>
+  <View style={{ flex: 1 }}>
+    <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>My Clients</Text>
+    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
+      View detailed assessments and build plans
+    </Text>
+  </View>
+  <Text style={{ color: THEME.colors.textMuted, fontSize: 18 }}>›</Text>
+</TouchableOpacity>
 
         {/* Enrollment requests */}
 <TouchableOpacity

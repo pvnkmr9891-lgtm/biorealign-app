@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 export default function RegisterScreen() {
@@ -20,6 +20,7 @@ export default function RegisterScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleRegister = async () => {
     if (!fullName.trim() || !email.trim() || !password) {
@@ -43,10 +44,10 @@ export default function RegisterScreen() {
       Alert.alert('Registration failed', authError.message);
       return;
     }
-
-    
+   
 
     setLoading(false);
+    router.replace('/(auth)/welcome' as any); 
     // AuthGuard handles redirect on session change
   };
 

@@ -1,203 +1,591 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, Modal,
+  TextInput, ActivityIndicator, Alert, Modal, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useClientAssessment } from '@/hooks/useClientAssessment';
-import { useClientEnrollments } from '@/hooks/usePrograms';
+import { useUpdateProfile } from '@/hooks/useClient';
+import { EditProfileModal } from '@/components/profile/EditProfileModal';
+import { useClientEnrollments, PROGRAM_CATALOGUE } from '@/hooks/usePrograms';
+import { PROGRAMS } from '@/constants/programs';
+import { PROGRAMS_ENABLED, COACH_REQUEST_ENABLED } from '@/constants/featureFlags';
+import { useMyCoachStatus, useCoachProfile } from '@/hooks/useCoachDirectory';
+import { useMyDetailedAssessment } from '@/hooks/useDetailedAssessment';
+import { INTENSITY_META, TYPE_META } from '@/store/onboardingStore';
+import { SUPPORT_EMAIL } from '@/constants/contact';
+import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { THEME } from '@/constants/theme';
 
-// ── Edit Profile Modal ────────────────────────────────────────────────────────
-function EditProfileModal({ profile, visible, onClose, onSave }: {
-  profile: any; visible: boolean; onClose: () => void;
-  onSave: (data: { full_name: string; phone: string }) => void;
-}) {
-  const [name, setName]   = useState(profile?.full_name ?? '');
-  const [phone, setPhone] = useState(profile?.phone ?? '');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (visible) {
-      setName(profile?.full_name ?? '');
-      setPhone(profile?.phone ?? '');
-    }
-  }, [visible, profile]);
-
-  const handleSave = async () => {
-    if (!name.trim()) { Alert.alert('Required', 'Name cannot be empty.'); return; }
-    setSaving(true);
-    await onSave({ full_name: name.trim(), phone: phone.trim() });
-    setSaving(false);
-    onClose();
-  };
-
+// ── Privacy Policy Modal ──────────────────────────────────────────────────────
+function PrivacyPolicyModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
-        <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 22, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>Edit Profile</Text>
+        <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 0.5, borderBottomColor: THEME.colors.border }}>
+          <Text style={{ fontSize: 20, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>Privacy Policy</Text>
           <TouchableOpacity onPress={onClose}>
-            <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Cancel</Text>
+            <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Close</Text>
           </TouchableOpacity>
         </View>
+        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 4 }}>
+            Last updated: June 2026
+          </Text>
 
-        <ScrollView contentContainerStyle={{ padding: 24 }} keyboardShouldPersistTaps="handled">
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Full Name</Text>
-          <TextInput
-            style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 20 }}
-            value={name} onChangeText={setName} placeholder="Your full name"
-            placeholderTextColor={THEME.colors.textMuted}
-          />
-
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Phone Number</Text>
-          <TextInput
-            style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 32 }}
-            value={phone} onChangeText={setPhone} placeholder="+91 98765 43210"
-            placeholderTextColor={THEME.colors.textMuted} keyboardType="phone-pad"
-          />
-
-          <TouchableOpacity
-            onPress={handleSave} disabled={saving}
-            style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
-          >
-            {saving ? <ActivityIndicator color={THEME.colors.background} /> : (
-              <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Save changes</Text>
-            )}
-          </TouchableOpacity>
+          {[
+            {
+              title: '1. Information We Collect',
+              body: 'BioRealign collects information you provide directly, including your name, email address, phone number, and health-related data such as energy levels, sleep hours, pain scores, mood, body metrics, nutrition habits, and fitness history. We also collect app usage data such as check-in timestamps and feature interactions.',
+            },
+            {
+              title: '2. How We Use Your Information',
+              body: 'Your data is used to:\n• Personalise your transformation programme\n• Track your daily wellness and progress scores\n• Enable your coach to build and monitor your plan\n• Send push notifications relevant to your goals\n• Improve app features and performance',
+            },
+            {
+              title: '3. Data Storage & Security',
+              body: 'Your data is stored securely on Supabase (PostgreSQL), which is hosted on AWS infrastructure with encryption at rest and in transit. We implement row-level security policies ensuring you can only access your own data. Authentication is managed via Supabase Auth with secure token handling.',
+            },
+            {
+              title: '4. Health Data',
+              body: 'Health and wellness data you provide (including energy, pain, sleep, mood, body weight, and medical conditions) is used solely within BioRealign to deliver your personalised programme. This data is never sold to third parties. It may be shared with your assigned coach to facilitate professional guidance.',
+            },
+            {
+              title: '5. Third-Party Services',
+              body: 'BioRealign uses the following third-party services:\n• Supabase — database and authentication\n• Expo / EAS — app delivery and over-the-air updates\n• Anthropic Claude API — AI-powered wellness suggestions (anonymised prompts only)\n• Expo Notifications — push notification delivery\n\nEach provider has their own privacy policy and data processing agreements.',
+            },
+            {
+              title: '6. Push Notifications',
+              body: 'With your permission, BioRealign sends push notifications to remind you of daily check-ins, upcoming sessions, and programme milestones. You may disable notifications at any time from your device settings.',
+            },
+            {
+              title: '7. Your Rights',
+              body: `You have the right to:\n• Access the personal data we hold about you\n• Request correction of inaccurate data\n• Request deletion of your account and all associated data\n• Withdraw consent at any time\n\nTo exercise these rights, contact us at ${SUPPORT_EMAIL}.`,
+            },
+            {
+              title: '8. Data Retention',
+              body: 'We retain your personal data for as long as your account is active. If you delete your account, we will erase your data within 30 days, except where retention is required by law.',
+            },
+            {
+              title: '9. Children\'s Privacy',
+              body: 'BioRealign is not intended for users under 16 years of age. We do not knowingly collect personal information from children.',
+            },
+            {
+              title: '10. Changes to This Policy',
+              body: 'We may update this Privacy Policy from time to time. We will notify you of significant changes via in-app notification. Continued use of the app after changes constitutes acceptance of the updated policy.',
+            },
+            {
+              title: '11. Contact',
+              body: `For privacy-related questions or requests, contact:\nBioRealign Support\n${SUPPORT_EMAIL}`,
+            },
+          ].map(section => (
+            <View key={section.title} style={{ marginBottom: 22 }}>
+              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 6 }}>
+                {section.title}
+              </Text>
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary, lineHeight: 21 }}>
+                {section.body}
+              </Text>
+            </View>
+          ))}
         </ScrollView>
       </SafeAreaView>
     </Modal>
   );
 }
 
-// ── Assessment Summary Card ───────────────────────────────────────────────────
-function AssessmentSummaryCard({ clientId }: { clientId: string }) {
-  const { data: assessment, isLoading } = useClientAssessment(clientId);
+// ── Assessment completion % helper ────────────────────────────────────────────
+// Helper: read a value from new answers JSONB or fall back to old flat columns
+function aVal(a: any, newKey: string, oldKey?: string) {
+  return a?.answers?.[newKey] ?? (oldKey ? a?.[oldKey] : undefined);
+}
 
-  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 12 }} />;
+function assessmentCompletionPct(a: any): number {
+  if (!a) return 0;
+  // New flat-answers format: check key core questions answered
+  if (a.answers && typeof a.answers === 'object') {
+    const coreKeys = ['CORE-Q3', 'CORE-Q4', 'CORE-Q5', 'CORE-Q9', 'CORE-Q12', 'CORE-Q13'];
+    const filled = coreKeys.filter(k => {
+      const v = a.answers[k];
+      return v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0);
+    });
+    // Bonus points for any program-specific answers
+    const programKeys = Object.keys(a.answers).filter(k => !k.startsWith('CORE-'));
+    const total = coreKeys.length + Math.min(programKeys.length, 4);
+    return Math.round(((filled.length + Math.min(programKeys.length, 4)) / total) * 100);
+  }
+  // Legacy: old stage columns
+  const checks = [
+    !!a.occupation_type,
+    a.height_cm > 0,
+    !!a.last_exercise_period,
+    !!a.diet_type,
+    !!a.primary_goal,
+  ];
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+}
 
-  if (!assessment) {
-    return (
-      <View style={{ backgroundColor: `${THEME.colors.amber}10`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.amber}25` }}>
-        <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber, marginBottom: 4 }}>
-          📋 Assessment not submitted
-        </Text>
-        <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 20 }}>
-          Complete your onboarding assessment so your coach can build a personalised plan for you.
-        </Text>
-      </View>
-    );
+// ── Baseline Photos Card ──────────────────────────────────────────────────────
+function BaselinePhotosCard({ clientId }: { clientId: string }) {
+  const router = useRouter();
+  const { data: photosRaw = [], isLoading } = useQuery({
+    queryKey: ['baseline_photos', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('progress_photos')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('week_number', 0);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const photos: Record<string, string> = {};
+  for (const row of photosRaw as any[]) {
+    if (row.storage_path) {
+      const { data } = supabase.storage.from('progress-photos').getPublicUrl(row.storage_path);
+      photos[row.photo_type] = data.publicUrl;
+    }
   }
 
-  const energyAvg = Math.round(
-    ((assessment.energy_morning ?? 0) + (assessment.energy_afternoon ?? 0) + (assessment.energy_evening ?? 0)) / 3
-  );
+  const slots = ['front', 'side', 'back'];
+  const hasAny = slots.some(s => photos[s]);
+
+  if (isLoading) return null;
 
   return (
-    <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 16, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+    <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 16, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border, marginTop: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Assessment Summary</Text>
-        <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
-          {new Date(assessment.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+        <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+          📸 Baseline Photos
         </Text>
-      </View>
-
-      {/* Quick stats */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-        {[
-          { label: 'Energy', value: `${energyAvg}/10`, color: energyAvg >= 7 ? '#34D399' : energyAvg >= 5 ? THEME.colors.amber : '#F87171' },
-          { label: 'Sleep', value: `${assessment.sleep_hours_avg ?? '?'}h`, color: THEME.colors.teal },
-          { label: 'Stress', value: `${assessment.stress_level ?? '?'}/10`, color: (assessment.stress_level ?? 0) >= 7 ? '#F87171' : THEME.colors.amber },
-        ].map(s => (
-          <View key={s.label} style={{ flex: 1, backgroundColor: '#1A1A1E', borderRadius: 10, padding: 10, alignItems: 'center' }}>
-            <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: s.color }}>{s.value}</Text>
-            <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{s.label}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Primary goal */}
-      {assessment.primary_goal && (
-        <View style={{ backgroundColor: `${THEME.colors.teal}10`, borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 0.5, borderColor: `${THEME.colors.teal}20` }}>
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, marginBottom: 4 }}>Primary Goal</Text>
-          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textTransform: 'capitalize' }}>
-            {assessment.primary_goal?.replace(/_/g, ' ')}
+        <TouchableOpacity onPress={() => router.push('/onboarding/photos' as any)} activeOpacity={0.7}>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+            {hasAny ? 'Update' : 'Add photos'}
           </Text>
-        </View>
-      )}
+        </TouchableOpacity>
+      </View>
 
-      {/* Complaints tags */}
-      {assessment.complaints?.length > 0 && (
-        <View>
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Reported complaints</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {assessment.complaints.map((c: string) => (
-              <View key={c} style={{ backgroundColor: '#F8717115', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 0.5, borderColor: '#F8717130' }}>
-                <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: '#F87171', textTransform: 'capitalize' }}>{c.replace(/_/g, ' ')}</Text>
+      {hasAny ? (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {slots.map(slot => (
+            <View key={slot} style={{ flex: 1, aspectRatio: 0.75, borderRadius: 10, backgroundColor: '#1A1A1E', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+              {photos[slot] ? (
+                <Image source={{ uri: photos[slot] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              ) : (
+                <Text style={{ fontSize: 20 }}>{slot === 'front' ? '🧍' : slot === 'side' ? '🚶' : '🪞'}</Text>
+              )}
+              <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', paddingVertical: 4 }}>
+                <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: '#fff', textAlign: 'center', textTransform: 'capitalize' }}>{slot}</Text>
               </View>
-            ))}
-          </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={{ backgroundColor: `${THEME.colors.amber}10`, borderRadius: 12, padding: 14, borderWidth: 0.5, borderColor: `${THEME.colors.amber}25` }}>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber, marginBottom: 6 }}>
+            No baseline photos yet
+          </Text>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 18, marginBottom: 12 }}>
+            Adding front, side, and back photos helps your coach track your progress over time.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push('/onboarding/photos' as any)}
+            style={{ backgroundColor: THEME.colors.teal, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Add Baseline Photos →</Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
   );
 }
 
+// ── Assessment Summary Card ───────────────────────────────────────────────────
+function AssessmentSummaryCard({ clientId }: { clientId: string }) {
+  const { data: assessment, isLoading } = useClientAssessment(clientId);
+  const router = useRouter();
+
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 12 }} />;
+
+  const pct = assessmentCompletionPct(assessment);
+
+  if (!assessment) {
+    return (
+      <View style={{ gap: 12 }}>
+        <View style={{ backgroundColor: `${THEME.colors.amber}10`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.amber}25` }}>
+          <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber, marginBottom: 4 }}>
+            📋 Assessment not started
+          </Text>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 20, marginBottom: 12 }}>
+            Complete your onboarding assessment so your coach can build a personalised plan for you.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push('/onboarding/assessment' as any)}
+            style={{ backgroundColor: THEME.colors.teal, borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Start Assessment →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Completion banner if not fully done */}
+      {pct < 100 && (
+        <View style={{ backgroundColor: `${THEME.colors.amber}10`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.amber}25` }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+              Assessment {pct}% complete
+            </Text>
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+              Finish to unlock full coaching
+            </Text>
+          </View>
+          <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', marginBottom: 10 }}>
+            <View style={{ height: '100%', width: `${pct}%`, backgroundColor: THEME.colors.amber, borderRadius: 2 }} />
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/onboarding/assessment' as any)}
+            style={{ backgroundColor: THEME.colors.amber, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Continue Assessment →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Summary card */}
+      <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 16, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Assessment Summary</Text>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+            {new Date(assessment.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          {(() => {
+            const energy = aVal(assessment, 'CORE-Q12', 'energy_morning');
+            const sleep  = aVal(assessment, 'CORE-Q13', 'sleep_hours_avg');
+            const stress = aVal(assessment, 'MRS-P2-Q7', 'stress_level');
+            return [
+              { label: 'Energy', value: energy ? `${energy}/10` : '—', color: '#34D399' },
+              { label: 'Sleep',  value: sleep  ? `${sleep}h`   : '—', color: THEME.colors.teal },
+              { label: 'Stress', value: stress ? `${stress}/10`: '—', color: Number(stress) >= 7 ? '#F87171' : THEME.colors.amber },
+            ].map(s => (
+              <View key={s.label} style={{ flex: 1, backgroundColor: '#1A1A1E', borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: s.color }}>{s.value}</Text>
+                <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{s.label}</Text>
+              </View>
+            ));
+          })()}
+        </View>
+
+        {(() => {
+          // New: program-specific goals; Old: primary_goal column
+          const goals = aVal(assessment, 'PRP-P3-Q1') ?? aVal(assessment, 'MRS-P3-Q3') ??
+                        aVal(assessment, 'CPR-P3-Q1') ?? aVal(assessment, 'PPL-P3-Q3') ??
+                        aVal(assessment, 'LVE-P3-Q1') ?? aVal(assessment, 'RRS-P3-Q1') ??
+                        assessment?.primary_goal;
+          if (!goals) return null;
+          const goalArr = Array.isArray(goals) ? goals : [goals];
+          return (
+            <View style={{ backgroundColor: `${THEME.colors.teal}10`, borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 0.5, borderColor: `${THEME.colors.teal}20` }}>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, marginBottom: 6 }}>Goals</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {goalArr.map((g: string) => (
+                  <Text key={g} style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textTransform: 'capitalize' }}>
+                    • {g.replace(/_/g, ' ')}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          );
+        })()}
+
+        {(() => {
+          // New: pain locations from PRP/RRS; Old: complaints array
+          const pain = aVal(assessment, 'PRP-P1-Q1') ?? aVal(assessment, 'RRS-P2-Q1') ?? assessment?.complaints;
+          const items: string[] = Array.isArray(pain) ? pain : pain ? [pain] : [];
+          if (items.length === 0) return null;
+          return (
+            <View>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Reported concerns</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {items.map((c: string) => (
+                  <View key={c} style={{ backgroundColor: '#F8717115', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 0.5, borderColor: '#F8717130' }}>
+                    <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: '#F87171', textTransform: 'capitalize' }}>{c.replace(/_/g, ' ')}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          );
+        })()}
+      </View>
+    </View>
+  );
+}
+
+function calcChildAge(dob: string | undefined): number | null {
+  if (!dob) return null;
+  const d = new Date(dob + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - d.getFullYear();
+  const hadBday = today.getMonth() > d.getMonth() || (today.getMonth() === d.getMonth() && today.getDate() >= d.getDate());
+  if (!hadBday) age--;
+  return age;
+}
+
+// ── Coach Status Card ──────────────────────────────────────────────────────
+function CoachStatusCard() {
+  const router = useRouter();
+  const { data: status, isLoading } = useMyCoachStatus();
+  const coachId = status?.state === 'assigned' ? status.coachId : status?.state === 'pending' ? status.request.coach_id : null;
+  const { data: coach } = useCoachProfile(coachId ?? '');
+  const { data: assessment } = useMyDetailedAssessment();
+
+  if (isLoading) return null;
+
+  if (!status || status.state === 'none') {
+    return (
+      <TouchableOpacity
+        onPress={() => router.push('/(client)/coach-list' as any)}
+        activeOpacity={0.85}
+        style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}
+      >
+        <Text style={{ fontSize: 24 }}>🧑‍🏫</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Need a Coach?</Text>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
+            Get a real coach to guide your plan
+          </Text>
+        </View>
+        <Text style={{ color: THEME.colors.textMuted, fontSize: 18 }}>›</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  if (status.state === 'pending') {
+    return (
+      <View style={{ backgroundColor: `${THEME.colors.amber}10`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.amber}30`, marginBottom: 12 }}>
+        <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>⏳ Waiting for {coach?.full_name ?? 'coach'} to approve</Text>
+        <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>
+          You requested this coach on {new Date(status.request.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.
+        </Text>
+      </View>
+    );
+  }
+
+  // assigned
+  const assessmentCta = !assessment || assessment.status === 'in_progress'
+    ? { label: assessment?.current_stage && assessment.current_stage > 1 ? 'Continue Detailed Assessment' : 'Start Detailed Assessment', enabled: true }
+    : assessment.status === 'submitted'
+    ? { label: 'Assessment submitted — awaiting review', enabled: false }
+    : { label: 'Assessment reviewed by your coach', enabled: false };
+
+  return (
+    <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${THEME.colors.teal}20`, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+            {coach?.full_name?.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{coach?.full_name}</Text>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>Your coach</Text>
+        </View>
+      </View>
+      <TouchableOpacity
+        onPress={() => assessmentCta.enabled && router.push('/(client)/detailed-assessment' as any)}
+        disabled={!assessmentCta.enabled}
+        activeOpacity={0.85}
+        style={{ backgroundColor: assessmentCta.enabled ? THEME.colors.teal : THEME.colors.surface3, borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+      >
+        <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: assessmentCta.enabled ? THEME.colors.background : THEME.colors.textMuted }}>
+          {assessmentCta.label}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ── Enrollment Card ───────────────────────────────────────────────────────────
 function EnrollmentCard() {
-  const { data: enrollments = [] } = useClientEnrollments();
+  const { data: enrollments = [], isLoading } = useClientEnrollments();
+  const profile = useAuthStore(s => s.profile);
+  const userId = useAuthStore(s => s.user)?.id ?? '';
+  const { data: assessment } = useClientAssessment(userId);
+  const isFBR = (profile as any)?.workout_program_id === 'total_transformation' || (profile as any)?.workout_program_id === 'FBR';
+  const childDob: string | undefined = isFBR ? assessment?.answers?.['FBR-P1-Q4'] : undefined;
+  const childAge = calcChildAge(childDob);
 
-  if (!enrollments.length) {
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 16 }} />;
+
+  // If there are formal enrollments in the DB, show them
+  if ((enrollments as any[]).length > 0) {
     return (
-      <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+      <View style={{ gap: 10 }}>
+        {(enrollments as any[]).map((enroll: any) => {
+          const cat = PROGRAM_CATALOGUE.find(p => p.name === enroll.program?.name);
+          const color = cat?.color ?? THEME.colors.teal;
+          const totalWeeks = enroll.program?.duration_weeks ?? cat?.weeks ?? 1;
+          const pct = Math.round((enroll.current_week / totalWeeks) * 100);
+          return (
+            <View key={enroll.id} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 16, overflow: 'hidden', borderWidth: 0.5, borderColor: THEME.colors.border }}>
+              <View style={{ height: 3, backgroundColor: color }} />
+              <View style={{ padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: `${color}20`, borderWidth: 1, borderColor: `${color}30`, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 22 }}>{cat?.icon ?? '📋'}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{enroll.program?.name}</Text>
+                    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{cat?.tagline ?? ''}</Text>
+                  </View>
+                  <View style={{ backgroundColor: `${THEME.colors.teal}20`, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>Active</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 20, marginBottom: 12 }}>
+                  <View>
+                    <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Week</Text>
+                    <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansMedium, color: color, marginTop: 2 }}>{enroll.current_week}<Text style={{ fontSize: 12, color: THEME.colors.textMuted }}> / {totalWeeks}</Text></Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Started</Text>
+                    <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, marginTop: 2 }}>
+                      {new Date(enroll.started_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Progress</Text>
+                    <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: color, marginTop: 2 }}>{pct}%</Text>
+                  </View>
+                </View>
+                <View style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 2 }} />
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+
+  // Fallback: read directly from profile.workout_program_id (set during onboarding)
+  const rawId     = profile?.workout_program_id ?? '';
+  const normId    = rawId === '3-PRP' ? 'postural_realignment' : rawId;
+  const prog      = PROGRAMS.find(p => p.id === normId);
+  const cat       = prog ? PROGRAM_CATALOGUE.find(p => p.name === prog.name) : null;
+  const color     = cat?.color ?? prog?.color ?? THEME.colors.teal;
+
+  const intensityKey = (profile?.workout_intensity ?? '') as keyof typeof INTENSITY_META;
+  const trainingKey  = (profile?.workout_training_type ?? '') as keyof typeof TYPE_META;
+  const intensityMeta = INTENSITY_META[intensityKey];
+  const trainingMeta  = TYPE_META[trainingKey];
+
+  if (!prog) {
+    return (
+      <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, alignItems: 'center', gap: 8 }}>
+        <Text style={{ fontSize: 24 }}>📋</Text>
         <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, textAlign: 'center' }}>
-          Not enrolled in any program yet
+          No program assigned yet
+        </Text>
+        <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center', lineHeight: 18 }}>
+          Complete your onboarding or contact your coach to get enrolled.
         </Text>
       </View>
     );
   }
 
   return (
-    <View style={{ gap: 10 }}>
-      {(enrollments as any[]).map((enroll: any) => (
-        <View key={enroll.id} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, flex: 1 }}>
-              {enroll.program?.name}
-            </Text>
-            <View style={{ backgroundColor: `${THEME.colors.teal}20`, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
-              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>Active</Text>
+    <View style={{ gap: 12 }}>
+      {/* Program card */}
+      <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 16, overflow: 'hidden', borderWidth: 0.5, borderColor: THEME.colors.border }}>
+        <View style={{ height: 3, backgroundColor: color }} />
+        <View style={{ padding: 16 }}>
+          <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 12 }}>
+            ✦ Currently enrolled
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: `${color}20`, borderWidth: 1, borderColor: `${color}30`, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 26 }}>{cat?.icon ?? prog.icon}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 17, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{prog.name}</Text>
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{cat?.tagline ?? prog.tagline}</Text>
             </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 16 }}>
-            <View>
-              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Current week</Text>
-              <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginTop: 2 }}>
-                {enroll.current_week} / {enroll.program?.duration_weeks}
-              </Text>
-            </View>
-            <View>
-              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Started</Text>
-              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, marginTop: 2 }}>
-                {new Date(enroll.started_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-              </Text>
-            </View>
-          </View>
-          {/* Progress bar */}
-          <View style={{ marginTop: 12 }}>
-            <View style={{ height: 4, backgroundColor: '#1A1A1E', borderRadius: 2, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${Math.round((enroll.current_week / (enroll.program?.duration_weeks ?? 1)) * 100)}%`, backgroundColor: THEME.colors.teal, borderRadius: 2 }} />
-            </View>
-            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>
-              {Math.round((enroll.current_week / (enroll.program?.duration_weeks ?? 1)) * 100)}% complete
-            </Text>
+
+          {/* Intensity / environment pills */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {intensityMeta && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: `${intensityMeta.color}15`, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: `${intensityMeta.color}40` }}>
+                <Text style={{ fontSize: 13 }}>{intensityMeta.icon}</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: intensityMeta.color }}>{intensityMeta.label}</Text>
+              </View>
+            )}
+            {trainingMeta && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)' }}>
+                <Text style={{ fontSize: 13 }}>{trainingMeta.icon}</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>{trainingMeta.label}</Text>
+              </View>
+            )}
+            {intensityMeta && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)' }}>
+                <Text style={{ fontSize: 13 }}>📅</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>{intensityMeta.weeks} weeks</Text>
+              </View>
+            )}
+            {childAge !== null && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#A78BFA18', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: '#A78BFA40' }}>
+                <Text style={{ fontSize: 13 }}>🎂</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#A78BFA' }}>Age {childAge}</Text>
+              </View>
+            )}
           </View>
         </View>
-      ))}
+      </View>
+
+      {/* Outcomes */}
+      {cat?.outcomes?.length ? (
+        <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10 }}>What you'll achieve</Text>
+          <View style={{ gap: 8 }}>
+            {cat.outcomes.map((o, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color, marginTop: 6 }} />
+                <Text style={{ flex: 1, fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, lineHeight: 20 }}>{o}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Benefits from PROGRAMS constant */}
+      {prog.benefits?.length ? (
+        <View style={{ backgroundColor: `${color}10`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${color}25` }}>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10 }}>Key benefits</Text>
+          <View style={{ gap: 8 }}>
+            {prog.benefits.map((b, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                <Text style={{ color, fontSize: 12, marginTop: 1 }}>✓</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, lineHeight: 20 }}>{b}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -205,26 +593,24 @@ function EnrollmentCard() {
 // ── Main Profile Screen ───────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const { profile, signOut, user } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
-  const [showEdit, setShowEdit] = useState(false);
+  const [showEdit, setShowEdit]           = useState(false);
+  const [showPrivacy, setShowPrivacy]     = useState(false);
   const [activeSection, setActiveSection] = useState<'overview' | 'assessment' | 'enrollments'>('overview');
 
   const initials = profile?.full_name
     ?.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() ?? '?';
 
+  const { mutateAsync: updateProfile } = useUpdateProfile();
+
   const handleSaveProfile = async (data: { full_name: string; phone: string }) => {
-    const { error } = await supabase
-      .from('profiles')
-      .update(data)
-      .eq('id', user!.id);
-
-    if (error) {
+    try {
+      await updateProfile({ data });
+      Alert.alert('Saved ✓', 'Your profile has been updated.');
+    } catch {
       Alert.alert('Error', 'Failed to save profile. Please try again.');
-      return;
     }
-
-    qc.invalidateQueries({ queryKey: ['profile'] });
-    Alert.alert('Saved ✓', 'Your profile has been updated.');
   };
 
   const handleSignOut = () => {
@@ -279,8 +665,10 @@ export default function ProfileScreen() {
         <View style={{ flexDirection: 'row', marginHorizontal: 24, marginBottom: 20, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 4, borderWidth: 0.5, borderColor: THEME.colors.border }}>
           {[
             { key: 'overview',    label: 'Overview' },
-            { key: 'assessment',  label: 'Assessment' },
-            { key: 'enrollments', label: 'Programs' },
+            ...(PROGRAMS_ENABLED ? [
+              { key: 'assessment',  label: 'Assessment' },
+              { key: 'enrollments', label: 'Programs' },
+            ] : []),
           ].map(tab => (
             <TouchableOpacity
               key={tab.key}
@@ -300,11 +688,13 @@ export default function ProfileScreen() {
           {/* Overview tab */}
           {activeSection === 'overview' && (
             <View style={{ gap: 12 }}>
-              {/* Quick info cards */}
+              {COACH_REQUEST_ENABLED && <CoachStatusCard />}
+
+              {/* Quick score cards */}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {[
-                  { label: 'Fitness', value: '—', color: THEME.scoreColors?.fitness ?? THEME.colors.teal },
-                  { label: 'Recovery', value: '—', color: THEME.scoreColors?.recovery ?? '#60A5FA' },
+                  { label: 'Fitness',   value: '—', color: THEME.scoreColors?.fitness   ?? THEME.colors.teal },
+                  { label: 'Recovery',  value: '—', color: THEME.scoreColors?.recovery  ?? '#60A5FA' },
                   { label: 'Longevity', value: '—', color: THEME.scoreColors?.longevity ?? THEME.colors.amber },
                 ].map(s => (
                   <View key={s.label} style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}>
@@ -314,14 +704,12 @@ export default function ProfileScreen() {
                 ))}
               </View>
 
-              {/* Support links */}
+              {/* Links */}
               <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, overflow: 'hidden' }}>
                 {[
-                  { label: '📋 My Assessment', action: () => setActiveSection('assessment') },
-                  { label: '🎯 My Programs', action: () => setActiveSection('enrollments') },
-                  { label: '🔒 Privacy Policy', action: () => {} },
-                  { label: '💬 Support', action: () => {} },
-                ].map((item, i, arr) => (
+                  { label: '🔒 Privacy Policy', action: () => setShowPrivacy(true) },
+                  { label: '💬 Support', action: () => router.push('/(client)/support' as any) },
+                ].map((item, i) => (
                   <TouchableOpacity
                     key={item.label}
                     onPress={item.action}
@@ -337,12 +725,15 @@ export default function ProfileScreen() {
           )}
 
           {/* Assessment tab */}
-          {activeSection === 'assessment' && user?.id && (
-            <AssessmentSummaryCard clientId={user.id} />
+          {PROGRAMS_ENABLED && activeSection === 'assessment' && user?.id && (
+            <>
+              <AssessmentSummaryCard clientId={user.id} />
+              <BaselinePhotosCard clientId={user.id} />
+            </>
           )}
 
           {/* Enrollments tab */}
-          {activeSection === 'enrollments' && (
+          {PROGRAMS_ENABLED && activeSection === 'enrollments' && (
             <EnrollmentCard />
           )}
         </View>
@@ -360,12 +751,16 @@ export default function ProfileScreen() {
 
       </ScrollView>
 
-      {/* Edit modal */}
       <EditProfileModal
         profile={profile}
         visible={showEdit}
         onClose={() => setShowEdit(false)}
         onSave={handleSaveProfile}
+      />
+
+      <PrivacyPolicyModal
+        visible={showPrivacy}
+        onClose={() => setShowPrivacy(false)}
       />
     </SafeAreaView>
   );

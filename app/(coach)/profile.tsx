@@ -65,6 +65,26 @@ export default function CoachProfile() {
           </View>
         </View>
 
+        {/* Public profile link */}
+        <View style={{ marginHorizontal: 24, marginBottom: 24 }}>
+          <TouchableOpacity
+            onPress={() => router.push('/(coach)/my-public-profile')}
+            activeOpacity={0.85}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: `${THEME.colors.teal}12`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ fontSize: 18 }}>📄</Text>
+              <View>
+                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>View my public profile</Text>
+                <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>
+                  See your resume, achievements & testimonials as clients see them
+                </Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 16, color: THEME.colors.teal }}>›</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Info rows */}
         <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 24, overflow: 'hidden' }}>
           {[

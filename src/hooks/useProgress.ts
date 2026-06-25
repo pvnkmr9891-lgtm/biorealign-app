@@ -88,18 +88,38 @@ export function useLatestBodyMetric() {
   });
 }
 
+// ── Fetch body metric for a specific week (by week-start Monday date) ─────
+export function useWeekBodyMetric(weekStart: string) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [...progressKeys.bodyMetrics(user?.id ?? ''), 'week', weekStart],
+    enabled: !!user?.id && !!weekStart,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .select('*')
+        .eq('client_id', user!.id)
+        .eq('recorded_date', weekStart)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as BodyMetric | null;
+    },
+  });
+}
+
 // ── Save body metrics (upsert by date) ────────────────────────────────────
 export function useSaveBodyMetrics() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: Partial<Omit<BodyMetric, 'id' | 'client_id' | 'recorded_at'>>) => {
-      const today = new Date().toISOString().split('T')[0];
+    mutationFn: async (payload: Partial<Omit<BodyMetric, 'id' | 'client_id' | 'recorded_at'>> & { recorded_date?: string }) => {
+      const { recorded_date, ...rest } = payload;
+      const date = recorded_date ?? new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('body_metrics')
         .upsert(
-          { client_id: user!.id, recorded_date: today, ...payload },
+          { client_id: user!.id, recorded_date: date, ...rest },
           { onConflict: 'client_id,recorded_date' }
         )
         .select()
@@ -164,13 +184,17 @@ export function useUploadProgressPhoto() {
   photoType,
   weekNumber = 0,
   phase = 1,
+  notes,
+  photoDate,
 }: {
   uri: string;
   photoType: 'front' | 'side' | 'back' | 'custom';
   weekNumber?: number;
   phase?: number;
+  notes?: string;
+  photoDate?: string; // yyyy-mm-dd — lets a client backfill a previous day/week, defaults to today
 }) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = photoDate ?? new Date().toISOString().split('T')[0];
   const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
   const path = `${user!.id}/${today}_${photoType}_${Date.now()}.${ext}`;
   const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
@@ -214,6 +238,7 @@ export function useUploadProgressPhoto() {
       photo_date: today,
       week_number: weekNumber,
       phase,
+      notes: notes ?? null,
     })
     .select()
     .single();
@@ -221,6 +246,31 @@ export function useUploadProgressPhoto() {
   if (dbError) throw dbError;
   return data as ProgressPhoto;
 },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: progressKeys.photos(user.id) });
+    },
+  });
+}
+
+// ── Delete progress photo ───────────────────────────────────────────────────
+export function useDeleteProgressPhoto() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (photo: { id: string; storage_path: string }) => {
+      const { error: storageError } = await supabase.storage
+        .from('progress-photos')
+        .remove([photo.storage_path]);
+      if (storageError) throw storageError;
+
+      const { error: dbError } = await supabase
+        .from('progress_photos')
+        .delete()
+        .eq('id', photo.id);
+      if (dbError) throw dbError;
+    },
     onSuccess: () => {
       if (!user?.id) return;
       qc.invalidateQueries({ queryKey: progressKeys.photos(user.id) });

@@ -19,6 +19,11 @@ export default function CoachLayout() {
       <Stack.Screen name="enrollment-requests" />
       <Stack.Screen name="plan-builder" />
       <Stack.Screen name="profile" />
+      <Stack.Screen name="coach-requests" />
+      <Stack.Screen name="lite-clients" />
+      <Stack.Screen name="client-overview" />
+      <Stack.Screen name="client-workouts" />
+      <Stack.Screen name="my-public-profile" />
     </Stack>
   );
 }

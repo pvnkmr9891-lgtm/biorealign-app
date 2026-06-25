@@ -40,6 +40,14 @@ export interface Profile {
   assigned_coach_id: string | null;    
   onboarding_completed: boolean;       
   onboarding_completed_at: string | null; 
+  workout_program_id:    string | null;
+  workout_training_type: string | null;
+  workout_intensity:     string | null;
+  workout_start_date:    string | null;
+  diet_type:             'veg' | 'non_veg' | null;
+  height_cm:             number | null;
+  weight_kg:             number | null;
+  medical_disclaimer_acked_at: string | null;
   created_at: string;
   updated_at: string;
 }
