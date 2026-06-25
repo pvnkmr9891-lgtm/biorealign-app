@@ -10,6 +10,8 @@ export const clientKeys = {
   all:            ['client'] as const,
   enrollment:     (uid: string) => ['client', uid, 'enrollment'] as const,
   checkinToday:   (uid: string) => ['client', uid, 'checkin', 'today'] as const,
+  checkinDate:    (uid: string, date: string) => ['client', uid, 'checkin', date] as const,
+  checkinMonth:   (uid: string, year: number, month: number) => ['client', uid, 'checkin', 'month', year, month] as const,
   checkins:       (uid: string) => ['client', uid, 'checkins'] as const,
   metrics:        (uid: string) => ['client', uid, 'metrics'] as const,
   latestMetric:   (uid: string) => ['client', uid, 'metrics', 'latest'] as const,
@@ -18,6 +20,33 @@ export const clientKeys = {
   nextSession:    (uid: string) => ['client', uid, 'session', 'next'] as const,
   streak:         (uid: string) => ['client', uid, 'streak'] as const,
 };
+
+// ---------------------------------------------------------------------------
+// Update basic profile fields — takes an explicit targetUserId so the same
+// mutation works whether the actor is the client editing themselves or an
+// admin editing someone else's record. Defaults to the current user so
+// existing client-side call sites don't need to pass anything.
+// ---------------------------------------------------------------------------
+export function useUpdateProfile() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ targetUserId, data }: { targetUserId?: string; data: Record<string, any> }) => {
+      const id = targetUserId ?? user!.id;
+      const { error } = await supabase.from('profiles').update(data).eq('id', id);
+      if (error) throw error;
+      return { id };
+    },
+    onSuccess: ({ id }) => {
+      qc.invalidateQueries({ queryKey: ['profile'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'clients'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'coaches'] });
+      qc.invalidateQueries({ queryKey: ['coach_client', id, 'profile'] });
+    },
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Active enrollment
@@ -74,6 +103,58 @@ export function useTodayCheckin() {
 }
 
 // ---------------------------------------------------------------------------
+// Checkin by specific date
+// ---------------------------------------------------------------------------
+export function useCheckinByDate(date: string) {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: clientKeys.checkinDate(user?.id ?? '', date),
+    enabled: !!user?.id && !!date,
+    staleTime: 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('daily_checkins')
+        .select('*')
+        .eq('client_id', user!.id)
+        .eq('date', date)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as DailyCheckin | null;
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// All checkin dates for the last 6 months (for calendar highlighting)
+// ---------------------------------------------------------------------------
+export function useCheckinAllDates() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: [...clientKeys.checkins(user?.id ?? ''), 'dates'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const from = new Date();
+      from.setMonth(from.getMonth() - 6);
+      const fromStr = from.toISOString().split('T')[0];
+
+      const { data, error } = await supabase
+        .from('daily_checkins')
+        .select('date')
+        .eq('client_id', user!.id)
+        .gte('date', fromStr)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      return (data ?? []).map(d => d.date as string);
+    },
+    staleTime: 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Save check-in (upsert) + trigger score calculator
 // ---------------------------------------------------------------------------
 export function useSaveCheckin() {
@@ -88,14 +169,16 @@ export function useSaveCheckin() {
   pain_level: number;
   notes?: string;
   enrollment_id?: string;
+  date?: string;
 }) => {
-  const today = new Date().toISOString().split('T')[0];
+  const { date: dateOverride, ...rest } = values;
+  const today = dateOverride ?? new Date().toISOString().split('T')[0];
 
   // Save check-in
   const { data, error } = await supabase
     .from('daily_checkins')
     .upsert(
-      { client_id: user!.id, date: today, ...values },
+      { client_id: user!.id, date: today, ...rest },
       { onConflict: 'client_id,date' }
     )
     .select()
@@ -103,38 +186,49 @@ export function useSaveCheckin() {
 
   if (error) throw error;
 
-  // Compute scores directly (no Edge Function needed)
-  const sleepNorm = Math.min((values.sleep_hrs / 8) * 10, 10);
-  const painInvert = 10 - values.pain_level;
+  // Normalise all inputs to 0-10 so max inputs → 100 on every score.
+  const moodNorm    = ((values.mood - 1) / 9) * 10;
+  const energyNorm  = (values.energy / 12) * 10;
+  const sleepNorm   = Math.min((values.sleep_hrs / 8) * 10, 10);
+  const painInvert  = 10 - Math.min((values.pain_level / 12) * 10, 10);
   const recoveryScore = Math.round(
-    (values.mood * 0.25 + values.energy * 0.25 + sleepNorm * 0.35 + painInvert * 0.15) * 10
+    (moodNorm * 0.25 + energyNorm * 0.25 + sleepNorm * 0.35 + painInvert * 0.15) * 10
   );
-
-  const fitnessScore = Math.min(100, Math.round(
-    50 + ((values.energy + values.mood) / 20 - 0.5) * 15
-  ));
+  const fitnessScore = Math.round((energyNorm * 0.6 + moodNorm * 0.4) * 10);
 
   const longevityScore = Math.round(
     fitnessScore * 0.4 + recoveryScore * 0.6
   );
 
-  // Save computed scores
+  // Save computed scores — use the check-in date so past-date entries land on the right day
   await supabase.from('progress_metrics').insert({
     client_id: user!.id,
     enrollment_id: values.enrollment_id ?? null,
     fitness_score:   fitnessScore,
     recovery_score:  recoveryScore,
     longevity_score: longevityScore,
+    recorded_at: today + 'T12:00:00',
   });
 
   return data;
 },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       if (!user?.id) return;
+      const savedDate = variables.date ?? new Date().toISOString().split('T')[0];
+      const [y, m] = savedDate.split('-').map(Number);
       qc.invalidateQueries({ queryKey: clientKeys.checkinToday(user.id) });
+      qc.invalidateQueries({ queryKey: clientKeys.checkinDate(user.id, savedDate) });
+      qc.invalidateQueries({ queryKey: clientKeys.checkins(user.id) });
       qc.invalidateQueries({ queryKey: clientKeys.latestMetric(user.id) });
       qc.invalidateQueries({ queryKey: clientKeys.metrics(user.id) });
       qc.invalidateQueries({ queryKey: clientKeys.streak(user.id) });
+      // Home page uses these exact keys — must invalidate them explicitly
+      qc.invalidateQueries({ queryKey: ['client', user.id, 'recent_metrics'] });
+      qc.invalidateQueries({ queryKey: ['client', user.id, 'last_checkin'] });
+      qc.invalidateQueries({ queryKey: ['alignment', user.id] });
+      qc.invalidateQueries({ queryKey: ['client_streaks', user.id] });
+      qc.invalidateQueries({ queryKey: ['client', user.id, 'week_activity'] });
+      qc.invalidateQueries({ queryKey: ['client', user.id, 'score_for_date', savedDate] });
     },
   });
 }
@@ -173,15 +267,30 @@ export function useProgressHistory(limit = 8) {
     queryKey: [...clientKeys.metrics(user?.id ?? ''), limit],
     enabled: !!user?.id,
     queryFn: async () => {
+      // Fetch extra rows (newest first) so we can deduplicate per day,
+      // then return the last `limit` unique days in ascending order.
       const { data, error } = await supabase
         .from('progress_metrics')
         .select('recorded_at, fitness_score, recovery_score, longevity_score, posture_score, weight_kg')
         .eq('client_id', user!.id)
-        .order('recorded_at', { ascending: true })
-        .limit(limit);
+        .order('recorded_at', { ascending: false })
+        .limit(limit * 20);
 
       if (error) throw error;
-      return (data ?? []) as Pick<
+
+      // Keep only the latest entry per calendar date (rows arrive newest-first)
+      const seen = new Set<string>();
+      const deduped: typeof data = [];
+      for (const row of (data ?? [])) {
+        const day = row.recorded_at.split('T')[0];
+        if (!seen.has(day)) {
+          seen.add(day);
+          deduped.push(row);
+        }
+      }
+
+      // Reverse to ascending, then take the last `limit` unique days
+      return deduped.reverse().slice(-limit) as Pick<
         ProgressMetric,
         'recorded_at' | 'fitness_score' | 'recovery_score' | 'longevity_score' | 'posture_score' | 'weight_kg'
       >[];
