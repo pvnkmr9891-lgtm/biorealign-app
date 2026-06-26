@@ -10,6 +10,7 @@ import {
   useCheckinByDate, useCheckinAllDates,
 } from '@/hooks/useClient';
 import { THEME } from '@/constants/theme';
+import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type MetricKey = 'mood' | 'energy' | 'sleep_hrs' | 'pain_level';
@@ -1212,7 +1213,7 @@ export default function CheckinScreen() {
       </ScrollView>
 
       {/* Fixed save button */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: THEME.colors.background, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, paddingHorizontal: 24, paddingVertical: 16, paddingBottom: 32 }}>
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: THEME.colors.background, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, paddingHorizontal: 24, paddingVertical: 16, paddingBottom: TAB_BAR_CLEARANCE }}>
         <TouchableOpacity
           onPress={handleSave}
           disabled={isPending}

@@ -53,13 +53,6 @@ export function useAdminAnalytics() {
 
       const active = enrollments.filter((e: any) => e.status === 'active');
 
-      const programMap: Record<string, { name: string; count: number }> = {};
-      active.forEach((e: any) => {
-        const slug = e.program?.slug ?? 'unknown';
-        if (!programMap[slug]) programMap[slug] = { name: e.program?.name ?? slug, count: 0 };
-        programMap[slug].count++;
-      });
-
       const avgFitness   = metrics.length ? Math.round(metrics.reduce((s: number, m: any) => s + (m.fitness_score   ?? 0), 0) / metrics.length) : 0;
       const avgRecovery  = metrics.length ? Math.round(metrics.reduce((s: number, m: any) => s + (m.recovery_score  ?? 0), 0) / metrics.length) : 0;
       const avgLongevity = metrics.length ? Math.round(metrics.reduce((s: number, m: any) => s + (m.longevity_score ?? 0), 0) / metrics.length) : 0;
@@ -160,7 +153,6 @@ export function useAdminAnalytics() {
         avgFitness,
         avgRecovery,
         avgLongevity,
-        programBreakdown: Object.values(programMap).sort((a, b) => b.count - a.count),
         recentCheckins: checkins.length,
         activePlans,
         draftPlans,
@@ -517,7 +509,7 @@ export function useAdminMarkRehabPaid() {
 
   return useMutation({
     mutationFn: async ({ requestId, clientId }: { requestId: string; clientId: string }) => {
-      const { error } = await supabase.from('rehab_requests').update({ payment_status: 'paid' }).eq('id', requestId);
+      const { error } = await supabase.from('rehab_requests').update({ payment_status: 'paid', payment_method: 'cash' }).eq('id', requestId);
       if (error) throw error;
     },
     onSuccess: (_d, { clientId }) => {
@@ -546,6 +538,7 @@ export function useClientRehabAppointments(clientId: string) {
 export function useAdminRehabAvailabilityWindows() {
   return useQuery({
     queryKey: ['admin', 'rehab_windows'],
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_availability_windows')
@@ -625,7 +618,7 @@ export function useAdminClientsList(opts: {
   } = opts;
 
   return useQuery({
-    queryKey: ['admin', 'clients_list'],
+    queryKey: ['admin', 'clients_list', activityFilter, assessmentFilter, athleteFilter, dietFilter, pendingRehabFilter, signupDateRange?.from, signupDateRange?.to, sortBy],
     queryFn: async () => {
       const sevenDaysAgoIso  = new Date(Date.now() - 7  * 86400000).toISOString();
       const fourteenDaysAgoIso = new Date(Date.now() - 14 * 86400000).toISOString();
@@ -775,6 +768,7 @@ export function useAdminCoachesList() {
 export function useAdminRehabQueue() {
   return useQuery({
     queryKey: ['admin', 'rehab_queue'],
+    refetchInterval: 15000, // pick up new client requests without a manual reload
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_requests')
@@ -799,6 +793,7 @@ export function useAdminRehabCalendar({ startDate, endDate }: { startDate: strin
   return useQuery({
     queryKey: ['admin', 'rehab_calendar', startDate, endDate],
     enabled: !!startDate && !!endDate,
+    refetchInterval: 15000, // pick up newly-booked client slots without a manual reload
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_appointments')
@@ -878,29 +873,6 @@ export function useAdminUpdateRehabPackage() {
 }
 
 // ---------------------------------------------------------------------------
-// Content overview — read-only summary of workout_program_id distribution.
-// The known program-id set comes from PROGRAMS (src/constants/programs.ts),
-// mapped through the same postural_realignment -> 3-PRP alias the
-// onboarding flow applies (see app/(auth)/intensity-select.tsx).
-// ---------------------------------------------------------------------------
-export function useAdminContentOverview() {
-  return useQuery({
-    queryKey: ['admin', 'content_overview'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('workout_program_id').eq('role', 'client');
-      if (error) throw error;
-
-      const counts: Record<string, number> = {};
-      (data ?? []).forEach((p: any) => {
-        const key = p.workout_program_id ?? 'unset';
-        counts[key] = (counts[key] ?? 0) + 1;
-      });
-      return counts;
-    },
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Medical records — aggregate admin view (counts only, no per-document UI).
 // ---------------------------------------------------------------------------
 export function useAdminMedicalRecordsOverview() {
@@ -926,6 +898,90 @@ export function useAdminMedicalRecordsOverview() {
         sentToCoachCount,
         sentToExpertCount,
       };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Clients by Goals — health_goals is the multi-select tag set clients choose
+// during onboarding (basic-info.tsx); the old "Clients by program" view read
+// the disconnected enrollments/programs workflow, which no longer reflects
+// real client intent now that the 7 fixed programs are deactivated.
+// ---------------------------------------------------------------------------
+export function useAdminGoalsBreakdown() {
+  return useQuery({
+    queryKey: ['admin', 'goals_breakdown'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('health_goals').eq('role', 'client');
+      if (error) throw error;
+
+      const counts: Record<string, number> = {};
+      let noGoals = 0;
+      (data ?? []).forEach((p: any) => {
+        const goals: string[] = p.health_goals ?? [];
+        if (!goals.length) { noGoals++; return; }
+        goals.forEach((g) => { counts[g] = (counts[g] ?? 0) + 1; });
+      });
+
+      const breakdown = Object.entries(counts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+
+      return { breakdown, noGoals };
+    },
+  });
+}
+
+export function useAdminClientsByGoal(goal: string | null) {
+  return useQuery({
+    queryKey: ['admin', 'clients_by_goal', goal],
+    enabled: !!goal,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, phone, health_goals')
+        .eq('role', 'client')
+        .contains('health_goals', [goal]);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Medical records — clients matching a given aggregate stat, for drill-down
+// from the Medical Records overview tiles.
+// ---------------------------------------------------------------------------
+export type MedicalRecordsClientFilter = 'has_docs' | 'has_analysis' | 'sent_to_coach' | 'sent_to_expert';
+
+export function useAdminMedicalRecordsClients(filter: MedicalRecordsClientFilter | null) {
+  return useQuery({
+    queryKey: ['admin', 'medical_records_clients', filter],
+    enabled: !!filter,
+    queryFn: async () => {
+      let clientIds: string[];
+
+      if (filter === 'has_docs') {
+        const { data, error } = await supabase.from('medical_documents').select('client_id');
+        if (error) throw error;
+        clientIds = [...new Set((data ?? []).map((d: any) => d.client_id))];
+      } else {
+        const { data, error } = await supabase
+          .from('medical_analyses')
+          .select('client_id, sent_to_coach_at, sent_to_expert_at');
+        if (error) throw error;
+        const rows = (data ?? []).filter((a: any) =>
+          filter === 'has_analysis' ? true :
+          filter === 'sent_to_coach' ? !!a.sent_to_coach_at :
+          !!a.sent_to_expert_at
+        );
+        clientIds = [...new Set(rows.map((a: any) => a.client_id))];
+      }
+
+      if (clientIds.length === 0) return [];
+      const { data: clients, error: clientsErr } = await supabase.from('profiles').select('id, full_name, phone').in('id', clientIds);
+      if (clientsErr) throw clientsErr;
+      return clients ?? [];
     },
   });
 }

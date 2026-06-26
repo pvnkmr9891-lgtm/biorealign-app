@@ -1021,7 +1021,9 @@ function RehabTab({ clientId }: { clientId: string }) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
                   <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Payment</Text>
                   {req.payment_status === 'paid' ? (
-                    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>Paid via Razorpay ✓</Text>
+                    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>
+                      Paid{req.payment_method === 'cash' ? ' in cash' : req.payment_method === 'razorpay' ? ' via Razorpay' : ''} ✓
+                    </Text>
                   ) : (
                     <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>Awaiting payment</Text>
                   )}
@@ -1029,7 +1031,7 @@ function RehabTab({ clientId }: { clientId: string }) {
                 {req.payment_status !== 'paid' && (
                   <TouchableOpacity onPress={() => markPaid({ requestId: req.id, clientId })}>
                     <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textDecorationLine: 'underline' }}>
-                      Mark as paid manually (only if collected outside the app)
+                      Mark as paid manually (if client hasn't confirmed in-app yet)
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1058,11 +1060,11 @@ function RehabTab({ clientId }: { clientId: string }) {
 // admin's client-profile screen. Adding a field/screen to a client's own
 // login? Add the matching tab/field here once, both contexts pick it up.
 export function ClientProfileView({
-  clientId, clientName, ownerLabel = 'Your client', onBack, showRecoveryTab = false,
+  clientId, clientName, ownerLabel = 'Your client', onBack, showRecoveryTab = false, initialTab,
 }: {
-  clientId: string; clientName: string; ownerLabel?: string; onBack: () => void; showRecoveryTab?: boolean;
+  clientId: string; clientName: string; ownerLabel?: string; onBack: () => void; showRecoveryTab?: boolean; initialTab?: TabKey;
 }) {
-  const [tab, setTab] = useState<TabKey>('overview');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const tabs = showRecoveryTab ? [...TABS, RECOVERY_TAB] : TABS;
 
   return (

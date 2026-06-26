@@ -8,11 +8,11 @@ export default function AdminMedicalRecordsScreen() {
   const router = useRouter();
   const { data, isLoading } = useAdminMedicalRecordsOverview();
 
-  const stats = [
-    { label: 'Clients with ≥1 document', value: data?.clientsWithDocs ?? 0, color: THEME.colors.teal },
-    { label: 'Clients with an AI analysis', value: data?.clientsWithAnalysis ?? 0, color: THEME.colors.amber },
-    { label: 'Sent to coach', value: data?.sentToCoachCount ?? 0, color: '#93C5FD' },
-    { label: 'Sent for expert opinion', value: data?.sentToExpertCount ?? 0, color: '#C4B5FD' },
+  const stats: { label: string; value: number; color: string; filter: 'has_docs' | 'has_analysis' | 'sent_to_coach' | 'sent_to_expert' }[] = [
+    { label: 'Clients with ≥1 document', value: data?.clientsWithDocs ?? 0, color: THEME.colors.teal, filter: 'has_docs' },
+    { label: 'Clients with an AI analysis', value: data?.clientsWithAnalysis ?? 0, color: THEME.colors.amber, filter: 'has_analysis' },
+    { label: 'Sent to coach', value: data?.sentToCoachCount ?? 0, color: '#93C5FD', filter: 'sent_to_coach' },
+    { label: 'Sent for expert opinion', value: data?.sentToExpertCount ?? 0, color: '#C4B5FD', filter: 'sent_to_expert' },
   ];
 
   return (
@@ -36,10 +36,15 @@ export default function AdminMedicalRecordsScreen() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
             {stats.map((s) => (
-              <View key={s.label} style={{ width: '47%', backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+              <TouchableOpacity
+                key={s.label}
+                onPress={() => router.push({ pathname: '/(admin)/medical-records-clients', params: { filter: s.filter } })}
+                activeOpacity={0.85}
+                style={{ width: '47%', backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}
+              >
                 <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginBottom: 8 }}>{s.label}</Text>
                 <Text style={{ color: s.color, fontFamily: THEME.fonts.sansMedium, fontSize: 30 }}>{s.value}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
 

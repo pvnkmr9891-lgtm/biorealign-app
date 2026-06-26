@@ -13,6 +13,7 @@ import {
 import { ScoreRing } from '@/components/ui/ScoreRing';
 import { AlignmentRing } from '@/components/ui/AlignmentRing';
 import { THEME } from '@/constants/theme';
+import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 import { PROGRAMS } from '@/constants/programs';
 import { PROGRAMS_ENABLED } from '@/constants/featureFlags';
 import { useAlignmentForDate, useWeeklyAlignment, computeDay, useAlignmentHistory, scoreToTier, TIER_META } from '@/hooks/useAlignmentScore';
@@ -1252,7 +1253,7 @@ export default function ClientDashboard() {
       {celebrateTier && (
         <TierCelebration tier={celebrateTier} onDone={() => setCelebrateTier(null)} />
       )}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} showsVerticalScrollIndicator={false}>
 
         {/* Header */}
         <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 20 }}>

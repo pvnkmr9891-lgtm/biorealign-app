@@ -15,6 +15,7 @@ import { useRecalculateStreak } from '@/hooks/useStreakSystem';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { THEME } from '@/constants/theme';
+import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 import { PROGRAMS_ENABLED, ADVANCED_TRACKING_ENABLED } from '@/constants/featureFlags';
 import { WARMUP_EXERCISES, type ExerciseSide, type WarmupExerciseDefault } from '@/constants/warmupExercises';
 import { WORKOUT_EXERCISES } from '@/constants/workoutExercises';
@@ -1813,7 +1814,7 @@ function ManualLogView({ userId }: { userId: string }) {
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 8, paddingHorizontal: 16 }}
+        contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE, paddingHorizontal: 16 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}

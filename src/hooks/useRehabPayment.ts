@@ -1,4 +1,3 @@
-import RazorpayCheckout from 'react-native-razorpay';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,6 +21,14 @@ export function usePayForRehabRequest() {
       }
       if (order?.error) throw new Error(order.error);
 
+      // Lazy require, not a top-level import: react-native-razorpay touches a
+      // native module at import time, which doesn't exist in Expo Go. A
+      // static import crashes the entire app (Expo Router eagerly loads every
+      // route file to build the route tree, including this hook's importer,
+      // app/(client)/recovery.tsx). Deferring the require until the payment
+      // button is actually pressed means Expo Go can still run everything
+      // else; this flow itself still needs a native dev build to work.
+      const RazorpayCheckout = require('react-native-razorpay').default;
       const checkoutResult = await RazorpayCheckout.open({
         key: order.keyId,
         order_id: order.orderId,

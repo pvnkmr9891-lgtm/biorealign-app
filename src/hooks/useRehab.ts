@@ -24,6 +24,7 @@ export interface RehabRequest {
   quoted_price: number | null;
   decline_reason: string | null;
   payment_status: 'pending' | 'paid';
+  payment_method: 'cash' | 'razorpay' | null;
   created_at: string;
   responded_at: string | null;
 }
@@ -51,6 +52,7 @@ export const rehabKeys = {
   myRequests:    (clientId: string) => ['rehab', clientId, 'requests'] as const,
   windows:       ['rehab', 'windows'] as const,
   appointments:  (requestId: string) => ['rehab', 'appointments', requestId] as const,
+  bookedSlots:   (startDate: string, endDate: string) => ['rehab', 'booked_slots', startDate, endDate] as const,
 };
 
 // ── Packages (lookup table, not a hardcoded enum) ──────────────────────────
@@ -115,6 +117,27 @@ export function useSubmitRehabRequest() {
 }
 
 // ── Availability windows (read-only for clients; admin manages them) ──────
+// Online payment (Razorpay) is deactivated for now — the quote is accepted
+// by the client confirming they'll pay in cash in person, which unlocks the
+// calendar/slot picker the same way a completed online payment used to.
+export function useConfirmCashPayment() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ requestId }: { requestId: string }) => {
+      const { error } = await supabase
+        .from('rehab_requests')
+        .update({ payment_status: 'paid', payment_method: 'cash' })
+        .eq('id', requestId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (user?.id) qc.invalidateQueries({ queryKey: rehabKeys.myRequests(user.id) });
+    },
+  });
+}
+
 export function useRehabAvailabilityWindows() {
   return useQuery({
     queryKey: rehabKeys.windows,
@@ -127,6 +150,32 @@ export function useRehabAvailabilityWindows() {
         .order('start_time');
       if (error) throw error;
       return (data ?? []) as RehabAvailabilityWindow[];
+    },
+  });
+}
+
+// All currently-scheduled appointment times across every client, within a
+// date range — used to grey out / exclude slots someone else already booked.
+// Backed by a dedicated RLS policy ("clients_view_scheduled_slot_times")
+// that only exposes status='scheduled' rows; since this query only selects
+// scheduled_at, no other client's identity or request details leak.
+export function useRehabBookedSlots({ startDate, endDate }: { startDate: string; endDate: string }) {
+  return useQuery({
+    queryKey: rehabKeys.bookedSlots(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rehab_appointments')
+        .select('scheduled_at')
+        .eq('status', 'scheduled')
+        .gte('scheduled_at', startDate)
+        .lte('scheduled_at', endDate);
+      if (error) throw error;
+      // Compare by timestamp, not raw string — Postgres' timestamptz round-trips
+      // through PostgREST as e.g. "...+00:00" while JS's toISOString() produces
+      // "...Z", so naive string equality against a client-built ISO string would
+      // silently never match.
+      return new Set((data ?? []).map((a: any) => new Date(a.scheduled_at).getTime()));
     },
   });
 }
@@ -185,6 +234,18 @@ export function buildRecurringAppointments(packageKey: RehabPackage['key'], sess
   });
 }
 
+// React Native/Hermes has no global `crypto.randomUUID` (that's a browser/
+// Node API) — generate a v4 UUID manually instead. Not cryptographically
+// secure, but this is only ever used to group sibling appointment rows, not
+// for anything security-sensitive.
+function generateUuidV4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export function useConfirmRehabSlots() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -193,7 +254,7 @@ export function useConfirmRehabSlots() {
     mutationFn: async ({ requestId, packageKey, sessionsPerTerm, chosenSlots }: {
       requestId: string; packageKey: RehabPackage['key']; sessionsPerTerm: number; chosenSlots: Date[];
     }) => {
-      const recurrenceGroupId = crypto.randomUUID();
+      const recurrenceGroupId = generateUuidV4();
       const appointments = buildRecurringAppointments(packageKey, sessionsPerTerm, chosenSlots);
       const { error } = await supabase.from('rehab_appointments').insert(
         appointments.map((d) => ({
@@ -225,6 +286,8 @@ export function useConfirmRehabSlots() {
     },
     onSuccess: (_d, { requestId }) => {
       qc.invalidateQueries({ queryKey: rehabKeys.appointments(requestId) });
+      qc.invalidateQueries({ queryKey: ['rehab', 'booked_slots'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'rehab_calendar'] });
     },
   });
 }

@@ -4,12 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   useMyRehabRequests, useRehabAvailabilityWindows, useRehabAppointments,
-  useConfirmRehabSlots,
+  useConfirmRehabSlots, useConfirmCashPayment, useRehabBookedSlots,
 } from '@/hooks/useRehab';
-import { usePayForRehabRequest } from '@/hooks/useRehabPayment';
-import { useAuth } from '@/hooks/useAuth';
 import { REHAB_SLOT_OPTIONS } from '@/constants/rehabSlots';
 import { THEME } from '@/constants/theme';
+import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 
 const DAYS_AHEAD = 21;
 
@@ -28,7 +27,7 @@ function nextDates(count: number): Date[] {
 // ── Step 1: info screen ──────────────────────────────────────────────────
 function InfoScreen({ onRequest }: { onRequest: () => void }) {
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE }}>
       <Text style={{ fontSize: 44, marginBottom: 16, marginTop: 8 }}>🩹</Text>
       <Text style={{ fontSize: 26, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginBottom: 10 }}>
         In-Person Recovery with Eshwar
@@ -66,7 +65,7 @@ function InfoScreen({ onRequest }: { onRequest: () => void }) {
 function PendingScreen() {
   const previewDates = useMemo(() => nextDates(7), []);
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE }}>
       <View style={{ alignItems: 'center', paddingTop: 24, paddingBottom: 20 }}>
         <Text style={{ fontSize: 44, marginBottom: 16 }}>📨</Text>
         <Text style={{ fontSize: 20, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, textAlign: 'center', marginBottom: 8 }}>
@@ -127,18 +126,24 @@ function DeclinedScreen({ reason, onNewRequest }: { reason: string | null; onNew
 
 // ── Accepted, no slots picked yet: price + date-strip + fixed slot chips ──
 function SlotPickerScreen({ request }: { request: any }) {
-  const { profile } = useAuth();
   const { data: windows = [], isLoading: windowsLoading } = useRehabAvailabilityWindows();
-  const { data: appointments = [] } = useRehabAppointments(request.id);
   const { mutateAsync: confirmSlots, isPending } = useConfirmRehabSlots();
-  const { mutateAsync: pay, isPending: isPaying } = usePayForRehabRequest();
+  const { mutateAsync: confirmCash, isPending: isConfirmingCash } = useConfirmCashPayment();
 
   const packageKey = request.package?.key;
   const sessionsPerTerm = request.package?.sessions_per_term ?? 1;
   const slotsNeeded = packageKey === 'three_x_week' ? 3 : 1;
 
   const dates = useMemo(() => nextDates(DAYS_AHEAD), []);
-  const bookedTimes = useMemo(() => new Set(appointments.map((a: any) => a.scheduled_at)), [appointments]);
+  const rangeStart = useMemo(() => dates[0]?.toISOString(), [dates]);
+  const rangeEnd = useMemo(() => {
+    const d = new Date(dates[dates.length - 1]);
+    d.setHours(23, 59, 59, 999);
+    return d.toISOString();
+  }, [dates]);
+  // Global across all clients — a slot Eshwar is already booked for at that
+  // time shouldn't be bookable or even visible to anyone else.
+  const { data: bookedTimes = new Set<number>() } = useRehabBookedSlots({ startDate: rangeStart, endDate: rangeEnd });
   const activeByDay = useMemo(() => windows.filter((w: any) => w.active).reduce((acc: Record<number, Set<string>>, w: any) => {
     (acc[w.day_of_week] ??= new Set()).add(w.start_time);
     return acc;
@@ -154,8 +159,8 @@ function SlotPickerScreen({ request }: { request: any }) {
       const [h, m] = s.startTime.split(':').map(Number);
       const dt = new Date(selectedDate);
       dt.setHours(h, m, 0, 0);
-      return { ...s, datetime: dt, isPast: dt <= new Date(), isBooked: bookedTimes.has(dt.toISOString()) };
-    });
+      return { ...s, datetime: dt, isPast: dt <= new Date(), isBooked: bookedTimes.has(dt.getTime()) };
+    }).filter((s) => !s.isBooked); // already taken by another client — not just disabled, fully hidden
   }, [selectedDate, activeByDay, bookedTimes]);
 
   const toggleSlot = (slot: Date) => {
@@ -175,24 +180,29 @@ function SlotPickerScreen({ request }: { request: any }) {
     try {
       await confirmSlots({ requestId: request.id, packageKey, sessionsPerTerm, chosenSlots: chosen });
     } catch (e: any) {
-      Alert.alert('Could not confirm', e.message ?? 'Please try again.');
+      // Unique-index violation: someone else booked one of these times in
+      // the moment between this screen loading and Confirm being pressed.
+      const takenByRace = e?.code === '23505' || /duplicate key/i.test(e?.message ?? '');
+      Alert.alert(
+        'Could not confirm',
+        takenByRace ? 'One of those times was just booked by someone else. Please pick another.' : (e.message ?? 'Please try again.')
+      );
+      setChosen([]);
     }
   };
 
-  const onPay = async () => {
+  const onConfirmCash = async () => {
     try {
-      await pay({ requestId: request.id, clientName: profile?.full_name });
+      await confirmCash({ requestId: request.id });
     } catch (e: any) {
-      // Razorpay's own SDK throws on user-cancelled checkout too — don't
-      // alarm the client over a cancel, only over a real failure.
-      if (e?.code !== 0) Alert.alert('Payment failed', e.message ?? e.description ?? 'Please try again.');
+      Alert.alert('Could not confirm', e.message ?? 'Please try again.');
     }
   };
 
   const isPaid = request.payment_status === 'paid';
 
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE }}>
       <View style={{ backgroundColor: `${THEME.colors.teal}15`, borderRadius: 14, padding: 16, marginBottom: 18, borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}>
         <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>Request accepted ✓</Text>
         <Text style={{ fontSize: 22, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginTop: 4 }}>₹{request.quoted_price}</Text>
@@ -202,10 +212,10 @@ function SlotPickerScreen({ request }: { request: any }) {
       {!isPaid ? (
         <View>
           <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 6 }}>
-            Pay to unlock booking
+            Confirm to unlock booking
           </Text>
           <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 19, marginBottom: 18 }}>
-            Once payment is complete, you'll be able to pick your session time(s) below.
+            Pay ₹{request.quoted_price} in cash at your session. Confirming below lets you pick your session time(s) now.
           </Text>
 
           {/* Locked preview of the booking section, same treatment as the pending state */}
@@ -220,13 +230,13 @@ function SlotPickerScreen({ request }: { request: any }) {
           </View>
 
           <TouchableOpacity
-            onPress={onPay}
-            disabled={isPaying}
+            onPress={onConfirmCash}
+            disabled={isConfirmingCash}
             activeOpacity={0.85}
             style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}
           >
-            {isPaying ? <ActivityIndicator color={THEME.colors.background} /> : (
-              <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Pay ₹{request.quoted_price}</Text>
+            {isConfirmingCash ? <ActivityIndicator color={THEME.colors.background} /> : (
+              <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Payment in cash</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -283,7 +293,7 @@ function SlotPickerScreen({ request }: { request: any }) {
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
               {slotsForSelectedDate.map((s) => {
                 const selected = chosen.some((c) => c.getTime() === s.datetime.getTime());
-                const disabled = s.isPast || s.isBooked;
+                const disabled = s.isPast;
                 return (
                   <TouchableOpacity
                     key={s.label}
@@ -297,7 +307,7 @@ function SlotPickerScreen({ request }: { request: any }) {
                     }}
                   >
                     <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.teal : THEME.colors.textPrimary }}>
-                      {s.label}{s.isBooked ? ' · booked' : ''}
+                      {s.label}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -342,7 +352,7 @@ function SlotPickerScreen({ request }: { request: any }) {
 // ── Accepted, slots already confirmed: show booked appointments ─────────
 function BookedScreen({ request, appointments }: { request: any; appointments: any[] }) {
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE }}>
       <View style={{ backgroundColor: `${THEME.colors.teal}15`, borderRadius: 14, padding: 16, marginBottom: 18, borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}>
         <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>Booked ✓</Text>
         <Text style={{ fontSize: 22, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginTop: 4 }}>₹{request.quoted_price}</Text>

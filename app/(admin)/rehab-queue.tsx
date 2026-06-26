@@ -1,23 +1,30 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { useState, useMemo, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
   useAdminRehabQueue, useRespondToRehabRequest,
   useAdminRehabCalendar, useMarkRehabAppointmentStatus,
+  useAdminRehabAvailabilityWindows, useSetRehabAvailabilityWindowActive,
 } from '@/hooks/useAdmin';
+import { REHAB_SLOT_OPTIONS } from '@/constants/rehabSlots';
 import { THEME } from '@/constants/theme';
 
 const SUCCESS = '#34D399';
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-type QueueView = 'queue' | 'upcoming';
+type QueueView = 'queue' | 'upcoming' | 'availability';
 
-function getWeekRangeIso(weeksAhead: number) {
+// Sunday-start week containing `today + weekOffset*7 days`, as a [start, end) range.
+function getWeekRange(weekOffset: number) {
   const now = new Date();
   const start = new Date(now);
-  const end = new Date(now);
-  end.setDate(end.getDate() + 7 * weeksAhead);
-  return { startDate: start.toISOString(), endDate: end.toISOString() };
+  start.setDate(start.getDate() - start.getDay() + weekOffset * 7);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  end.setHours(0, 0, 0, -1); // 23:59:59.999 of the 6th day
+  return { start, end };
 }
 
 function groupByDay(appointments: any[]) {
@@ -41,13 +48,74 @@ export default function RehabQueueScreen() {
   const router = useRouter();
   const [view, setView] = useState<QueueView>('queue');
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null); // toDateString()
+  const [availWeekOffset, setAvailWeekOffset] = useState(0);
 
-  const { data: queue = [], isLoading: queueLoading } = useAdminRehabQueue();
+  const { data: queue = [], isLoading: queueLoading, refetch: refetchQueue } = useAdminRehabQueue();
   const { mutateAsync: respond, isPending: responding } = useRespondToRehabRequest();
 
-  const { startDate, endDate } = getWeekRangeIso(4);
-  const { data: appointments = [], isLoading: apptsLoading } = useAdminRehabCalendar({ startDate, endDate });
+  const { start: weekStart, end: weekEnd } = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
+  const { data: appointments = [], isLoading: apptsLoading, refetch: refetchCalendar } = useAdminRehabCalendar({
+    startDate: weekStart.toISOString(), endDate: weekEnd.toISOString(),
+  });
   const { mutateAsync: markStatus } = useMarkRehabAppointmentStatus();
+
+  const { data: windows = [], isLoading: windowsLoading, refetch: refetchWindows } = useAdminRehabAvailabilityWindows();
+  const { mutate: setActive, isPending: settingActive } = useSetRehabAvailabilityWindowActive();
+  const findWindow = (dayOfWeek: number, startTime: string) =>
+    windows.find((w: any) => w.day_of_week === dayOfWeek && w.start_time === startTime);
+
+  const { start: availWeekStart, end: availWeekEnd } = useMemo(() => getWeekRange(availWeekOffset), [availWeekOffset]);
+  const { data: availAppointments = [], isLoading: availApptsLoading, refetch: refetchAvailAppts } = useAdminRehabCalendar({
+    startDate: availWeekStart.toISOString(), endDate: availWeekEnd.toISOString(),
+  });
+  const availWeekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(availWeekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  }), [availWeekStart]);
+  // A slot is "booked" for a specific date if there's a scheduled appointment
+  // at that exact date+time — distinct from the window being merely active,
+  // which is just the recurring weekly template.
+  // Compare by timestamp, not raw string — Postgres' timestamptz round-trips
+  // through PostgREST differently formatted than JS's toISOString().
+  const bookedDateTimes = useMemo(
+    () => new Set(availAppointments.filter((a: any) => a.status === 'scheduled').map((a: any) => new Date(a.scheduled_at).getTime())),
+    [availAppointments]
+  );
+
+  // Refetch when this screen comes into focus — the appointment list is
+  // updated by clients on their own devices, so a stale React Query cache
+  // would otherwise sit there until something else triggers a refetch.
+  useFocusEffect(
+    useCallback(() => {
+      refetchQueue();
+      refetchCalendar();
+      refetchWindows();
+      refetchAvailAppts();
+    }, [refetchQueue, refetchCalendar, refetchWindows, refetchAvailAppts])
+  );
+
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  }), [weekStart]);
+
+  const countsByDay = useMemo(() => {
+    const counts: Record<string, number> = {};
+    appointments.forEach((a: any) => {
+      const key = new Date(a.scheduled_at).toDateString();
+      counts[key] = (counts[key] ?? 0) + 1;
+    });
+    return counts;
+  }, [appointments]);
+
+  const visibleAppointments = useMemo(
+    () => selectedDay ? appointments.filter((a: any) => new Date(a.scheduled_at).toDateString() === selectedDay) : appointments,
+    [appointments, selectedDay]
+  );
 
   const onAccept = (req: any) => {
     const price = Number(priceDrafts[req.id]);
@@ -66,7 +134,7 @@ export default function RehabQueueScreen() {
     markStatus({ appointmentId, status });
   };
 
-  const grouped = groupByDay(appointments);
+  const grouped = groupByDay(visibleAppointments);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
@@ -77,11 +145,11 @@ export default function RehabQueueScreen() {
         >
           <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>←</Text>
         </TouchableOpacity>
-        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 24 }}>Recovery Queue</Text>
+        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 24 }}>Recovery</Text>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 24, marginBottom: 16 }}>
-        {([['queue', `Pending (${queue.length})`], ['upcoming', 'Upcoming']] as const).map(([v, label]) => (
+        {([['queue', `Pending (${queue.length})`], ['upcoming', 'Upcoming'], ['availability', 'Availability']] as const).map(([v, label]) => (
           <TouchableOpacity
             key={v}
             onPress={() => setView(v)}
@@ -92,7 +160,16 @@ export default function RehabQueueScreen() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={false}
+            onRefresh={() => { refetchQueue(); refetchCalendar(); }}
+            tintColor={THEME.colors.teal}
+          />
+        }
+      >
         {view === 'queue' && (
           queueLoading ? <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} /> :
           queue.length === 0 ? (
@@ -137,11 +214,59 @@ export default function RehabQueueScreen() {
         )}
 
         {view === 'upcoming' && (
-          apptsLoading ? <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} /> :
-          Object.keys(grouped).length === 0 ? (
+          <View>
+            {/* Weekly calendar widget */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <TouchableOpacity onPress={() => { setWeekOffset((w) => w - 1); setSelectedDay(null); }} style={{ padding: 6 }}>
+                <Text style={{ fontSize: 18, color: THEME.colors.textSecondary }}>‹</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+                {weekOffset === 0 ? 'This week' : weekStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' – ' + weekEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              </Text>
+              <TouchableOpacity onPress={() => { setWeekOffset((w) => w + 1); setSelectedDay(null); }} style={{ padding: 6 }}>
+                <Text style={{ fontSize: 18, color: THEME.colors.textSecondary }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 18 }}>
+              {weekDays.map((d) => {
+                const key = d.toDateString();
+                const count = countsByDay[key] ?? 0;
+                const isSelected = selectedDay === key;
+                const isToday = key === new Date().toDateString();
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={() => setSelectedDay(isSelected ? null : key)}
+                    style={{
+                      flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+                      backgroundColor: isSelected ? THEME.colors.teal : THEME.colors.surface2,
+                      borderWidth: isToday && !isSelected ? 1 : 0.5,
+                      borderColor: isSelected ? THEME.colors.teal : isToday ? THEME.colors.amber : THEME.colors.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sans, color: isSelected ? THEME.colors.background : THEME.colors.textMuted }}>
+                      {DAYS[d.getDay()]}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: isSelected ? THEME.colors.background : THEME.colors.textPrimary, marginTop: 2 }}>
+                      {d.getDate()}
+                    </Text>
+                    <View style={{ width: 5, height: 5, borderRadius: 2.5, marginTop: 4, backgroundColor: count > 0 ? (isSelected ? THEME.colors.background : THEME.colors.amber) : 'transparent' }} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {selectedDay && (
+              <TouchableOpacity onPress={() => setSelectedDay(null)} style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>Show full week ×</Text>
+              </TouchableOpacity>
+            )}
+
+            {apptsLoading ? <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 20 }} /> :
+            Object.keys(grouped).length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 60 }}>
               <Text style={{ fontSize: 32, marginBottom: 12 }}>🗓️</Text>
-              <Text style={{ fontSize: 16, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>No sessions in the next 4 weeks</Text>
+              <Text style={{ fontSize: 16, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>No sessions {selectedDay ? 'on this day' : 'this week'}</Text>
             </View>
           ) : (
             <View style={{ gap: 16 }}>
@@ -162,7 +287,9 @@ export default function RehabQueueScreen() {
                               </Text>
                             </View>
                             <View style={{ backgroundColor: `${color}20`, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
-                              <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color, textTransform: 'capitalize' }}>{a.status.replace('_', ' ')}</Text>
+                              <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color, textTransform: 'capitalize' }}>
+                                {a.status === 'scheduled' ? '✓ Booked by client' : a.status.replace('_', ' ')}
+                              </Text>
                             </View>
                           </View>
                           {isPast && a.status === 'scheduled' && (
@@ -182,7 +309,84 @@ export default function RehabQueueScreen() {
                 </View>
               ))}
             </View>
-          )
+          )}
+          </View>
+        )}
+
+        {view === 'availability' && (
+          <View>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 14, lineHeight: 19 }}>
+              These 6 daily time slots are the only bookable Recovery times. Tap a slot to turn it on or
+              off for that weekday going forward — a slot already booked by a client on a specific date
+              shows as Booked and can't be toggled here.
+            </Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <TouchableOpacity onPress={() => setAvailWeekOffset((w) => w - 1)} style={{ padding: 6 }}>
+                <Text style={{ fontSize: 18, color: THEME.colors.textSecondary }}>‹</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+                {availWeekOffset === 0 ? 'This week' : availWeekStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' – ' + availWeekEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              </Text>
+              <TouchableOpacity onPress={() => setAvailWeekOffset((w) => w + 1)} style={{ padding: 6 }}>
+                <Text style={{ fontSize: 18, color: THEME.colors.textSecondary }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 14, marginBottom: 16, marginTop: 10 }}>
+              {[['Available', THEME.colors.teal], ['Off', THEME.colors.textMuted], ['Booked', '#F87171']].map(([label, color]) => (
+                <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color as string }} />
+                  <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{label}</Text>
+                </View>
+              ))}
+            </View>
+
+            {windowsLoading || availApptsLoading ? (
+              <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />
+            ) : (
+              <View style={{ gap: 14 }}>
+                {availWeekDays.map((d) => {
+                  const dayOfWeek = d.getDay();
+                  const isToday = d.toDateString() === new Date().toDateString();
+                  return (
+                    <View key={d.toISOString()} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: isToday ? THEME.colors.amber : THEME.colors.border }}>
+                      <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 10 }}>
+                        {DAYS[dayOfWeek]} {d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}{isToday ? ' · Today' : ''}
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {REHAB_SLOT_OPTIONS.map((slot) => {
+                          const w = findWindow(dayOfWeek, slot.startTime);
+                          const isOn = !!w?.active;
+                          const [h, m] = slot.startTime.split(':').map(Number);
+                          const slotDateTime = new Date(d);
+                          slotDateTime.setHours(h, m, 0, 0);
+                          const isBooked = isOn && bookedDateTimes.has(slotDateTime.getTime());
+                          const color = isBooked ? '#F87171' : isOn ? THEME.colors.teal : THEME.colors.textMuted;
+                          return (
+                            <TouchableOpacity
+                              key={slot.label}
+                              disabled={!w || settingActive || isBooked}
+                              onPress={() => w && setActive({ windowId: w.id, active: !w.active })}
+                              style={{
+                                paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10,
+                                backgroundColor: `${color}18`,
+                                borderWidth: 1, borderColor: color,
+                              }}
+                            >
+                              <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color }}>
+                                {isBooked ? '● ' : isOn ? '✓ ' : ''}{slot.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>

@@ -24,6 +24,9 @@ const BOTTOM_TABS = [
   { name: 'progress',     label: 'Progress',icon: '📊', route: '/(client)/progress' },
 ];
 
+const TAB_W  = 76;
+const DOCK_H = 72;
+
 /** Items inside the hamburger drawer */
 const DRAWER_ITEMS = [
   { name: 'checkin',  label: 'Daily Pulse', icon: '💓', route: '/(client)/checkin' },
@@ -39,12 +42,22 @@ const DRAWER_ITEMS = [
   { name: 'profile',  label: 'Profile',  icon: '👤', route: '/(client)/profile' },
 ];
 
-/** Screens where the tab bar should be hidden entirely */
+/** Screens where the tab bar should be hidden entirely — focused, single-task
+ * flows where a fixed bottom action bar already owns that space, so the
+ * floating dock would either overlap it or be a pointless distraction. */
 const HIDDEN_SCREENS = [
   'workout-player', 'workout-interval', 'content/player',
   'routine-new', 'routine-add-exercise',
-  'routine-explore', 'routine-category',   // 
+  'routine-explore', 'routine-category',
+  'workout-detail', 'plan-add-exercise',
 ];
+
+// Total vertical space the floating dock occupies, measured from the very
+// bottom of the screen — any fixed/absolute bottom bar on a screen that
+// still shows the tab bar needs at least this much clearance so its buttons
+// aren't covered by (or fighting touches with) the dock.
+const DOCK_BOTTOM_OFFSET = Platform.OS === 'ios' ? 28 : 16;
+export const TAB_BAR_CLEARANCE = DOCK_BOTTOM_OFFSET + DOCK_H + 16;
 
 // ── Hamburger icon ────────────────────────────────────────────────────
 function HamburgerIcon({ color, isOpen }: { color: string; isOpen: boolean }) {
@@ -330,14 +343,12 @@ export function SlidingTabBar() {
 }
 
 // ── Bottom bar styles ─────────────────────────────────────────────────
-const TAB_W    = 76;
-const DOCK_W   = TAB_W * 4;    // 4 buttons
-const DOCK_H   = 72;
+const DOCK_W = TAB_W * 4;    // 4 buttons
 
 const barStyles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 28 : 16,
+    bottom: DOCK_BOTTOM_OFFSET,
     left: 0,
     right: 0,
     alignItems: 'center',

@@ -5,16 +5,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAdminAnalytics, useAdminRehabCalendar, useAdminRehabMonthSnapshot } from '@/hooks/useAdmin';
 import { THEME } from '@/constants/theme';
 
-const PROGRAM_COLORS: Record<string, string> = {
-  'peak-performance-lab':        THEME.colors.teal,
-  'posture-recode-protocol':     '#93C5FD',
-  'metabolic-reversal-system':   '#FCA5A5',
-  'longevity-vitality-engine':   THEME.colors.amber,
-  'rebuild-rehab-system':        '#C4B5FD',
-  'corporate-performance-reset': '#FDE68A',
-  'future-body-reset':           '#6EE7B7',
-};
-
 function SectionLabel({ children }: { children: string }) {
   return (
     <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12, marginHorizontal: 24 }}>
@@ -31,11 +21,12 @@ function todayRangeIso() {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, profile } = useAuth();
   const { data: analytics, isLoading } = useAdminAnalytics();
   const { startDate, endDate } = todayRangeIso();
   const { data: todaysAppointments = [] } = useAdminRehabCalendar({ startDate, endDate });
   const { data: monthSnapshot } = useAdminRehabMonthSnapshot();
+  const firstName = profile?.full_name?.split(' ')[0] ?? 'Eshwar';
 
   const PLAN_STATS = analytics ? [
     { label: 'Active plans',    value: analytics.activePlans,       color: THEME.colors.teal },
@@ -49,21 +40,12 @@ export default function AdminDashboard() {
     { label: 'Avg Longevity', value: analytics.avgLongevity, color: THEME.scoreColors.longevity },
   ] : [];
 
-  const maxCount = analytics?.programBreakdown?.[0]?.count ?? 1;
-
   const ADMIN_ACTIONS = [
     {
       emoji: '🧑‍🤝‍🧑',
       title: 'Clients',
       subtitle: 'Filter & sort the full client roster',
       route: '/(admin)/clients',
-      color: THEME.colors.teal,
-    },
-    {
-      emoji: '👥',
-      title: 'User management',
-      subtitle: 'Manage roles, view all users',
-      route: '/(admin)/users',
       color: THEME.colors.teal,
     },
     {
@@ -97,18 +79,11 @@ export default function AdminDashboard() {
     },
     {
       emoji: '🩹',
-      title: 'Recovery queue',
-      subtitle: 'Accept/decline requests, manage sessions',
+      title: 'Recovery',
+      subtitle: 'Requests, sessions & availability',
       route: '/(admin)/rehab-queue',
       color: THEME.colors.amber,
       badge: analytics?.pendingRehabRequests,
-    },
-    {
-      emoji: '🗓️',
-      title: 'Recovery availability',
-      subtitle: 'Manage Eshwar\'s open slots',
-      route: '/(admin)/rehab-availability',
-      color: '#6EE7B7',
     },
     {
       emoji: '🩺',
@@ -119,9 +94,9 @@ export default function AdminDashboard() {
     },
     {
       emoji: '📚',
-      title: 'Content',
-      subtitle: 'Program assignment overview',
-      route: '/(admin)/content',
+      title: 'Clients by Goals',
+      subtitle: 'Client distribution by selected goal',
+      route: '/(admin)/clients-by-goals',
       color: '#FDE68A',
     },
     {
@@ -144,7 +119,7 @@ export default function AdminDashboard() {
               Admin · BioRealign
             </Text>
             <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 32, marginTop: 2 }}>
-              Analytics
+              Welcome, <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.cormorantSemibold }}>{firstName}</Text>
             </Text>
           </View>
           <TouchableOpacity
@@ -179,7 +154,7 @@ export default function AdminDashboard() {
 
             <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 20 }}>
               <TouchableOpacity
-                onPress={() => router.push((analytics?.pendingRehabRequests ?? 0) > 0 ? '/(admin)/rehab-queue' : '/(admin)/users')}
+                onPress={() => router.push((analytics?.pendingRehabRequests ?? 0) > 0 ? '/(admin)/rehab-queue' : '/(admin)/clients')}
                 activeOpacity={0.85}
                 style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}
               >
@@ -317,32 +292,6 @@ export default function AdminDashboard() {
                 ))}
               </View>
             </View>
-
-            {/* Program breakdown */}
-            {analytics?.programBreakdown && analytics.programBreakdown.length > 0 && (
-              <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 20 }}>
-                <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 16 }}>
-                  Clients by program
-                </Text>
-                <View style={{ gap: 12 }}>
-                  {analytics.programBreakdown.map((p) => {
-                    const colorKey = Object.keys(PROGRAM_COLORS).find(k => p.name.toLowerCase().includes(k.split('-')[0]));
-                    const color = colorKey ? PROGRAM_COLORS[colorKey] : THEME.colors.teal;
-                    return (
-                      <View key={p.name}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, flex: 1 }}>{p.name}</Text>
-                          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>{p.count}</Text>
-                        </View>
-                        <View style={{ height: 6, backgroundColor: THEME.colors.surface2, borderRadius: 3, overflow: 'hidden', borderWidth: 0.5, borderColor: THEME.colors.border }}>
-                          <View style={{ height: '100%', width: `${(p.count / maxCount) * 100}%`, backgroundColor: color, borderRadius: 3 }} />
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
 
             {/* Admin actions */}
             <View style={{ marginHorizontal: 24 }}>

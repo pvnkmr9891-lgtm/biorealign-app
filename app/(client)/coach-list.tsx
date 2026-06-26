@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useCoachDirectory, useMyCoachStatus } from '@/hooks/useCoachDirectory';
 import { THEME } from '@/constants/theme';
+import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 
 export default function CoachListScreen() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function CoachListScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40, gap: 14 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE, gap: 14 }} showsVerticalScrollIndicator={false}>
           {coaches.map((coach) => {
             const isAssigned = status?.state === 'assigned' && status.coachId === coach.id;
             const isPending  = status?.state === 'pending'  && status.request.coach_id === coach.id;

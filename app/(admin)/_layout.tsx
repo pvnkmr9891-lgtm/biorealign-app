@@ -18,12 +18,13 @@ export default function AdminLayout() {
       <Stack.Screen name="assessment-detail" />
       <Stack.Screen name="client-profile" />
       <Stack.Screen name="coach-profile" />
-      <Stack.Screen name="rehab-availability" />
       <Stack.Screen name="clients" />
       <Stack.Screen name="coaches" />
       <Stack.Screen name="rehab-queue" />
-      <Stack.Screen name="content" />
+      <Stack.Screen name="clients-by-goals" />
+      <Stack.Screen name="goal-clients" />
       <Stack.Screen name="medical-records" />
+      <Stack.Screen name="medical-records-clients" />
       <Stack.Screen name="settings" />
     </Stack>
   );
