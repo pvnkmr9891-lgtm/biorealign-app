@@ -79,13 +79,13 @@ export const DETAILED_ASSESSMENT_STAGES: AssessmentStageDef[] = [
     subtitle: 'Conditions, pain, and medical context',
     icon: '🩺',
     fields: [
+      // Medical conditions and medications now live on `profiles` (edited via
+      // the Overview tab, shared across client/coach/admin views) rather than
+      // being asked again here — see ProfileOverviewCard.
       { key: 'past_injuries', label: 'Past Injuries', type: 'list', options: ['ACL Tear', 'Rotator Cuff', 'Lower Back Strain', 'Ankle Sprain', 'Meniscus Tear', 'Shoulder Dislocation'] },
       { key: 'current_pain', label: 'Current Pain (per injury)', type: 'pain_per_item', dependsOnKey: 'past_injuries' },
       { key: 'surgeries', label: 'Surgeries', type: 'list', options: ['Knee Surgery', 'Shoulder Surgery', 'Spinal Surgery', 'Hip Replacement', 'Appendectomy'] },
-      { key: 'conditions', label: 'Existing medical conditions', type: 'chips', options: ['None', 'Diabetes', 'Hypertension', 'Thyroid', 'PCOS/PCOD', 'Cardiac', 'Asthma', 'Arthritis'] },
-      { key: 'additional_conditions', label: 'Other Medical Conditions', type: 'list', options: [], placeholder: 'Add a condition not listed above' },
       { key: 'allergies', label: 'Allergies', type: 'list', options: ['Peanuts', 'Shellfish', 'Dairy/Lactose', 'Gluten', 'Pollen', 'Dust', 'Pet Dander'] },
-      { key: 'medications', label: 'Medications', type: 'list', options: [], placeholder: 'Add a medication' },
       { key: 'pain_areas', label: 'Areas of current pain or discomfort', type: 'chips', options: ['None', 'Neck', 'Lower back', 'Knees', 'Shoulders', 'Hips', 'Ankles'] },
       { key: 'pain_severity', label: 'Pain severity (if any)', type: 'select', options: ['None', 'Mild', 'Moderate', 'Severe'] },
       { key: 'energy_level', label: 'Typical energy level through the day', type: 'select', options: ['Low all day', 'Dips in afternoon', 'Stable', 'High all day'] },
@@ -101,10 +101,7 @@ export const DETAILED_ASSESSMENT_STAGES: AssessmentStageDef[] = [
       { key: 'meals_per_day', label: 'Meals per day', type: 'number', placeholder: 'e.g. 3' },
       { key: 'food_allergies', label: 'Food allergies or intolerances', type: 'textarea', placeholder: 'e.g. Lactose intolerant, write None' },
       { key: 'eating_out_frequency', label: 'How often do you eat out / order in?', type: 'select', options: ['Rarely', 'A few times a week', 'Daily', 'Multiple times a day'] },
-      // Note: a "Supplements" field already lives here as free text. The new
-      // Lifestyle spec asked for a Supplements field too — kept as this one
-      // single free-text field rather than duplicating it under Lifestyle.
-      { key: 'supplements', label: 'Current supplements (if any)', type: 'textarea', placeholder: 'Protein, multivitamins, etc.' },
+      // Supplements now live on `profiles` (Overview tab) instead of here.
     ],
   },
   {
@@ -113,7 +110,7 @@ export const DETAILED_ASSESSMENT_STAGES: AssessmentStageDef[] = [
     subtitle: 'How your job shapes your body',
     icon: '💼',
     fields: [
-      { key: 'occupation', label: 'Occupation', type: 'text', placeholder: 'e.g. Software Engineer' },
+      // Occupation now lives on `profiles` (Overview tab) instead of here.
       { key: 'work_hours', label: 'Working hours per day', type: 'number', placeholder: 'e.g. 9' },
       { key: 'posture_type', label: 'Most of your workday is spent...', type: 'select', options: ['Sitting at a desk', 'Standing', 'Walking/moving', 'Mixed'] },
       { key: 'commute_time', label: 'Daily commute time (minutes)', type: 'number', placeholder: 'e.g. 45' },

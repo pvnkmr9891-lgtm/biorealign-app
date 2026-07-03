@@ -1,7 +1,7 @@
 // src/constants/assessmentQuestions.ts
 // Program-specific assessment question bank — sourced from BioRealign_Assessment_Question_Bank.xlsx
 
-export type QType = 'single' | 'multi' | 'numeric' | 'descriptive' | 'scale' | 'date' | 'yesno';
+export type QType = 'single' | 'multi' | 'multi_add' | 'numeric' | 'descriptive' | 'scale' | 'date' | 'yesno';
 
 export interface AOption {
   label: string;
@@ -113,6 +113,19 @@ export const SHARED_CORE_PHASES: APhase[] = [
           { label: 'Not sure', value: 'unsure', emoji: '🤷' },
         ],
       },
+      {
+        id: 'CORE-Q-OCCUPATION',
+        text: 'What do you do for work?',
+        subtext: 'Helps us understand how your day affects recovery and movement.',
+        type: 'descriptive',
+        placeholder: 'e.g. Software Engineer, Homemaker, Student...',
+      },
+      {
+        id: 'CORE-Q-LOCATION',
+        text: 'Where are you based?',
+        type: 'descriptive',
+        placeholder: 'e.g. Bengaluru, Karnataka',
+      },
     ],
   },
   {
@@ -156,6 +169,22 @@ export const SHARED_CORE_PHASES: APhase[] = [
         type: 'descriptive',
         placeholder: 'e.g. Metformin 500mg, Lisinopril 10mg...',
         showIf: { id: 'CORE-Q10', equals: 'yes' },
+      },
+      {
+        id: 'CORE-Q-SUPPLEMENTS',
+        text: 'Are you currently taking any supplements?',
+        subtext: 'Select any that apply, or add your own — this helps us flag any interaction with your coach.',
+        type: 'multi_add',
+        optional: true,
+        options: [
+          { label: 'Protein powder', value: 'Protein powder', emoji: '🥤' },
+          { label: 'Multivitamin', value: 'Multivitamin', emoji: '💊' },
+          { label: 'Omega-3 / Fish oil', value: 'Omega-3', emoji: '🐟' },
+          { label: 'Vitamin D3', value: 'Vitamin D3', emoji: '☀️' },
+          { label: 'Creatine', value: 'Creatine', emoji: '⚡' },
+          { label: 'Calcium', value: 'Calcium', emoji: '🦴' },
+          { label: 'None', value: 'none', emoji: '✅' },
+        ],
       },
       {
         id: 'CORE-Q11',

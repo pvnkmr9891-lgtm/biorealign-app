@@ -161,6 +161,87 @@ function MultiInput({ question, value, onChange }: { question: AQuestion; value:
   );
 }
 
+// Predefined chips (toggle, multi-select) + free-text "+ Add" for entries not
+// in the preset list — value is string[], same shape as MultiInput's.
+function MultiAddInput({ question, value, onChange }: { question: AQuestion; value: string[] | undefined; onChange: (v: string[]) => void }) {
+  const selected = value ?? [];
+  const options = question.options ?? [];
+  const [draft, setDraft] = useState('');
+
+  function toggle(val: string) {
+    if (val === 'none') {
+      onChange([val]);
+      return;
+    }
+    const filtered = selected.filter((v) => v !== 'none');
+    if (filtered.includes(val)) {
+      onChange(filtered.filter((v) => v !== val));
+    } else {
+      onChange([...filtered, val]);
+    }
+  }
+
+  function addCustom() {
+    const v = draft.trim();
+    if (!v) return;
+    const filtered = selected.filter((s) => s !== 'none');
+    if (!filtered.includes(v)) onChange([...filtered, v]);
+    setDraft('');
+  }
+
+  const presetValues = options.map((o) => o.value);
+  const extras = selected.filter((v) => !presetValues.includes(v));
+
+  return (
+    <View style={{ marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+        {options.map((opt) => {
+          const active = selected.includes(opt.value);
+          return (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => toggle(opt.value)}
+              activeOpacity={0.8}
+              style={{
+                paddingVertical: 12, paddingHorizontal: 16, borderRadius: 40,
+                backgroundColor: active ? `${BRAND.teal}20` : BRAND.surface2,
+                borderWidth: 1.5, borderColor: active ? BRAND.teal : BRAND.border,
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+              }}
+            >
+              {opt.emoji ? <Text style={{ fontSize: 16 }}>{opt.emoji}</Text> : null}
+              <Text style={{ fontSize: 14, fontFamily: active ? 'DMSans-Bold' : 'DMSans-Regular', color: active ? BRAND.teal : BRAND.text }}>{opt.label}</Text>
+              {active && <Text style={{ fontSize: 12, color: BRAND.teal }}>✓</Text>}
+            </TouchableOpacity>
+          );
+        })}
+        {extras.map((item) => (
+          <View key={item} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 40, backgroundColor: `${BRAND.teal}20`, borderWidth: 1.5, borderColor: BRAND.teal }}>
+            <Text style={{ fontSize: 14, fontFamily: 'DMSans-Bold', color: BRAND.teal }}>{item}</Text>
+            <TouchableOpacity onPress={() => onChange(selected.filter((v) => v !== item))}>
+              <Text style={{ fontSize: 13, color: BRAND.teal }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: BRAND.surface2, borderRadius: 14, borderWidth: 1.5, borderColor: BRAND.border, overflow: 'hidden' }}>
+        <TextInput
+          style={{ flex: 1, fontSize: 14, fontFamily: 'DMSans-Regular', color: BRAND.text, paddingVertical: 14, paddingHorizontal: 16 }}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Add another (optional)"
+          placeholderTextColor={BRAND.textMuted}
+          onSubmitEditing={addCustom}
+          returnKeyType="done"
+        />
+        <TouchableOpacity onPress={addCustom} style={{ paddingHorizontal: 18, paddingVertical: 14, borderLeftWidth: 1, borderColor: BRAND.border }}>
+          <Text style={{ fontSize: 14, fontFamily: 'DMSans-Bold', color: BRAND.teal }}>+ Add</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function NumericInput({ question, value, onChange }: { question: AQuestion; value: string | undefined; onChange: (v: string) => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: BRAND.surface2, borderRadius: 14, borderWidth: 1.5, borderColor: BRAND.border, overflow: 'hidden', marginTop: 4 }}>
@@ -505,6 +586,9 @@ function QuestionCard({ question, answers, onAnswer, accentColor }: {
       )}
       {question.type === 'multi' && (
         <MultiInput question={question} value={val} onChange={(v) => onAnswer(question.id, v)} />
+      )}
+      {question.type === 'multi_add' && (
+        <MultiAddInput question={question} value={val} onChange={(v) => onAnswer(question.id, v)} />
       )}
       {question.type === 'numeric' && (
         <NumericInput question={question} value={val} onChange={(v) => onAnswer(question.id, v)} />

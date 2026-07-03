@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -18,6 +18,28 @@ export function useClientAssessment(clientId: string) {
 
       if (error) throw error;
       return data;
+    },
+  });
+}
+
+// Coach/admin correction of a client's general assessment row. Only the flat
+// typed columns (occupation_type, height_cm, etc. — see ClientProfileView's
+// GeneralAssessmentSection) are ever passed in `payload`; the original
+// `answers`/`program_key` jsonb blob from onboarding is left untouched.
+export function useUpdateClientAssessment() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ clientId, payload }: { clientId: string; payload: Record<string, any> }) => {
+      const { error } = await supabase
+        .from('assessments')
+        .update(payload)
+        .eq('client_id', clientId);
+      if (error) throw error;
+    },
+    onSuccess: (_d, { clientId }) => {
+      qc.invalidateQueries({ queryKey: ['coach', 'assessment', clientId] });
+      qc.invalidateQueries({ queryKey: ['my_assessment', clientId] });
     },
   });
 }

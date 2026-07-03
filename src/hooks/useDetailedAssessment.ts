@@ -100,6 +100,29 @@ export function useSaveAssessmentStage() {
   });
 }
 
+// Coach/admin correction of one stage's answers on a client's detailed
+// assessment — same shape as useSaveAssessmentStage but explicitly scoped by
+// clientId (the editor's caller) instead of the logged-in user, since here
+// the editor is the coach/admin, not the client themselves.
+export function useUpdateDetailedAssessmentStage(clientId: string) {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      stageKey, data,
+    }: { stageKey: AssessmentStageKey; data: Record<string, any> }) => {
+      const { error } = await supabase
+        .from('coach_detailed_assessments')
+        .update({ [stageKey]: data, updated_at: new Date().toISOString() })
+        .eq('client_id', clientId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: detailedAssessmentKeys.mine(clientId) });
+    },
+  });
+}
+
 export function useSubmitDetailedAssessment() {
   const { user, profile } = useAuth();
   const qc = useQueryClient();

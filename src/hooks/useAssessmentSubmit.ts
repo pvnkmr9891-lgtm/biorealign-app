@@ -7,6 +7,42 @@ import { useAuthStore } from '@/store/authStore';
 import { assignFBRBeginnerPlan, isFBRBeginner } from '@/hooks/useAssignWorkoutPlan';
 import { getWeekStart } from '@/hooks/useManualLog';
 
+const CONDITION_LABELS: Record<string, string> = {
+  diabetes: 'Diabetes', hypertension: 'Hypertension', thyroid: 'Thyroid',
+  pcos: 'PCOS/PCOD', heart: 'Cardiac', asthma: 'Asthma', arthritis: 'Arthritis',
+};
+
+// CORE-Q9/Q10/Q-SUPPLEMENTS/Q-OCCUPATION/Q-LOCATION feed `profiles` directly
+// (the single shared source the Overview tab edits) rather than only living
+// in this assessment's jsonb — mirrors the existing diet_type cross-table
+// pattern used by the Detailed Assessment.
+function deriveProfileFieldsFromAnswers(answers: Record<string, any>) {
+  const fields: Record<string, any> = {};
+
+  const conditionValues: string[] = Array.isArray(answers['CORE-Q9']) ? answers['CORE-Q9'] : [];
+  const conditions = conditionValues.filter((v) => v !== 'none').map((v) => CONDITION_LABELS[v] ?? v);
+  const conditionDetail = String(answers['CORE-Q9-detail'] ?? '').trim();
+  if (conditionDetail) conditions.push(conditionDetail);
+  if (conditions.length) fields.conditions = conditions;
+
+  if (answers['CORE-Q10'] === 'yes') {
+    const medDetail = String(answers['CORE-Q10-detail'] ?? '').trim();
+    if (medDetail) fields.medications = medDetail.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  const supplementValues: string[] = Array.isArray(answers['CORE-Q-SUPPLEMENTS']) ? answers['CORE-Q-SUPPLEMENTS'] : [];
+  const supplements = supplementValues.filter((v) => v !== 'none');
+  if (supplements.length) fields.supplements = supplements;
+
+  const occupation = String(answers['CORE-Q-OCCUPATION'] ?? '').trim();
+  if (occupation) fields.occupation = occupation;
+
+  const location = String(answers['CORE-Q-LOCATION'] ?? '').trim();
+  if (location) fields.location = location;
+
+  return fields;
+}
+
 export function useAssessmentSubmit() {
   const { user } = useAuth();
   const { getPayload, setSubmitting, setSubmitError } = useAssessmentStore();
@@ -31,12 +67,16 @@ export function useAssessmentSubmit() {
 
       if (assessmentError) throw assessmentError;
 
-      // 2. Mark onboarding complete on profile
+      // 2. Mark onboarding complete on profile, plus the fields that are
+      // single-sourced on profiles (conditions/medications/supplements/
+      // occupation/location) rather than duplicated in this assessment row.
+      const profileFields = deriveProfileFieldsFromAnswers((payload as any).answers ?? {});
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           onboarding_completed: true,
           onboarding_completed_at: new Date().toISOString(),
+          ...profileFields,
         })
         .eq('id', user.id);
 
