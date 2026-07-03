@@ -24,5 +24,6 @@ jobs:
       # Report-only until the ~107 pre-existing lint errors are burned down —
       # then delete continue-on-error to make this blocking.
       - name: ESLint (report-only)
+        if: ${{ !cancelled() }}
         run: npx eslint .
         continue-on-error: true
