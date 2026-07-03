@@ -140,7 +140,9 @@ export interface ProgramContent {
 
 export interface Message {
   id: string;
-  enrollment_id: string;
+  coach_id: string;
+  client_id: string;
+  enrollment_id: string | null;
   sender_id: string;
   receiver_id: string;
   body: string;

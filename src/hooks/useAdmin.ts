@@ -987,6 +987,71 @@ export function useAdminMedicalRecordsClients(filter: MedicalRecordsClientFilter
 }
 
 // ---------------------------------------------------------------------------
+// Fitness assessment analytics — average domain scores segmented by
+// athlete-toggle status and by age band (>=60 vs <60, the scoring cutoff
+// where real normative data exists). Deliberately simple aggregate stat
+// cards, not a full BI tool — only the most recent assessment per client
+// contributes, so one client's history doesn't skew the average.
+// ---------------------------------------------------------------------------
+export function useAdminFitnessAnalytics() {
+  return useQuery({
+    queryKey: ['admin', 'fitness_analytics'],
+    queryFn: async () => {
+      const { data: assessments, error } = await supabase
+        .from('fitness_assessments')
+        .select('id, client_id, client_age_at_assessment, is_athlete, assessment_date, results:fitness_domain_results(domain, domain_score, score_status)')
+        .order('assessment_date', { ascending: false });
+      if (error) throw error;
+
+      // Keep only each client's most recent assessment.
+      const latestByClient = new Map<string, typeof assessments[number]>();
+      (assessments ?? []).forEach((a: any) => {
+        if (!latestByClient.has(a.client_id)) latestByClient.set(a.client_id, a);
+      });
+      const latest = Array.from(latestByClient.values());
+
+      const domains = ['strength', 'flexibility', 'endurance', 'agility'] as const;
+
+      function avgFor(rows: any[], domain: string): number | null {
+        const scores = rows
+          .flatMap((a) => a.results ?? [])
+          .filter((r: any) => r.domain === domain && r.score_status === 'scored' && r.domain_score != null)
+          .map((r: any) => Number(r.domain_score));
+        if (scores.length === 0) return null;
+        return Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+      }
+
+      const athleteRows = latest.filter((a: any) => a.is_athlete === true);
+      const nonAthleteRows = latest.filter((a: any) => a.is_athlete !== true);
+      const over60Rows = latest.filter((a: any) => a.client_age_at_assessment >= 60);
+      const under60Rows = latest.filter((a: any) => a.client_age_at_assessment < 60);
+
+      const byAthleteStatus = domains.map((d) => ({
+        domain: d,
+        athlete: avgFor(athleteRows, d),
+        nonAthlete: avgFor(nonAthleteRows, d),
+      }));
+
+      const byAgeBand = domains.map((d) => ({
+        domain: d,
+        over60: avgFor(over60Rows, d),
+        under60: avgFor(under60Rows, d),
+      }));
+
+      return {
+        totalClientsAssessed: latest.length,
+        athleteCount: athleteRows.length,
+        nonAthleteCount: nonAthleteRows.length,
+        over60Count: over60Rows.length,
+        under60Count: under60Rows.length,
+        byAthleteStatus,
+        byAgeBand,
+      };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Rehab business snapshot (this month) — counts by request/appointment
 // status for the "This month" dashboard section.
 // ---------------------------------------------------------------------------

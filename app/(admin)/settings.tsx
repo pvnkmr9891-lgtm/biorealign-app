@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Switch, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import {
   useAdminRehabPackages, useAdminAddRehabPackage, useAdminUpdateRehabPackage,
 } from '@/hooks/useAdmin';
 import { SUPPORT_EMAIL, SUPPORT_WHATSAPP_DISPLAY } from '@/constants/contact';
 import { SUPPLEMENT_ITEMS } from '@/constants/supplementItems';
+import { useSupplementCatalogImages, useUploadSupplementCatalogImage, useDeleteSupplementCatalogImage } from '@/hooks/useSupplementCatalogImages';
 import { THEME } from '@/constants/theme';
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -126,17 +128,70 @@ function RehabPackagesSection() {
   );
 }
 
-function SupplementCatalogSection() {
+function SupplementImageRow({ supplementId, name, defaultQuantity, imageUrl }: { supplementId: string; name: string; defaultQuantity: string; imageUrl?: string }) {
+  const { mutateAsync: upload, isPending: uploading } = useUploadSupplementCatalogImage();
+  const { mutateAsync: remove, isPending: removing } = useDeleteSupplementCatalogImage();
+  const busy = uploading || removing;
+
+  async function pickAndUpload() {
+    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!granted) { Alert.alert('Permission needed', 'Please allow photo library access.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.9 });
+    if (result.canceled || !result.assets.length) return;
+    try {
+      await upload({ supplementId, uri: result.assets[0].uri });
+    } catch (e: any) {
+      Alert.alert('Upload failed', e?.message ?? 'Please try again.');
+    }
+  }
+
+  function confirmRemove() {
+    Alert.alert('Remove photo?', `"${name}" will fall back to the default icon for clients.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => remove(supplementId) },
+    ]);
+  }
+
   return (
-    <SectionCard title="Supplement catalog" subtitle="Managed in code — DB-backed editing planned for a future pass">
-      <View style={{ gap: 6 }}>
-        {SUPPLEMENT_ITEMS.map((s) => (
-          <View key={s.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)' }}>
-            <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary, flex: 1 }}>{s.name}</Text>
-            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{s.defaultQuantity}</Text>
-          </View>
-        ))}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+      <TouchableOpacity onPress={pickAndUpload} disabled={busy} style={{ width: 52, height: 52, borderRadius: 10, backgroundColor: THEME.colors.surface3, borderWidth: 0.5, borderColor: THEME.colors.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {busy ? (
+          <ActivityIndicator size="small" color={THEME.colors.teal} />
+        ) : imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={{ width: 52, height: 52 }} resizeMode="cover" />
+        ) : (
+          <Text style={{ fontSize: 20 }}>💊</Text>
+        )}
+      </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{name}</Text>
+        <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>{defaultQuantity}</Text>
       </View>
+      <TouchableOpacity onPress={pickAndUpload} disabled={busy} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: `${THEME.colors.teal}18` }}>
+        <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>{imageUrl ? 'Replace' : 'Upload'}</Text>
+      </TouchableOpacity>
+      {imageUrl && (
+        <TouchableOpacity onPress={confirmRemove} disabled={busy} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 16 }}>×</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function SupplementCatalogSection() {
+  const { data: images = {}, isLoading } = useSupplementCatalogImages();
+  return (
+    <SectionCard title="Supplement catalog" subtitle="Tap a thumbnail to upload a product photo — auto-resized before storing. Clients see this image in their supplement grid.">
+      {isLoading ? (
+        <ActivityIndicator color={THEME.colors.teal} />
+      ) : (
+        <View>
+          {SUPPLEMENT_ITEMS.map((s) => (
+            <SupplementImageRow key={s.id} supplementId={s.id} name={s.name} defaultQuantity={s.defaultQuantity} imageUrl={images[s.id]} />
+          ))}
+        </View>
+      )}
     </SectionCard>
   );
 }
