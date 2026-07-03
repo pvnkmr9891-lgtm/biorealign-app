@@ -182,7 +182,6 @@ export function useMyTrainingLoadScores() {
   return useQuery({
     queryKey: ['training_load', user?.id ?? '', 'my'],
     enabled: !!user?.id,
-    refetchInterval: 30000,
     queryFn: async () => {
       // Query 13 weeks back to safely cover 90 calendar days accounting for
       // the week_start_date vs actual date offset (day_number adds up to 5 days)
@@ -223,6 +222,5 @@ export function useClientTrainingLoadScores(clientId: string) {
       if (error) throw error;
       return buildTrainingLoadResult(data ?? []);
     },
-    refetchInterval: 30000,
   });
 }

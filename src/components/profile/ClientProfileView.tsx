@@ -6,7 +6,8 @@ import { WeekStatusStrip } from '@/components/ui/WeekStatusStrip';
 import { MacroRing } from '@/components/coach/DayMacroSummary';
 import { MetricTrendChart } from '@/components/ui/MetricTrendChart';
 import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
-import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals } from '@/hooks/useCoachClientOverview';
+import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals, useClientWeightAdherenceTrend } from '@/hooks/useCoachClientOverview';
+import { WeightAdherenceChart } from '@/components/coach/WeightAdherenceChart';
 import { VitalsSparklines } from '@/components/ui/VitalsSparklines';
 import { WeeklyDigestCard } from '@/components/coach/WeeklyDigestCard';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
@@ -963,6 +964,7 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
   const { data: nutritionTrend = [] } = useClientNutritionTrend(clientId);
   const { data: oopsTrend = [] } = useClientOopsTrend(clientId);
   const { data: trainingLoad } = useClientTrainingLoadScores(clientId);
+  const { data: weightAdherence = [] } = useClientWeightAdherenceTrend(clientId);
   const [selectedMetric, setSelectedMetric] = useState('weight_kg');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nutritionView, setNutritionView] = useState<'total' | 'oops'>('total');
@@ -1032,6 +1034,14 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
         </ScrollView>
         <MetricTrendChart points={trendPoints} color={activeField.color} unit={activeField.suffix} />
       </Card>
+
+      {/* Weight vs adherence — the "why isn't the weight moving" overlay */}
+      {weightAdherence.length >= 2 && (
+        <Card accent={THEME.colors.teal}>
+          <SectionHeader icon="⚖️" title="Weight vs Adherence" color={THEME.colors.teal} />
+          <WeightAdherenceChart points={weightAdherence} />
+        </Card>
+      )}
 
       {/* Training Load — daily Cardio / Strength / Mobility scores, auto-derived
           from workout logs. Separate from the 8-domain Fitness Assessment tab. */}

@@ -42,7 +42,6 @@ export function useClientBodyMetrics(clientId: string) {
       if (error) throw error;
       return data ?? [];
     },
-    refetchInterval: 20000, // pick up new weekly check-ins from the client without a manual reload
   });
 }
 
@@ -71,7 +70,6 @@ export function useClientPhotos(clientId: string) {
         })
       );
     },
-    refetchInterval: 20000,
   });
 }
 
@@ -128,7 +126,6 @@ export function useClientWorkoutSummary(clientId: string, weekStart: string) {
 
       return { weekStart, total, done, exTotal, exDone, nutTotal, nutDone, supTotal, supDone, byDay };
     },
-    refetchInterval: 20000,
   });
 }
 
@@ -180,7 +177,68 @@ export function useClientNutritionTrend(clientId: string) {
         }))
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart)) as NutritionTrendPoint[];
     },
-    refetchInterval: 20000,
+  });
+}
+
+// ── Weekly weight vs adherence overlay (Body tab), last 12 weeks ──────────
+// Answers "why isn't the weight moving": overlays the client's recorded
+// weight against their overall checklist adherence % week by week.
+export interface WeightAdherencePoint {
+  weekStart: string;
+  weightKg: number | null;    // latest recorded weight that week
+  adherencePct: number | null; // completed / total items that week
+}
+
+export function useClientWeightAdherenceTrend(clientId: string) {
+  return useQuery({
+    queryKey: ['coach_client', clientId, 'weight_adherence'] as const,
+    enabled: !!clientId,
+    queryFn: async (): Promise<WeightAdherencePoint[]> => {
+      const currentWeek = getWeekStart();
+      const cutoffDate = new Date(currentWeek + 'T00:00:00');
+      cutoffDate.setDate(cutoffDate.getDate() - 11 * 7);
+      const cutoff = cutoffDate.toISOString().slice(0, 10);
+
+      const [{ data: logs, error: logsErr }, { data: metrics, error: metricsErr }] = await Promise.all([
+        supabase
+          .from('manual_workout_logs')
+          .select('week_start_date, completed')
+          .eq('client_id', clientId)
+          .gte('week_start_date', cutoff)
+          .lte('week_start_date', currentWeek),
+        supabase
+          .from('body_metrics')
+          .select('recorded_date, weight_kg')
+          .eq('client_id', clientId)
+          .gte('recorded_date', cutoff)
+          .not('weight_kg', 'is', null)
+          .order('recorded_date', { ascending: true }),
+      ]);
+      if (logsErr) throw logsErr;
+      if (metricsErr) throw metricsErr;
+
+      const byWeek = new Map<string, { done: number; total: number; weightKg: number | null }>();
+      (logs ?? []).forEach((r: any) => {
+        const wk = r.week_start_date;
+        if (!byWeek.has(wk)) byWeek.set(wk, { done: 0, total: 0, weightKg: null });
+        const agg = byWeek.get(wk)!;
+        agg.total += 1;
+        if (r.completed) agg.done += 1;
+      });
+      (metrics ?? []).forEach((m: any) => {
+        const wk = getWeekStart(new Date(m.recorded_date + 'T00:00:00'));
+        if (!byWeek.has(wk)) byWeek.set(wk, { done: 0, total: 0, weightKg: null });
+        byWeek.get(wk)!.weightKg = m.weight_kg; // ascending order → last write wins = latest that week
+      });
+
+      return Array.from(byWeek.entries())
+        .map(([weekStart, agg]) => ({
+          weekStart,
+          weightKg: agg.weightKg,
+          adherencePct: agg.total > 0 ? Math.round((agg.done / agg.total) * 100) : null,
+        }))
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+    },
   });
 }
 
@@ -253,6 +311,5 @@ export function useClientOopsTrend(clientId: string) {
         }))
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart)) as NutritionTrendPoint[];
     },
-    refetchInterval: 20000,
   });
 }

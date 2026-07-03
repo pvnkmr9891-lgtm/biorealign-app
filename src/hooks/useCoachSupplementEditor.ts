@@ -37,7 +37,6 @@ export function useClientWeekSupplements(clientId: string, weekStart: string) {
       });
       return grouped;
     },
-    refetchInterval: 20000,
   });
 }
 

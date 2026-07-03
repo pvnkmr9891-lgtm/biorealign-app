@@ -36,7 +36,6 @@ export function useClientWeekNutrition(clientId: string, weekStart: string) {
       });
       return grouped;
     },
-    refetchInterval: 20000,
   });
 }
 
