@@ -11,10 +11,11 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,9 +26,14 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    let result = await supabase.auth.signInWithPassword({ email, password });
+    // Retry once on network failure — handles Supabase cold-start on free tier
+    if (result.error?.message.includes('Network')) {
+      await new Promise(r => setTimeout(r, 1000));
+      result = await supabase.auth.signInWithPassword({ email, password });
+    }
     setLoading(false);
-    if (error) Alert.alert('Login failed', error.message);
+    if (result.error) Alert.alert('Login failed', result.error.message);
     // On success, AuthGuard in _layout.tsx handles the redirect
   };
 
@@ -105,7 +111,7 @@ export default function LoginScreen() {
                 )}
               </TouchableOpacity>
 
-              <TouchableOpacity className="items-center py-2">
+              <TouchableOpacity className="items-center py-2" onPress={() => router.push('/(auth)/forgot-password' as any)}>
                 <Text className="text-text-secondary font-sans text-sm">
                   Forgot password?
                 </Text>
