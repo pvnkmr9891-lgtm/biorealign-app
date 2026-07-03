@@ -2,7 +2,7 @@
 // Curated warm-up exercise library — "select from list" source for the manual
 // add-exercise flow. Defaults are sensible starting points; users can edit any
 // field before adding. See app/(client)/workout-plan.tsx AddExerciseModal.
-export type ExerciseSide = 'right' | 'left' | 'rotation' | 'na';
+export type ExerciseSide = 'right' | 'left' | 'both' | 'rotation' | 'na';
 
 export interface WarmupExerciseDefault {
   id: string;

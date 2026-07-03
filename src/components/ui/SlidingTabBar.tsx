@@ -39,6 +39,7 @@ const DRAWER_ITEMS = [
     : []),
   { name: 'medical-records', label: 'Medical Records', icon: '🩺', route: '/(client)/medical-records' },
   { name: 'recovery', label: 'Recovery', icon: '🩹', route: '/(client)/recovery' },
+  { name: 'fitness-assessment', label: 'Fitness Assessment', icon: '🏋️', route: '/(client)/fitness-assessment' },
   { name: 'profile',  label: 'Profile',  icon: '👤', route: '/(client)/profile' },
 ];
 

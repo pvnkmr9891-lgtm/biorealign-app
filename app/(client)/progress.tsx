@@ -9,9 +9,15 @@ import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useActiveEnrollment, useProgressHistory } from '@/hooks/useClient';
-import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto } from '@/hooks/useProgress';
+import { useAuth } from '@/hooks/useAuth';
+import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
+import { useMyTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { useWeeklyAlignment, useAlignmentHistory, DayScore } from '@/hooks/useAlignmentScore';
 import { LineChart } from '@/components/ui/LineChart';
+import { MetricTrendChart } from '@/components/ui/MetricTrendChart';
+import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
+import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
+import { SupplementCalendarTracker } from '@/components/supplements/SupplementCalendarTracker';
 import { THEME } from '@/constants/theme';
 import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 import { getWeekStart } from '@/hooks/useManualLog';
@@ -522,9 +528,14 @@ function getOffsetWeekStart(offset: number): string {
 function OverviewTab() {
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week…
 
+  const { user } = useAuth();
   const { data: enrollment } = useActiveEnrollment();
   const { data: history = [], isLoading } = useProgressHistory(20);
   const { data: bodyHistory = [] } = useBodyMetrics(10);
+  const { data: nutritionTrend = [] } = useMyNutritionTrend();
+  const { data: oopsTrend = [] }      = useMyOopsTrend();
+  const { data: trainingLoad } = useMyTrainingLoadScores();
+  const [nutritionView, setNutritionView] = useState<'total' | 'oops'>('total');
 
   const selectedWeekStart = getOffsetWeekStart(weekOffset);
   const { data: weekAlignment = [] } = useWeeklyAlignment(selectedWeekStart);
@@ -568,12 +579,6 @@ function OverviewTab() {
     { key: 'recovery_score',  label: 'Recovery',  color: THEME.scoreColors.recovery,  data: displayHistory.map(m => m.recovery_score  ?? 0) },
     { key: 'longevity_score', label: 'Longevity', color: THEME.scoreColors.longevity, data: displayHistory.map(m => m.longevity_score ?? 0) },
   ];
-
-  const weightLabels = bodyHistory.map(m =>
-    new Date(m.recorded_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-  );
-  const weightData = bodyHistory.map(m => m.weight_kg ?? 0).filter(v => v > 0);
-  const hasWeight  = weightData.length >= 2;
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -638,6 +643,15 @@ function OverviewTab() {
         </View>
       </View>
 
+      {/* Training Load — daily Cardio / Strength / Mobility scores derived from workout logs.
+          Distinct from the coach-administered 8-domain Fitness Assessment — this updates
+          automatically every time a workout is logged. */}
+      {trainingLoad && (
+        <View style={{ marginHorizontal: 24, marginBottom: 6 }}>
+          <TrainingLoadSection data={trainingLoad} />
+        </View>
+      )}
+
       {/* Weekly Alignment */}
       <WeeklyAlignmentCard
         days={weekAlignment}
@@ -655,28 +669,73 @@ function OverviewTab() {
       {/* 12-week Consistency Heatmap */}
       <ConsistencyHeatmap data={alignHistory84} />
 
-      {/* Weight chart */}
-      {hasWeight && (
-        <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-            <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>Weight</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ color: THEME.colors.amber, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>
-                {latestBody?.weight_kg ?? '—'} kg
-              </Text>
-              {latestBody?.weight_kg && previousBody?.weight_kg && (
-                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: deltaColor(delta(latestBody.weight_kg, previousBody.weight_kg), true) }}>
-                  {(latestBody.weight_kg - previousBody.weight_kg) >= 0 ? '+' : ''}{(latestBody.weight_kg - previousBody.weight_kg).toFixed(1)} kg
+      {/* Trend Analysis — pick any body metric (incl. weight), see it charted
+          across all logged weeks. Replaces the old standalone weight-only
+          chart that used to live here, to avoid showing the same data twice. */}
+      <TrendAnalysisCard history={bodyHistory} />
+
+      {/* Nutrition Trend — toggles between Total and Oops (confession booth) */}
+      <View style={{
+        marginHorizontal: 24, borderRadius: 14, padding: 20, marginBottom: 16,
+        borderWidth: nutritionView === 'oops' ? 1 : 0.5,
+        borderColor: nutritionView === 'oops' ? 'rgba(249,115,22,0.4)' : THEME.colors.border,
+        backgroundColor: nutritionView === 'oops' ? 'rgba(249,115,22,0.05)' : THEME.colors.surface2,
+      }}>
+        {/* Header row with toggle */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ color: nutritionView === 'oops' ? '#F97316' : THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', flex: 1 }}>
+            {nutritionView === 'oops' ? 'Oops Trend 🙈' : 'Nutrition Trend'}
+          </Text>
+          {/* Toggle pill */}
+          <View style={{ flexDirection: 'row', backgroundColor: THEME.colors.surface3, borderRadius: 20, padding: 3, gap: 2 }}>
+            {(['total', 'oops'] as const).map(v => (
+              <TouchableOpacity
+                key={v}
+                onPress={() => setNutritionView(v)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16,
+                  backgroundColor: nutritionView === v
+                    ? (v === 'oops' ? '#F97316' : THEME.colors.teal)
+                    : 'transparent',
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{
+                  fontSize: 11, fontFamily: THEME.fonts.sansMedium,
+                  color: nutritionView === v ? '#000' : THEME.colors.textMuted,
+                }}>
+                  {v === 'total' ? 'Total' : 'Oops 🙈'}
                 </Text>
-              )}
-            </View>
+              </TouchableOpacity>
+            ))}
           </View>
-          <LineChart
-            series={[{ key: 'weight', label: 'Weight (kg)', color: THEME.colors.amber, data: bodyHistory.map(m => m.weight_kg ?? 0) }]}
-            labels={weightLabels}
-            height={130}
-            showDots
-          />
+        </View>
+
+        {nutritionView === 'total' ? (
+          <NutritionTrendChart points={nutritionTrend} />
+        ) : oopsTrend.length === 0 ? (
+          <View style={{ paddingVertical: 32, alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 36 }}>🥗</Text>
+            <Text style={{ color: '#F97316', fontFamily: THEME.fonts.sansMedium, fontSize: 14, textAlign: 'center' }}>
+              Clean as a whistle.
+            </Text>
+            <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, textAlign: 'center', lineHeight: 18, paddingHorizontal: 16 }}>
+              No confession booth entries this period.{'\n'}Either you're eating perfectly or hiding it very well.
+            </Text>
+          </View>
+        ) : (
+          <NutritionTrendChart points={oopsTrend} accentColor="#F97316" />
+        )}
+      </View>
+
+      {/* Supplement calendar — one full-month calendar per supplement,
+          green = completed, red = assigned but not checked off. */}
+      {user?.id && (
+        <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 14 }}>
+            Supplement Tracker
+          </Text>
+          <SupplementCalendarTracker clientId={user.id} />
         </View>
       )}
 
@@ -728,6 +787,116 @@ function OverviewTab() {
         </View>
       )}
     </ScrollView>
+  );
+}
+
+// ── Trend Analysis — metric picker + chart across all logged weeks ──────────
+// Mirrors the coach/admin profile's Measurements tab (ClientProfileView.tsx)
+// so clients get the same "pick a metric, see it charted" view of their own data.
+const TREND_METRIC_FIELDS: { key: string; label: string; icon: string; suffix: string; color: string }[] = [
+  { key: 'weight_kg', label: 'Weight', icon: '⚖️', suffix: 'kg', color: '#60A5FA' },
+  { key: 'body_fat_pct', label: 'Body fat', icon: '🔥', suffix: '%', color: THEME.colors.amber },
+  { key: 'waist_cm', label: 'Waist', icon: '📐', suffix: 'cm', color: '#C084FC' },
+  { key: 'hips_cm', label: 'Hips', icon: '📐', suffix: 'cm', color: '#F472B6' },
+  { key: 'chest_cm', label: 'Chest', icon: '📐', suffix: 'cm', color: THEME.colors.teal },
+  { key: 'pushup_count', label: 'Push-ups', icon: '🤸', suffix: '', color: THEME.colors.success ?? '#4CC986' },
+  { key: 'plank_seconds', label: 'Plank', icon: '⏱️', suffix: 's', color: '#FB923C' },
+  { key: 'squat_reps', label: 'Squats', icon: '🦵', suffix: '', color: '#818CF8' },
+];
+
+function TrendAnalysisCard({ history }: { history: any[] }) {
+  const [selectedMetric, setSelectedMetric] = useState('weight_kg');
+  // `history` from useBodyMetrics is already ascending (oldest → newest) —
+  // do NOT reverse here, that would plot current dates on the left.
+  const availableMetrics = TREND_METRIC_FIELDS.filter((f) => history.some((m) => m[f.key] != null));
+  const activeField = availableMetrics.find((f) => f.key === selectedMetric) ?? availableMetrics[0];
+
+  if (!availableMetrics.length) return null;
+
+  const trendPoints = history
+    .filter((m) => m[activeField.key] != null)
+    .map((m) => ({ date: m.recorded_date, value: Number(m[activeField.key]) }));
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+      <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 14 }}>
+        Trend Analysis
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 6 }}>
+        {availableMetrics.map((f) => {
+          const active = f.key === activeField.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => setSelectedMetric(f.key)}
+              style={{ paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9, backgroundColor: active ? f.color : '#1A1A1E' }}
+            >
+              <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: active ? THEME.colors.background : THEME.colors.textSecondary }}>{f.icon} {f.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <MetricTrendChart points={trendPoints} color={activeField.color} unit={activeField.suffix} />
+    </View>
+  );
+}
+
+// ── Weekly Log — full history list, tap to expand each week's full readout ──
+function WeeklyLogSection({ history }: { history: any[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  if (!history.length) return null;
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10 }}>Weekly Log</Text>
+      {history.map((m, idx) => {
+        const prev = history[idx + 1];
+        const isOpen = expandedId === m.id || (expandedId === null && idx === 0);
+        return (
+          <View key={m.id} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 10, overflow: 'hidden' }}>
+            <TouchableOpacity onPress={() => setExpandedId(isOpen ? '' : m.id)} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+                  {new Date(m.recorded_date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </Text>
+                {idx === 0 && (
+                  <View style={{ backgroundColor: `${THEME.colors.teal}20`, borderRadius: 7, paddingHorizontal: 7, paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>LATEST</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+                {m.weight_kg ? `${m.weight_kg}kg` : '—'} {isOpen ? '▾' : '▸'}
+              </Text>
+            </TouchableOpacity>
+
+            {isOpen && (
+              <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {TREND_METRIC_FIELDS.filter((f) => m[f.key] != null).map((f) => {
+                    const d = prev?.[f.key] != null ? Number(m[f.key]) - Number(prev[f.key]) : null;
+                    return (
+                      <View key={f.key} style={{ flexBasis: '47%', backgroundColor: '#1A1A1E', borderRadius: 10, padding: 10 }}>
+                        <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{f.icon} {f.label}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, marginTop: 3 }}>
+                          <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{m[f.key]}{f.suffix}</Text>
+                          {d != null && d !== 0 && (
+                            <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: d > 0 ? THEME.colors.amber : (THEME.colors.success ?? '#4CC986') }}>
+                              {d > 0 ? '▲' : '▼'} {Math.abs(Math.round(d * 10) / 10)}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+                {m.notes && <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 10, fontStyle: 'italic' }}>"{m.notes}"</Text>}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -951,6 +1120,9 @@ function MeasurementsTab() {
               placeholderTextColor={THEME.colors.textMuted}
               multiline
             />
+
+            {/* Weekly Log — full history, same as the coach/admin view */}
+            <WeeklyLogSection history={history} />
           </>
         )}
 

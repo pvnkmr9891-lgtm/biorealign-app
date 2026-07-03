@@ -436,7 +436,7 @@ export function useManualLog(userId, profile, weekStartOverride) {
       sets, reps, side, holdSecs, restSecs,
       quantity, calories, proteinG, carbsG, fatG,
     }) => {
-      const { error } = await supabase.from('manual_workout_logs').insert({
+      const { error } = await supabase.from('manual_workout_logs').upsert({
         client_id:       userId,
         week_start_date: weekStart,
         day_number:      dayNumber,
@@ -456,6 +456,9 @@ export function useManualLog(userId, profile, weekStartOverride) {
         carbs_g:         carbsG ?? null,
         fat_g:           fatG ?? null,
         is_custom:       true,
+      }, {
+        onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+        ignoreDuplicates: true,
       });
       if (error) throw error;
     },

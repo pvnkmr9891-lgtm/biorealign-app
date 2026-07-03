@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { getWeekStart } from '@/hooks/useManualLog';
+import type { NutritionTrendPoint } from '@/hooks/useCoachClientOverview';
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
 export const progressKeys = {
@@ -53,15 +55,164 @@ export function useBodyMetrics(limit = 12) {
     queryKey: progressKeys.bodyMetrics(user?.id ?? ''),
     enabled: !!user?.id,
     queryFn: async () => {
+      // Fetch the most recent `limit` rows (descending), then flip to
+      // ascending — otherwise ordering ascending-then-limiting would return
+      // the OLDEST rows once a client has logged more weeks than `limit`,
+      // silently dropping their current data from any chart built on this.
       const { data, error } = await supabase
         .from('body_metrics')
         .select('*')
         .eq('client_id', user!.id)
-        .order('recorded_date', { ascending: true })
+        .order('recorded_date', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
-      return (data ?? []) as BodyMetric[];
+      return ((data ?? []) as BodyMetric[]).reverse();
+    },
+  });
+}
+
+// ── Self-scoped nutrition trend (calories/protein/fat, weekly avg) ──────────
+// Same aggregation as the coach-side useClientNutritionTrend, just scoped to
+// the logged-in client instead of taking a clientId param — feeds the same
+// NutritionTrendChart component so the client sees the identical 3-line
+// (calories/protein/fat) chart their coach already sees for them.
+export function useMyNutritionTrend() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['progress', user?.id ?? '', 'nutrition_trend'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const currentWeek = getWeekStart();
+      const cutoff = (() => {
+        const d = new Date(currentWeek + 'T00:00:00');
+        d.setDate(d.getDate() - 11 * 7);
+        const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${da}`;
+      })();
+
+      const { data, error } = await supabase
+        .from('manual_workout_logs')
+        .select('week_start_date, calories, protein_g, fat_g')
+        .eq('client_id', user!.id)
+        .eq('item_type', 'food')
+        .eq('completed', true)
+        .gte('week_start_date', cutoff)
+        .lte('week_start_date', currentWeek);
+      if (error) throw error;
+
+      const byWeek = new Map<string, { calories: number; protein: number; fat: number }>();
+      (data ?? []).forEach((r: any) => {
+        const wk = r.week_start_date;
+        if (!byWeek.has(wk)) byWeek.set(wk, { calories: 0, protein: 0, fat: 0 });
+        const agg = byWeek.get(wk)!;
+        agg.calories += r.calories ?? 0;
+        agg.protein  += r.protein_g ?? 0;
+        agg.fat      += r.fat_g ?? 0;
+      });
+
+      return Array.from(byWeek.entries())
+        .map(([weekStart, agg]) => ({
+          weekStart,
+          calories: Math.round(agg.calories / 6),
+          protein: Math.round(agg.protein / 6),
+          fat: Math.round(agg.fat / 6),
+        }))
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart)) as NutritionTrendPoint[];
+    },
+  });
+}
+
+// ── Self-scoped "Oops" trend — only confession booth (meal_slot='craving') ──
+export function useMyOopsTrend() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['progress', user?.id ?? '', 'oops_trend'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const currentWeek = getWeekStart();
+      const cutoff = (() => {
+        const d = new Date(currentWeek + 'T00:00:00');
+        d.setDate(d.getDate() - 11 * 7);
+        const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${da}`;
+      })();
+
+      const { data, error } = await supabase
+        .from('manual_workout_logs')
+        .select('week_start_date, calories, protein_g, fat_g')
+        .eq('client_id', user!.id)
+        .eq('item_type', 'food')
+        .eq('meal_slot', 'craving')
+        .gte('week_start_date', cutoff)
+        .lte('week_start_date', currentWeek);
+      if (error) throw error;
+
+      const byWeek = new Map<string, { calories: number; protein: number; fat: number }>();
+      (data ?? []).forEach((r: any) => {
+        const wk = r.week_start_date;
+        if (!byWeek.has(wk)) byWeek.set(wk, { calories: 0, protein: 0, fat: 0 });
+        const agg = byWeek.get(wk)!;
+        agg.calories += r.calories ?? 0;
+        agg.protein  += r.protein_g ?? 0;
+        agg.fat      += r.fat_g ?? 0;
+      });
+
+      return Array.from(byWeek.entries())
+        .map(([weekStart, agg]) => ({
+          weekStart,
+          calories: Math.round(agg.calories / 6),
+          protein:  Math.round(agg.protein / 6),
+          fat:      Math.round(agg.fat / 6),
+        }))
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart)) as NutritionTrendPoint[];
+    },
+  });
+}
+
+// ── Self-scoped supplement adherence (weekly % completed, for a bar chart) ─
+export interface SupplementAdherencePoint { weekStart: string; pct: number; logged: number; completed: number }
+
+export function useMySupplementAdherence() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['progress', user?.id ?? '', 'supplement_adherence'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const currentWeek = getWeekStart();
+      const cutoff = (() => {
+        const d = new Date(currentWeek + 'T00:00:00');
+        d.setDate(d.getDate() - 11 * 7);
+        const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${da}`;
+      })();
+
+      const { data, error } = await supabase
+        .from('manual_workout_logs')
+        .select('week_start_date, completed')
+        .eq('client_id', user!.id)
+        .eq('item_type', 'supplement')
+        .gte('week_start_date', cutoff)
+        .lte('week_start_date', currentWeek);
+      if (error) throw error;
+
+      const byWeek = new Map<string, { logged: number; completed: number }>();
+      (data ?? []).forEach((r: any) => {
+        const wk = r.week_start_date;
+        if (!byWeek.has(wk)) byWeek.set(wk, { logged: 0, completed: 0 });
+        const agg = byWeek.get(wk)!;
+        agg.logged += 1;
+        if (r.completed) agg.completed += 1;
+      });
+
+      return Array.from(byWeek.entries())
+        .map(([weekStart, agg]) => ({
+          weekStart,
+          logged: agg.logged,
+          completed: agg.completed,
+          pct: agg.logged ? Math.round((agg.completed / agg.logged) * 100) : 0,
+        }))
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart)) as SupplementAdherencePoint[];
     },
   });
 }
