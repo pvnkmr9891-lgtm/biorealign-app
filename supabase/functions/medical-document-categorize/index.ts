@@ -6,8 +6,7 @@
 // service role needed), sends it to Claude for a lightweight classification
 // into one of 4 fixed categories, and writes the result back onto the row.
 //
-// Requires secret: ANTHROPIC_API_KEY (server-side only — do not reuse the
-// EXPO_PUBLIC_ANTHROPIC_API_KEY used by the client-side AI suggestions flow).
+// Requires secret: ANTHROPIC_API_KEY (server-side only).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
