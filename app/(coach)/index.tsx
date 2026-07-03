@@ -19,6 +19,7 @@ const ATTENTION_META: Record<AttentionItemType, { icon: string; color: string }>
   unviewed_analysis:   { icon: '🩺', color: THEME.colors.amber },
   no_log:              { icon: '📅', color: THEME.colors.teal },
   declining_adherence: { icon: '📉', color: THEME.colors.amber },
+  assessment_due:      { icon: '🏋️', color: '#34D399' },
 };
 
 const MAX_ATTENTION_ITEMS = 3;
@@ -59,6 +60,9 @@ export default function CoachDashboard() {
         break;
       case 'declining_adherence':
         router.push({ pathname: '/(coach)/client-overview', params: { clientId: item.clientId, clientName: item.clientName } });
+        break;
+      case 'assessment_due':
+        router.push({ pathname: '/(coach)/client-overview', params: { clientId: item.clientId, clientName: item.clientName, tab: 'fitness' } });
         break;
     }
   }

@@ -21,6 +21,7 @@ import { useClientRehabRequests, useClientRehabAppointments, useRespondToRehabRe
 import { FeedbackThreadModal } from '@/components/medical/FeedbackThreadModal';
 import { EditProfileModal } from '@/components/profile/EditProfileModal';
 import { useClientFitnessAssessments, FitnessDomain } from '@/hooks/useFitnessAssessment';
+import { DomainRadarChart, scoreBand } from '@/components/ui/DomainRadarChart';
 import { SupplementCalendarTracker } from '@/components/supplements/SupplementCalendarTracker';
 import { supabase } from '@/lib/supabase';
 import { THEME } from '@/constants/theme';
@@ -1759,9 +1760,34 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
     );
   }
 
+  // Radar data: latest vs first assessment (only scored domains)
+  const toRadarPoints = (a: (typeof assessments)[number]) =>
+    a.results
+      .filter((r) => r.score_status === 'scored' && r.domain_score != null)
+      .map((r) => ({ domain: r.domain as FitnessDomain, score: r.domain_score }));
+
+  const latestAssessment = assessments[0];
+  const firstAssessment = assessments[assessments.length - 1];
+  const latestPoints = toRadarPoints(latestAssessment);
+  const baselinePoints = assessments.length > 1 ? toRadarPoints(firstAssessment) : undefined;
+
   return (
     <View>
       {newAssessmentButton}
+      {latestPoints.length > 0 && (
+        <Card accent={THEME.colors.teal}>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 2 }}>Domain profile</Text>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>
+            0–100, scored against age & sex norms
+          </Text>
+          <DomainRadarChart
+            latest={latestPoints}
+            latestDate={latestAssessment.assessment_date}
+            baseline={baselinePoints}
+            baselineDate={baselinePoints ? firstAssessment.assessment_date : undefined}
+          />
+        </Card>
+      )}
       <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 10 }}>ASSESSMENT HISTORY</Text>
       {assessments.map((a, idx) => (
         <Card key={a.id} accent={idx === 0 ? '#34D399' : undefined}>
@@ -1791,7 +1817,14 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
                     {outOfRange ? (
                       <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Age out of range</Text>
                     ) : (
-                      <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: meta.color }}>{r.domain_score != null ? Math.round(r.domain_score) : '—'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {r.domain_score != null && (
+                          <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: scoreBand(r.domain_score).color }}>
+                            {scoreBand(r.domain_score).label}
+                          </Text>
+                        )}
+                        <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: meta.color }}>{r.domain_score != null ? Math.round(r.domain_score) : '—'}</Text>
+                      </View>
                     )}
                   </View>
                   <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>

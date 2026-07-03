@@ -14,7 +14,7 @@ export const coachDashboardKeys = {
 // analyses sent to the coach, no-log streaks, and declining adherence.
 // Ranked by severity; caller decides how many to display.
 // ---------------------------------------------------------------------------
-export type AttentionItemType = 'supplement_flag' | 'unviewed_analysis' | 'no_log' | 'declining_adherence';
+export type AttentionItemType = 'supplement_flag' | 'unviewed_analysis' | 'no_log' | 'declining_adherence' | 'assessment_due';
 
 export interface AttentionItem {
   id: string;
@@ -32,7 +32,11 @@ const SEVERITY_RANK: Record<AttentionItemType, number> = {
   unviewed_analysis:   1,
   no_log:              2,
   declining_adherence: 3,
+  assessment_due:      4,
 };
+
+// Re-assess every ~8-12 weeks; nudge at 60 days so the coach books it in time.
+const REASSESSMENT_DUE_DAYS = 60;
 
 export function useCoachAttentionItems() {
   const { user } = useAuth();
@@ -59,6 +63,7 @@ export function useCoachAttentionItems() {
         { data: lastCompletedLogs },
         { data: supplementLogs },
         { data: analyses },
+        { data: fitnessAssessments },
       ] = await Promise.all([
         supabase.from('manual_workout_logs')
           .select('client_id, completed, completed_at')
@@ -80,6 +85,10 @@ export function useCoachAttentionItems() {
           .in('client_id', clientIds)
           .not('sent_to_coach_at', 'is', null)
           .is('coach_viewed_at', null),
+        supabase.from('fitness_assessments')
+          .select('client_id, assessment_date')
+          .in('client_id', clientIds)
+          .order('assessment_date', { ascending: false }),
       ]);
 
       const items: AttentionItem[] = [];
@@ -172,6 +181,30 @@ export function useCoachAttentionItems() {
             subtitle: `${prevPct}% last week → ${curPct}% this week`,
           });
         }
+      });
+
+      // ── Fitness assessment due (none yet, or last one older than the cadence) ──
+      const latestAssessmentMap: Record<string, string> = {};
+      (fitnessAssessments ?? []).forEach((a: any) => {
+        if (!latestAssessmentMap[a.client_id]) latestAssessmentMap[a.client_id] = a.assessment_date; // ordered desc
+      });
+      clients.forEach((client) => {
+        const last = latestAssessmentMap[client.id] ?? null;
+        const daysSince = last ? Math.floor((Date.now() - new Date(last + 'T00:00:00').getTime()) / 86400000) : null;
+        if (daysSince != null && daysSince < REASSESSMENT_DUE_DAYS) return;
+        items.push({
+          id: `assessment_due:${client.id}`,
+          type: 'assessment_due',
+          severity: SEVERITY_RANK.assessment_due,
+          clientId: client.id,
+          clientName: client.full_name ?? 'Client',
+          title: last
+            ? `${client.full_name} — re-assessment due`
+            : `${client.full_name} — baseline assessment needed`,
+          subtitle: last
+            ? `Last assessed ${new Date(last + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} (${Math.floor(daysSince! / 7)} wks ago)`
+            : 'No fitness assessment on record yet',
+        });
       });
 
       return items.sort((a, b) => a.severity - b.severity);
