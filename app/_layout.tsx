@@ -1,7 +1,7 @@
 import '../src/global.css';
 
 import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -9,8 +9,40 @@ import { QueryClientProvider } from '@tanstack/react-query';
 
 import { queryClient } from '@/lib/queryClient';
 import { useAuth, useAuthListener } from '@/hooks/useAuth';
+import { initMonitoring, wrapRoot, Sentry, monitoringEnabled } from '@/lib/monitoring';
+import { trackScreen, identifyUser, resetAnalytics } from '@/lib/analytics';
+
+initMonitoring();
 
 SplashScreen.preventAutoHideAsync();
+
+// ---------------------------------------------------------------------------
+// Telemetry — screen views + user identity for Sentry/PostHog.
+// Only user id + role are attached, never name/phone/email or health data.
+// ---------------------------------------------------------------------------
+function Telemetry() {
+  const pathname = usePathname();
+  const { user, role } = useAuth();
+
+  useEffect(() => {
+    trackScreen(pathname);
+    if (monitoringEnabled) {
+      Sentry.addBreadcrumb({ category: 'navigation', message: pathname, level: 'info' });
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (user?.id) {
+      identifyUser(user.id, { role });
+      if (monitoringEnabled) Sentry.setUser({ id: user.id, segment: role ?? undefined });
+    } else {
+      resetAnalytics();
+      if (monitoringEnabled) Sentry.setUser(null);
+    }
+  }, [user?.id, role]);
+
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Auth guard — redirects based on session + role + onboarding state
@@ -34,6 +66,13 @@ function AuthGuard() {
       if (!inAuthGroup) router.replace('/(auth)/login');
       return;
     }
+
+    // The email-OTP step of forgot-password grants a real session mid-flow
+    // (supabase.auth.verifyOtp) before the user has actually set their new
+    // password — never redirect away from this screen for any role/state,
+    // or the role-based redirects below would yank them out before they can
+    // finish resetting.
+    if (segments[1] === 'forgot-password') return;
 
     if (!role) return;
 
@@ -78,7 +117,7 @@ function AuthGuard() {
 // ---------------------------------------------------------------------------
 // Root layout
 // ---------------------------------------------------------------------------
-export default function RootLayout() {
+function RootLayout() {
   useAuthListener();
 
   const [fontsLoaded] = useFonts({
@@ -97,8 +136,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthGuard />
+      <Telemetry />
       <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style="light" />
     </QueryClientProvider>
   );
 }
+
+export default wrapRoot(RootLayout);

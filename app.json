@@ -48,13 +48,20 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      ["expo-router", { "root": "app" }],
+      [
+        "expo-router",
+        {
+          "root": "app"
+        }
+      ],
       "expo-secure-store",
       "expo-font",
       "expo-notifications",
       "expo-asset",
       "expo-web-browser",
-      "expo-video"
+      "expo-video",
+      "@sentry/react-native",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true

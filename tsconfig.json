@@ -34,5 +34,13 @@
     "expo-env.d.ts",
     "nativewind-env.d.ts",
     ".expo/types/**/*.ts"
+  ],
+  // Edge functions run on Deno with their own globals/URL imports — they
+  // can't typecheck under the app's react-native config.
+  "exclude": [
+    "node_modules",
+    "supabase/functions",
+    "biorealign-seed",
+    ".claude"
   ]
 }
