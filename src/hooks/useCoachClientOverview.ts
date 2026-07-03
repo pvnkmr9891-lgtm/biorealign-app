@@ -9,6 +9,7 @@ export const coachClientOverviewKeys = {
   workoutSummary: (clientId: string, weekStart: string) => ['coach_client', clientId, 'workout_summary', weekStart] as const,
   nutritionTrend: (clientId: string) => ['coach_client', clientId, 'nutrition_trend'] as const,
   oopsTrend:     (clientId: string) => ['coach_client', clientId, 'oops_trend'] as const,
+  checkinVitals: (clientId: string) => ['coach_client', clientId, 'checkin_vitals'] as const,
 };
 
 const EXERCISE_TYPES = ['warmup', 'workout', 'cooldown'];
@@ -180,6 +181,33 @@ export function useClientNutritionTrend(clientId: string) {
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart)) as NutritionTrendPoint[];
     },
     refetchInterval: 20000,
+  });
+}
+
+// ── Daily check-in vitals, last 30 days (Overview tab sparklines) ─────────
+export interface CheckinVitalRow {
+  date: string; // YYYY-MM-DD
+  mood: number | null;
+  energy: number | null;
+  sleep_hrs: number | null;
+  pain_level: number | null;
+}
+
+export function useClientCheckinVitals(clientId: string) {
+  return useQuery({
+    queryKey: coachClientOverviewKeys.checkinVitals(clientId),
+    enabled: !!clientId,
+    queryFn: async () => {
+      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from('daily_checkins')
+        .select('date, mood, energy, sleep_hrs, pain_level')
+        .eq('client_id', clientId)
+        .gte('date', cutoff)
+        .order('date', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as CheckinVitalRow[];
+    },
   });
 }
 

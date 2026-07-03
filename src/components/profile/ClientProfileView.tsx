@@ -6,7 +6,8 @@ import { WeekStatusStrip } from '@/components/ui/WeekStatusStrip';
 import { MacroRing } from '@/components/coach/DayMacroSummary';
 import { MetricTrendChart } from '@/components/ui/MetricTrendChart';
 import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
-import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend } from '@/hooks/useCoachClientOverview';
+import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals } from '@/hooks/useCoachClientOverview';
+import { VitalsSparklines } from '@/components/ui/VitalsSparklines';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
 import { useClientDetailedAssessment, useMarkAssessmentReviewed, useUpdateDetailedAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
@@ -190,12 +191,14 @@ function ProfileTab({ clientId }: { clientId: string }) {
 // ── Overview tab ───────────────────────────────────────────────────────
 function OverviewTab({ clientId }: { clientId: string }) {
   const { data: profile, isLoading } = useClientProfile(clientId);
+  const { data: vitals = [] } = useClientCheckinVitals(clientId);
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
 
   return (
     <View>
       <ProfileOverviewCard clientId={clientId} profile={profile} color={THEME.colors.teal} />
+      <VitalsSparklines rows={vitals} />
     </View>
   );
 }
