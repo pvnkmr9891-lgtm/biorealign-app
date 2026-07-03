@@ -70,7 +70,10 @@ export function useCoachAddSupplement() {
         added_by_coach:  true,
         completed:       false,
       }));
-      const { error } = await supabase.from('manual_workout_logs').insert(rows);
+      const { error } = await supabase.from('manual_workout_logs').upsert(rows, {
+        onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+        ignoreDuplicates: true,
+      });
       if (error) throw error;
     },
     onSuccess: (_d, vars) => {
