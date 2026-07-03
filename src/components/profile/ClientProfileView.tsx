@@ -8,6 +8,7 @@ import { MetricTrendChart } from '@/components/ui/MetricTrendChart';
 import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
 import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals } from '@/hooks/useCoachClientOverview';
 import { VitalsSparklines } from '@/components/ui/VitalsSparklines';
+import { WeeklyDigestCard } from '@/components/coach/WeeklyDigestCard';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
 import { useClientDetailedAssessment, useMarkAssessmentReviewed, useUpdateDetailedAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
@@ -189,7 +190,7 @@ function ProfileTab({ clientId }: { clientId: string }) {
 }
 
 // ── Overview tab ───────────────────────────────────────────────────────
-function OverviewTab({ clientId }: { clientId: string }) {
+function OverviewTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const { data: profile, isLoading } = useClientProfile(clientId);
   const { data: vitals = [] } = useClientCheckinVitals(clientId);
 
@@ -198,6 +199,7 @@ function OverviewTab({ clientId }: { clientId: string }) {
   return (
     <View>
       <ProfileOverviewCard clientId={clientId} profile={profile} color={THEME.colors.teal} />
+      <WeeklyDigestCard clientId={clientId} clientName={clientName} />
       <VitalsSparklines rows={vitals} />
     </View>
   );
@@ -1906,7 +1908,7 @@ export function ClientProfileView({
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         {tab === 'profile'      && <ProfileTab clientId={clientId} />}
-        {tab === 'overview'     && <OverviewTab clientId={clientId} />}
+        {tab === 'overview'     && <OverviewTab clientId={clientId} clientName={clientName} />}
         {tab === 'assessment'   && <AssessmentTab clientId={clientId} clientName={clientName} />}
         {tab === 'measurements' && <MeasurementsTab clientId={clientId} />}
         {tab === 'pictures'     && <PicturesTab clientId={clientId} />}
