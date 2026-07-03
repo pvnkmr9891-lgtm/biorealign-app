@@ -432,7 +432,7 @@ export default function MedicalRecordsScreen() {
       <DocumentSummaryModal doc={summaryDoc} visible={!!summaryDoc} onClose={() => setSummaryDoc(null)} />
       <FeedbackThreadModal
         documentId={feedbackDoc?.id ?? null}
-        clientId={user!.id}
+        clientId={user?.id ?? ''}
         coachId={assignedCoachId ?? undefined}
         filename={feedbackDoc?.original_filename}
         visible={!!feedbackDoc}

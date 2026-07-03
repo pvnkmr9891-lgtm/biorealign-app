@@ -43,20 +43,20 @@ export default function ClientMessagingScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const { data: coachInfo, isLoading: coachLoading } = useClientCoachInfo();
-  const enrollmentId = coachInfo?.id ?? '';
-  const coachId      = coachInfo?.coach_id ?? '';
-  const coachName    = (coachInfo as any)?.coach?.full_name ?? 'Your Coach';
+  const coachId    = coachInfo?.coachId ?? '';
+  const clientId   = user?.id ?? '';
+  const coachName  = (coachInfo as any)?.coach?.full_name ?? 'Your Coach';
 
-  const { data: messages = [], isLoading: messagesLoading } = useMessages(enrollmentId);
+  const { data: messages = [], isLoading: messagesLoading } = useMessages(coachId, clientId);
   const { mutateAsync: sendMessage, isPending } = useSendMessage();
   const { mutate: markRead } = useMarkMessagesRead();
 
   // Mark as read on open
   useEffect(() => {
-    if (enrollmentId && messages.length > 0) {
-      markRead(enrollmentId);
+    if (coachId && clientId && messages.length > 0) {
+      markRead({ coachId, clientId });
     }
-  }, [enrollmentId, messages.length]);
+  }, [coachId, clientId, messages.length]);
 
   // Auto-scroll
   useEffect(() => {
@@ -67,9 +67,9 @@ export default function ClientMessagingScreen() {
 
   const handleSend = async () => {
     const body = text.trim();
-    if (!body || isPending || !enrollmentId || !coachId) return;
+    if (!body || isPending || !coachId || !clientId) return;
     setText('');
-    await sendMessage({ enrollmentId, receiverId: coachId, body });
+    await sendMessage({ coachId, clientId, receiverId: coachId, body });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 

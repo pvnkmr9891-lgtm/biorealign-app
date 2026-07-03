@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
 import { useClientDetail } from '@/hooks/useCoach';
 import { useClientAssessment } from '@/hooks/useClientAssessment';
 import { LineChart } from '@/components/ui/LineChart';
@@ -253,8 +254,8 @@ function AssessmentTab({ clientId }: { clientId: string }) {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
-function OverviewTab({ data, clientId, clientName, enrollmentId }: {
-  data: any; clientId: string; clientName: string; enrollmentId: string;
+function OverviewTab({ data, clientId, clientName, coachId }: {
+  data: any; clientId: string; clientName: string; coachId: string;
 }) {
   const router = useRouter();
 
@@ -284,7 +285,7 @@ function OverviewTab({ data, clientId, clientName, enrollmentId }: {
       {/* Quick actions */}
       <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginTop: 16, marginBottom: 24 }}>
         <TouchableOpacity
-          onPress={() => router.push({ pathname: '/(coach)/messaging', params: { enrollmentId, clientId, clientName } })}
+          onPress={() => router.push({ pathname: '/(coach)/messaging', params: { coachId, clientId, clientName } })}
           style={{ flex: 1, backgroundColor: THEME.colors.tealMuted, borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}
         >
           <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>💬 Message</Text>
@@ -419,6 +420,7 @@ function OverviewTab({ data, clientId, clientName, enrollmentId }: {
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function ClientDetailScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { clientId, enrollmentId, clientName } = useLocalSearchParams<{
     clientId: string;
     enrollmentId: string;
@@ -483,7 +485,7 @@ export default function ClientDetailScreen() {
             data={data}
             clientId={clientId}
             clientName={clientName ?? ''}
-            enrollmentId={enrollmentId}
+            coachId={user?.id ?? ''}
           />
         )}
         {activeTab === 'assessment' && (
