@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useUpdateProfile } from '@/hooks/useClient';
 import { useClientRehabRequests, useClientRehabAppointments, useRespondToRehabRequest, useAdminMarkRehabPaid } from '@/hooks/useAdmin';
 import { FeedbackThreadModal } from '@/components/medical/FeedbackThreadModal';
+import { PlanSection } from '@/components/coach/PlanSection';
 import { EditProfileModal } from '@/components/profile/EditProfileModal';
 import { useClientFitnessAssessments, FitnessDomain } from '@/hooks/useFitnessAssessment';
 import { DomainRadarChart, scoreBand } from '@/components/ui/DomainRadarChart';
@@ -31,7 +32,7 @@ import { THEME } from '@/constants/theme';
 
 const SUCCESS = THEME.colors.success ?? '#4CC986';
 
-type TabKey = 'profile' | 'overview' | 'assessment' | 'measurements' | 'pictures' | 'workouts' | 'medical' | 'recovery' | 'fitness';
+type TabKey = 'profile' | 'overview' | 'plan' | 'assessment' | 'measurements' | 'pictures' | 'workouts' | 'medical' | 'recovery' | 'fitness';
 const TABS: { key: TabKey; label: string; icon: string; color: string }[] = [
   { key: 'profile',      label: 'Profile',      icon: '👤', color: '#8b78e8' },
   { key: 'overview',     label: 'Overview',     icon: '🏠', color: THEME.colors.teal },
@@ -45,6 +46,9 @@ const TABS: { key: TabKey; label: string; icon: string; color: string }[] = [
 // Recovery review/respond is admin-only (Eshwar reviews from admin login) —
 // appended conditionally in ClientProfileView, not always shown to coaches.
 const RECOVERY_TAB: { key: TabKey; label: string; icon: string; color: string } = { key: 'recovery', label: 'Recovery', icon: '🩹', color: THEME.colors.amber };
+// Plan builder is coach-only (plan-builder route lives in the (coach) group) —
+// enabled via showPlanTab from the coach's client-overview screen.
+const PLAN_TAB: { key: TabKey; label: string; icon: string; color: string } = { key: 'plan', label: 'Plan', icon: '📋', color: THEME.colors.teal };
 
 // ── Shared building blocks ────────────────────────────────────────────
 function SectionHeader({ icon, title, color }: { icon: string; title: string; color: string }) {
@@ -1864,12 +1868,13 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
 // admin's client-profile screen. Adding a field/screen to a client's own
 // login? Add the matching tab/field here once, both contexts pick it up.
 export function ClientProfileView({
-  clientId, clientName, ownerLabel = 'Your client', onBack, showRecoveryTab = false, initialTab,
+  clientId, clientName, ownerLabel = 'Your client', onBack, showRecoveryTab = false, showPlanTab = false, initialTab,
 }: {
-  clientId: string; clientName: string; ownerLabel?: string; onBack: () => void; showRecoveryTab?: boolean; initialTab?: TabKey;
+  clientId: string; clientName: string; ownerLabel?: string; onBack: () => void; showRecoveryTab?: boolean; showPlanTab?: boolean; initialTab?: TabKey;
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
-  const tabs = showRecoveryTab ? [...TABS, RECOVERY_TAB] : TABS;
+  let tabs = showPlanTab ? [...TABS.slice(0, 2), PLAN_TAB, ...TABS.slice(2)] : TABS;
+  if (showRecoveryTab) tabs = [...tabs, RECOVERY_TAB];
 
   return (
     <View style={{ flex: 1 }}>
@@ -1919,6 +1924,13 @@ export function ClientProfileView({
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         {tab === 'profile'      && <ProfileTab clientId={clientId} />}
         {tab === 'overview'     && <OverviewTab clientId={clientId} clientName={clientName} />}
+        {tab === 'plan'         && (
+          // PlanSection carries its own marginHorizontal: 24 (built for the
+          // full-width client-detail screen) — cancel it inside this padded scroll.
+          <View style={{ marginHorizontal: -24 }}>
+            <PlanSection clientId={clientId} clientName={clientName ?? ''} />
+          </View>
+        )}
         {tab === 'assessment'   && <AssessmentTab clientId={clientId} clientName={clientName} />}
         {tab === 'measurements' && <MeasurementsTab clientId={clientId} />}
         {tab === 'pictures'     && <PicturesTab clientId={clientId} />}
