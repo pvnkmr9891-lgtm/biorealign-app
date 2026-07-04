@@ -24,7 +24,6 @@ export function usePendingCoachRequests() {
       if (error) throw error;
       return data ?? [];
     },
-    refetchInterval: 15000,
   });
 }
 

@@ -6,7 +6,10 @@ import { WeekStatusStrip } from '@/components/ui/WeekStatusStrip';
 import { MacroRing } from '@/components/coach/DayMacroSummary';
 import { MetricTrendChart } from '@/components/ui/MetricTrendChart';
 import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
-import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend } from '@/hooks/useCoachClientOverview';
+import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals, useClientWeightAdherenceTrend } from '@/hooks/useCoachClientOverview';
+import { WeightAdherenceChart } from '@/components/coach/WeightAdherenceChart';
+import { VitalsSparklines } from '@/components/ui/VitalsSparklines';
+import { WeeklyDigestCard } from '@/components/coach/WeeklyDigestCard';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
 import { useClientDetailedAssessment, useMarkAssessmentReviewed, useUpdateDetailedAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
@@ -24,6 +27,7 @@ import { FeedbackThreadModal } from '@/components/medical/FeedbackThreadModal';
 import { PlanSection } from '@/components/coach/PlanSection';
 import { EditProfileModal } from '@/components/profile/EditProfileModal';
 import { useClientFitnessAssessments, FitnessDomain } from '@/hooks/useFitnessAssessment';
+import { DomainRadarChart, scoreBand } from '@/components/ui/DomainRadarChart';
 import { SupplementCalendarTracker } from '@/components/supplements/SupplementCalendarTracker';
 import { supabase } from '@/lib/supabase';
 import { THEME } from '@/constants/theme';
@@ -195,12 +199,15 @@ function ProfileTab({ clientId }: { clientId: string }) {
 // ── Overview tab ───────────────────────────────────────────────────────
 function OverviewTab({ clientId, clientName, showActivity }: { clientId: string; clientName: string; showActivity: boolean }) {
   const { data: profile, isLoading } = useClientProfile(clientId);
+  const { data: vitals = [] } = useClientCheckinVitals(clientId);
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
 
   return (
     <View>
       <ProfileOverviewCard clientId={clientId} profile={profile} color={THEME.colors.teal} />
+      <WeeklyDigestCard clientId={clientId} clientName={clientName} />
+      <VitalsSparklines rows={vitals} />
       {showActivity && <ClientActivitySection clientId={clientId} clientName={clientName} />}
     </View>
   );
@@ -1171,6 +1178,7 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
   const { data: nutritionTrend = [] } = useClientNutritionTrend(clientId);
   const { data: oopsTrend = [] } = useClientOopsTrend(clientId);
   const { data: trainingLoad } = useClientTrainingLoadScores(clientId);
+  const { data: weightAdherence = [] } = useClientWeightAdherenceTrend(clientId);
   const [selectedMetric, setSelectedMetric] = useState('weight_kg');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nutritionView, setNutritionView] = useState<'total' | 'oops'>('total');
@@ -1240,6 +1248,14 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
         </ScrollView>
         <MetricTrendChart points={trendPoints} color={activeField.color} unit={activeField.suffix} />
       </Card>
+
+      {/* Weight vs adherence — the "why isn't the weight moving" overlay */}
+      {weightAdherence.length >= 2 && (
+        <Card accent={THEME.colors.teal}>
+          <SectionHeader icon="⚖️" title="Weight vs Adherence" color={THEME.colors.teal} />
+          <WeightAdherenceChart points={weightAdherence} />
+        </Card>
+      )}
 
       {/* Training Load — daily Cardio / Strength / Mobility scores, auto-derived
           from workout logs. Separate from the 8-domain Fitness Assessment tab. */}
@@ -1973,9 +1989,34 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
     );
   }
 
+  // Radar data: latest vs first assessment (only scored domains)
+  const toRadarPoints = (a: (typeof assessments)[number]) =>
+    a.results
+      .filter((r) => r.score_status === 'scored' && r.domain_score != null)
+      .map((r) => ({ domain: r.domain as FitnessDomain, score: r.domain_score }));
+
+  const latestAssessment = assessments[0];
+  const firstAssessment = assessments[assessments.length - 1];
+  const latestPoints = toRadarPoints(latestAssessment);
+  const baselinePoints = assessments.length > 1 ? toRadarPoints(firstAssessment) : undefined;
+
   return (
     <View>
       {newAssessmentButton}
+      {latestPoints.length > 0 && (
+        <Card accent={THEME.colors.teal}>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 2 }}>Domain profile</Text>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>
+            0–100, scored against age & sex norms
+          </Text>
+          <DomainRadarChart
+            latest={latestPoints}
+            latestDate={latestAssessment.assessment_date}
+            baseline={baselinePoints}
+            baselineDate={baselinePoints ? firstAssessment.assessment_date : undefined}
+          />
+        </Card>
+      )}
       <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 10 }}>ASSESSMENT HISTORY</Text>
       {assessments.map((a, idx) => (
         <Card key={a.id} accent={idx === 0 ? '#34D399' : undefined}>
@@ -2005,7 +2046,14 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
                     {outOfRange ? (
                       <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Age out of range</Text>
                     ) : (
-                      <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: meta.color }}>{r.domain_score != null ? Math.round(r.domain_score) : '—'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {r.domain_score != null && (
+                          <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: scoreBand(r.domain_score).color }}>
+                            {scoreBand(r.domain_score).label}
+                          </Text>
+                        )}
+                        <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: meta.color }}>{r.domain_score != null ? Math.round(r.domain_score) : '—'}</Text>
+                      </View>
                     )}
                   </View>
                   <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>

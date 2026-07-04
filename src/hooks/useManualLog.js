@@ -172,7 +172,6 @@ export function useManualLog(userId, profile, weekStartOverride) {
     // (a different device/session), which this client query has no other
     // way to learn about. Poll in the background so additions show up
     // without the client needing to leave and reopen the screen.
-    refetchInterval: 20000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('manual_workout_logs')

@@ -38,7 +38,6 @@ export function useMyDetailedAssessment() {
       if (createError) throw createError;
       return created;
     },
-    refetchInterval: 15000, // pick up coach review status without a manual reload
   });
 }
 

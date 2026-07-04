@@ -538,7 +538,6 @@ export function useClientRehabAppointments(clientId: string) {
 export function useAdminRehabAvailabilityWindows() {
   return useQuery({
     queryKey: ['admin', 'rehab_windows'],
-    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_availability_windows')
@@ -768,7 +767,6 @@ export function useAdminCoachesList() {
 export function useAdminRehabQueue() {
   return useQuery({
     queryKey: ['admin', 'rehab_queue'],
-    refetchInterval: 15000, // pick up new client requests without a manual reload
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_requests')
@@ -793,7 +791,6 @@ export function useAdminRehabCalendar({ startDate, endDate }: { startDate: strin
   return useQuery({
     queryKey: ['admin', 'rehab_calendar', startDate, endDate],
     enabled: !!startDate && !!endDate,
-    refetchInterval: 15000, // pick up newly-booked client slots without a manual reload
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_appointments')
