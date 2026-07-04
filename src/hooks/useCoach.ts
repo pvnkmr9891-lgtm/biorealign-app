@@ -7,7 +7,6 @@ import { useAuth } from '@/hooks/useAuth';
 // Keys
 // ---------------------------------------------------------------------------
 export const coachKeys = {
-  clients:       (uid: string) => ['coach', uid, 'clients'] as const,
   client:        (uid: string, clientId: string) => ['coach', uid, 'client', clientId] as const,
   sessions:      (uid: string) => ['coach', uid, 'sessions'] as const,
   todaySessions: (uid: string) => ['coach', uid, 'sessions', 'today'] as const,
@@ -17,49 +16,16 @@ export const coachKeys = {
 };
 
 // ---------------------------------------------------------------------------
-// All clients for this coach
+// Single client activity (scores, check-ins, sessions)
 // ---------------------------------------------------------------------------
-export function useCoachClients() {
-  const { user } = useAuth();
-
-  return useQuery({
-    queryKey: coachKeys.clients(user?.id ?? ''),
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('enrollments')
-        .select(`
-          id,
-          status,
-          current_week,
-          started_at,
-          program:programs(id, name, slug, duration_weeks),
-          client:profiles!enrollments_client_id_fkey(
-            id, full_name, phone, avatar_url, health_goals, conditions
-          )
-        `)
-        .eq('coach_id', user!.id)
-        .eq('status', 'active')
-        .order('started_at', { ascending: false });
-
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Single client detail
-// ---------------------------------------------------------------------------
-export function useClientDetail(clientId: string, enrollmentId: string) {
+export function useClientDetail(clientId: string) {
   const { user } = useAuth();
 
   return useQuery({
     queryKey: coachKeys.client(user?.id ?? '', clientId),
-    enabled: !!clientId && !!enrollmentId,
+    enabled: !!clientId,
     queryFn: async () => {
-      const [profileRes, metricsRes, checkinsRes, sessionsRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', clientId).single(),
+      const [metricsRes, checkinsRes, sessionsRes] = await Promise.all([
         supabase.from('progress_metrics')
           .select('*').eq('client_id', clientId)
           .order('recorded_at', { ascending: false }).limit(8),
@@ -72,7 +38,6 @@ export function useClientDetail(clientId: string, enrollmentId: string) {
       ]);
 
       return {
-        profile:  profileRes.data,
         metrics:  metricsRes.data  ?? [],
         checkins: checkinsRes.data ?? [],
         sessions: sessionsRes.data ?? [],

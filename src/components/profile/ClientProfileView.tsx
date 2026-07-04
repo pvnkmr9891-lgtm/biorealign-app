@@ -11,7 +11,9 @@ import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
 import { useClientDetailedAssessment, useMarkAssessmentReviewed, useUpdateDetailedAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
 import { DETAILED_ASSESSMENT_STAGES, AssessmentField, FieldType } from '@/constants/detailedAssessmentQuestions';
-import { useUpdateClientAssessment } from '@/hooks/useClientAssessment';
+import { useClientAssessment, useUpdateClientAssessment } from '@/hooks/useClientAssessment';
+import { useClientDetail } from '@/hooks/useCoach';
+import { LineChart } from '@/components/ui/LineChart';
 import { getWeekStart } from '@/hooks/useManualLog';
 import { useClientMedicalDocuments, useClientMedicalAnalyses, DocumentCategory, AnalysisDocResult, MedicalDocument } from '@/hooks/useMedicalDocuments';
 import { useMarkAnalysisViewedByCoach } from '@/hooks/useCoachDashboard';
@@ -191,7 +193,7 @@ function ProfileTab({ clientId }: { clientId: string }) {
 }
 
 // ── Overview tab ───────────────────────────────────────────────────────
-function OverviewTab({ clientId }: { clientId: string }) {
+function OverviewTab({ clientId, clientName, showActivity }: { clientId: string; clientName: string; showActivity: boolean }) {
   const { data: profile, isLoading } = useClientProfile(clientId);
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
@@ -199,6 +201,144 @@ function OverviewTab({ clientId }: { clientId: string }) {
   return (
     <View>
       <ProfileOverviewCard clientId={clientId} profile={profile} color={THEME.colors.teal} />
+      {showActivity && <ClientActivitySection clientId={clientId} clientName={clientName} />}
+    </View>
+  );
+}
+
+// ── Client activity (coach-only) — composite scores, check-ins, sessions.
+// Ported from the deleted (coach)/client-detail screen; session rows route
+// into the (coach) group, so this is gated behind showPlanTab like the
+// Plan tab rather than shown in the admin context.
+const ACTIVITY_SCORES = [
+  { label: 'Fitness',   key: 'fitness_score',   color: THEME.scoreColors.fitness },
+  { label: 'Recovery',  key: 'recovery_score',  color: THEME.scoreColors.recovery },
+  { label: 'Longevity', key: 'longevity_score', color: THEME.scoreColors.longevity },
+];
+
+function ClientActivitySection({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const router = useRouter();
+  const { data, isLoading } = useClientDetail(clientId);
+
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 24 }} />;
+
+  const latest   = data?.metrics?.[0] ?? null;
+  const previous = data?.metrics?.[1] ?? null;
+
+  const chartSeries = ACTIVITY_SCORES.map((s) => ({
+    key:   s.key,
+    label: s.label,
+    color: s.color,
+    data:  (data?.metrics ?? []).slice().reverse().map((m: any) => m[s.key] ?? 0),
+  }));
+  const chartLabels = (data?.metrics ?? []).slice().reverse().map((m: any) =>
+    new Date(m.recorded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  );
+
+  return (
+    <View>
+      {/* Composite scores */}
+      <Card accent={THEME.colors.teal}>
+        <SectionHeader icon="📊" title="Progress Scores" color={THEME.colors.teal} />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {ACTIVITY_SCORES.map((s) => {
+            const val   = latest?.[s.key]   ?? null;
+            const prev  = previous?.[s.key] ?? null;
+            const delta = val != null && prev != null ? val - prev : null;
+            return (
+              <View key={s.key} style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: s.color }} />
+                  <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 10 }}>{s.label}</Text>
+                </View>
+                <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 24 }}>{val ?? '–'}</Text>
+                {delta != null && (
+                  <Text style={{ color: delta >= 0 ? THEME.colors.success : THEME.colors.error, fontFamily: THEME.fonts.sans, fontSize: 11, marginTop: 3 }}>
+                    {delta >= 0 ? '+' : ''}{delta}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+        {(data?.metrics?.length ?? 0) >= 2 && (
+          <View style={{ marginTop: 16 }}>
+            <LineChart series={chartSeries} labels={chartLabels} height={160} showDots />
+          </View>
+        )}
+      </Card>
+
+      {/* Recent check-ins */}
+      <Card accent={THEME.colors.amber}>
+        <SectionHeader icon="✅" title="Recent Check-ins" color={THEME.colors.amber} />
+        {(data?.checkins?.length ?? 0) === 0 ? (
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13 }}>No check-ins yet</Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {data?.checkins?.map((c: any) => (
+              <View key={c.id} style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>
+                    {new Date(c.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </Text>
+                  <Text style={{ color: c.pain_level >= 7 ? THEME.colors.error : c.pain_level >= 4 ? THEME.colors.amber : THEME.colors.success, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>
+                    Pain: {c.pain_level}/10
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  {[['Mood', c.mood], ['Energy', c.energy], ['Sleep', `${c.sleep_hrs}h`]].map(([l, v]) => (
+                    <View key={String(l)}>
+                      <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11 }}>{l}</Text>
+                      <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>{v}</Text>
+                    </View>
+                  ))}
+                </View>
+                {c.notes && (
+                  <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 8, fontStyle: 'italic' }}>
+                    "{c.notes}"
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+      </Card>
+
+      {/* Session history */}
+      <Card accent="#60A5FA">
+        <SectionHeader icon="🗓️" title="Session History" color="#60A5FA" />
+        {(data?.sessions?.length ?? 0) === 0 ? (
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13 }}>No sessions yet</Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {data?.sessions?.map((s: any) => (
+              <TouchableOpacity
+                key={s.id}
+                activeOpacity={0.8}
+                onPress={() => router.push({ pathname: '/(coach)/session-notes', params: { sessionId: s.id, clientName } })}
+                style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <View>
+                  <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>
+                    {new Date(s.scheduled_at).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </Text>
+                  <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 2 }}>
+                    {s.type} · {s.duration_min} min
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: s.status === 'completed' ? `${THEME.colors.success}20` : THEME.colors.surface2 }}>
+                    <Text style={{ color: s.status === 'completed' ? THEME.colors.success : THEME.colors.textMuted, fontFamily: THEME.fonts.sansMedium, fontSize: 11 }}>
+                      {s.status}
+                    </Text>
+                  </View>
+                  <Text style={{ color: THEME.colors.textMuted }}>›</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </Card>
     </View>
   );
 }
@@ -821,6 +961,71 @@ export function GeneralAssessmentEditor({ clientId, assessment, onDone }: { clie
   );
 }
 
+// ── General Assessment (onboarding) — collapsed accordion below the
+// Detailed Assessment stages. Read-only rows + the editor above; this view
+// previously lived on the deleted (coach)/client-detail screen and is the
+// only place coaches see the onboarding `assessments` row.
+const cleanGAValue = (v: any) =>
+  typeof v === 'string' ? v.replace(/_/g, ' ')
+  : Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x.replace(/_/g, ' ') : x))
+  : v;
+
+function GeneralAssessmentCard({ clientId }: { clientId: string }) {
+  const { data: general, isLoading } = useClientAssessment(clientId);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  if (isLoading || !general) return null;
+
+  return (
+    <View style={{ marginTop: 6, marginBottom: 10, backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, overflow: 'hidden' }}>
+      <TouchableOpacity
+        onPress={() => setOpen(!open)}
+        activeOpacity={0.8}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16 }}
+      >
+        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: `${THEME.colors.teal}20`, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 15 }}>📋</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>General Assessment</Text>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>
+            From onboarding{general.submitted_at ? ` · ${new Date(general.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+          </Text>
+        </View>
+        <Text style={{ color: THEME.colors.textMuted, fontSize: 16, transform: [{ rotate: open ? '90deg' : '0deg' }] }}>›</Text>
+      </TouchableOpacity>
+
+      {open && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 14, borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
+          {editing ? (
+            <View style={{ marginTop: 12 }}>
+              <GeneralAssessmentEditor clientId={clientId} assessment={general} onDone={() => setEditing(false)} />
+            </View>
+          ) : (
+            <>
+              {GENERAL_ASSESSMENT_SECTIONS.map((section) => (
+                <View key={section.title} style={{ marginTop: 14 }}>
+                  <SectionHeader icon={section.icon} title={section.title} color={section.color} />
+                  {section.fields.map((f) => (
+                    <FieldValue key={f.key} label={f.label} value={cleanGAValue((general as any)[f.key])} color={section.color} />
+                  ))}
+                </View>
+              ))}
+              <TouchableOpacity
+                onPress={() => setEditing(true)}
+                style={{ alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: `${THEME.colors.teal}18` }}
+              >
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>✏️ Edit</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function AssessmentTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const { data: assessment, isLoading } = useClientDetailedAssessment(clientId);
   const { data: clientProfile } = useClientProfile(clientId);
@@ -837,11 +1042,14 @@ function AssessmentTab({ clientId, clientName }: { clientId: string; clientName:
 
   if (!assessment || assessment.status === 'in_progress') {
     return (
-      <EmptyState
-        icon="📝"
-        title="Not submitted yet"
-        subtitle={`${clientName} hasn't requested a coach / taken the Detailed Assessment yet (currently on stage ${assessment?.current_stage ?? 1}).`}
-      />
+      <View>
+        <EmptyState
+          icon="📝"
+          title="Not submitted yet"
+          subtitle={`${clientName} hasn't requested a coach / taken the Detailed Assessment yet (currently on stage ${assessment?.current_stage ?? 1}).`}
+        />
+        <GeneralAssessmentCard clientId={clientId} />
+      </View>
     );
   }
 
@@ -934,6 +1142,8 @@ function AssessmentTab({ clientId, clientName }: { clientId: string; clientName:
           <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>✓ Mark as Reviewed</Text>
         </TouchableOpacity>
       )}
+
+      <GeneralAssessmentCard clientId={clientId} />
     </View>
   );
 }
@@ -1875,7 +2085,7 @@ export function ClientProfileView({
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         {tab === 'profile'      && <ProfileTab clientId={clientId} />}
-        {tab === 'overview'     && <OverviewTab clientId={clientId} />}
+        {tab === 'overview'     && <OverviewTab clientId={clientId} clientName={clientName} showActivity={showPlanTab} />}
         {tab === 'plan'         && (
           // PlanSection carries its own marginHorizontal: 24 (built for the
           // full-width client-detail screen) — cancel it inside this padded scroll.

@@ -1,8 +1,5 @@
-// ============================================================
-// ADD THIS COMPONENT to your existing app/(coach)/client-detail.tsx
-// Insert it wherever you want the plan section to appear
-// (typically after the client info section)
-// ============================================================
+// Personalised Plan list + entry into the plan builder. Rendered in the
+// coach's Plan tab (ClientProfileView, via showPlanTab).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
