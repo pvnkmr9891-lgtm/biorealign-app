@@ -27,3 +27,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx eslint .
         continue-on-error: true
+
+  # Runs the role-simulation security tests against the live DB. Skipped
+  # until the SUPABASE_DB_URL repo secret is set (Supabase dashboard →
+  # Connect → Direct connection string, with password).
+  rls-tests:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: RLS regression tests
+        if: env.SUPABASE_DB_URL != ''
+        run: psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls_tests.sql
+      - name: Skipped (no SUPABASE_DB_URL secret)
+        if: env.SUPABASE_DB_URL == ''
+        run: echo "SUPABASE_DB_URL secret not configured - RLS tests skipped"
