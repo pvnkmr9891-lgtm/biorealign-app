@@ -23,6 +23,8 @@ export default function CoachLayout() {
       <Stack.Screen name="lite-clients" />
       <Stack.Screen name="client-overview" />
       <Stack.Screen name="client-workouts" />
+      <Stack.Screen name="medical-opinion-requests" />
+      <Stack.Screen name="fitness-assessment-new" />
       <Stack.Screen name="my-public-profile" />
     </Stack>
   );

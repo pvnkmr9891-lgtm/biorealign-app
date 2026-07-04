@@ -118,7 +118,6 @@ export function useAlignmentScore() {
   return useQuery({
     queryKey: ['alignment', user?.id, 'today'],
     enabled: !!user?.id,
-    refetchInterval: 15_000,
     queryFn: async () => {
       const weekStart = getWeekStart(new Date());
       const dayNumber = getDayNumber(weekStart);
@@ -154,7 +153,6 @@ export function useWeeklyAlignment(weekStart?: string) {
   return useQuery({
     queryKey: ['alignment', user?.id, 'week', resolvedWeekStart],
     enabled: !!user?.id,
-    refetchInterval: 60_000,
     queryFn: async () => {
       const weekStart = resolvedWeekStart;
 

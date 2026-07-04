@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      # Report-only until the ~107 pre-existing lint errors are burned down —
+      # then delete continue-on-error to make this blocking.
+      - name: ESLint (report-only)
+        if: ${{ !cancelled() }}
+        run: npx eslint .
+        continue-on-error: true
+
+  # Runs the role-simulation security tests against the live DB. Skipped
+  # until the SUPABASE_DB_URL repo secret is set (Supabase dashboard →
+  # Connect → Direct connection string, with password).
+  rls-tests:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: RLS regression tests
+        if: env.SUPABASE_DB_URL != ''
+        run: psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls_tests.sql
+      - name: Skipped (no SUPABASE_DB_URL secret)
+        if: env.SUPABASE_DB_URL == ''
+        run: echo "SUPABASE_DB_URL secret not configured - RLS tests skipped"

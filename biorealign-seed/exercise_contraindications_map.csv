@@ -1,0 +1,150 @@
+exercise_slug,condition_slug,severity,reason,modification_tips
+incline_pushup,shoulder_impingement,caution,Horizontal push at incline reduces impingement risk vs flat,Use very high incline or wall push-up
+incline_pushup,rotator_cuff_tear,relative,Reduced load vs flat but still stresses rotator cuff,Physician clearance required
+decline_pushup,shoulder_impingement,absolute,Decline increases shoulder impingement angle,Replace with flat or incline push-up
+decline_pushup,rotator_cuff_tear,absolute,High rotator cuff load in decline position,Avoid entirely
+decline_pushup,lower_back_pain,relative,Extended prone position with spinal load,Ensure neutral spine; reduce if pain occurs
+diamond_pushup,shoulder_impingement,absolute,Narrow grip creates high impingement risk,Replace with wide push-up or band press
+diamond_pushup,lateral_epicondylitis,caution,Elbow load in narrow grip position,Reduce volume; avoid if elbow pain occurs
+diamond_pushup,rotator_cuff_tear,absolute,High rotator cuff load,Avoid entirely
+pike_pushup,shoulder_impingement,absolute,Overhead pushing directly stresses impinged tissue,Replace with lateral raises or band work
+pike_pushup,rotator_cuff_tear,absolute,High overhead rotator cuff load,Avoid entirely
+wall_pushup,pregnancy_t3,caution,Safe in general but avoid if uncomfortable,Use chair or table at higher incline
+db_bench_press,shoulder_impingement,relative,Horizontal push; less risky than barbell,Use neutral grip dumbbells; reduce range of motion
+db_bench_press,rotator_cuff_tear,absolute,Significant load on damaged tissue,Avoid
+db_bench_press,pregnancy_t2,relative,Supine position may cause vena cava compression,Elevate upper body on incline bench
+db_bench_press,pregnancy_t3,absolute,Supine position contraindicated after 20 weeks,Replace with incline or standing press
+db_shoulder_press,shoulder_impingement,relative,Overhead pressing impinges subacute space,Replace with lateral raises or low cable work
+db_shoulder_press,rotator_cuff_tear,absolute,Direct overhead load on damaged tissue,Avoid
+db_shoulder_press,hypertension,caution,Overhead pressing raises blood pressure significantly,Reduce weight; monitor BP
+db_lateral_raise,shoulder_impingement,relative,Lateral elevation through impingement zone,Keep elbows slightly bent; reduce range
+db_lateral_raise,rotator_cuff_tear,relative,Load through lateral chain of rotator cuff,Use very light weight; physician clearance
+bb_bench_press,shoulder_impingement,absolute,Fixed bar path limits shoulder positioning,Replace with dumbbell press
+bb_bench_press,rotator_cuff_tear,absolute,High load on damaged rotator cuff,Avoid entirely
+bb_bench_press,pregnancy_t2,absolute,Supine position risks,Replace with machine or incline press
+bb_bench_press,pregnancy_t3,absolute,Supine position contraindicated,Avoid entirely
+bb_ohp,shoulder_impingement,absolute,Direct overhead pressing maximally stresses impingement,Replace with dumbbell or seated press
+bb_ohp,rotator_cuff_tear,absolute,Highest risk overhead exercise,Avoid entirely
+bb_ohp,lower_back_pain,relative,Axial spinal load while standing,Perform seated; brace core
+bb_ohp,herniated_disc,relative,Axial load risk,Seated version only; physician clearance
+bb_ohp,hypertension,caution,Significant BP elevation overhead,Monitor; keep intensity moderate
+arnold_press,shoulder_impingement,absolute,Rotation through impingement zone,Replace with fixed-plane press
+arnold_press,rotator_cuff_tear,absolute,Rotation under load critically stresses damaged tissue,Avoid entirely
+chest_dips,shoulder_impingement,absolute,Dip motion critically loads impingement zone,Replace with cable crossover
+chest_dips,rotator_cuff_tear,absolute,High load through full shoulder range,Avoid entirely
+chest_dips,lower_back_pain,caution,Hanging position with body load,Ensure neutral spine
+tricep_dips_chair,shoulder_impingement,relative,Extension load behind body stresses anterior shoulder,Keep arms closer to body; reduce depth
+tricep_dips_chair,rotator_cuff_tear,relative,Load on rotator cuff in extension,Physician clearance; limited depth
+chinup,shoulder_impingement,relative,Pull motion at different angle to pull-up; generally safer,Use assisted machine; limit range
+chinup,rotator_cuff_tear,absolute,High pull load on damaged tissue,Avoid
+chinup,lower_back_pain,caution,Spinal traction can help or aggravate,Monitor carefully
+negative_pullup,shoulder_impingement,relative,Slower eccentric may help rehabilitation,Very light; supervised progression only
+db_single_arm_row,lower_back_pain,caution,Bent-over position with unilateral load,Use bench support; keep back flat
+db_single_arm_row,herniated_disc,relative,Flexion under load,Use very light weight; physician clearance
+bb_bent_row,lower_back_pain,relative,Significant spinal flexion under high load,Replace with supported row or cable row
+bb_bent_row,herniated_disc,absolute,High-risk for disc herniation aggravation,Replace with seated cable row
+bb_bent_row,osteoporosis,caution,Spinal flexion under load risks fracture,Replace with machine row
+face_pull,shoulder_impingement,caution,External rotation movement can help rehabilitation,Keep weight very light; pain-free range only
+face_pull,rotator_cuff_tear,relative,Direct rotator cuff exercise; depends on tear type,Physician clearance; may be therapeutic
+band_pull_apart,shoulder_impingement,caution,Generally therapeutic for impingement,Keep tension light; work through pain-free range
+db_bicep_curl,lateral_epicondylitis,relative,Elbow flexion under load aggravates epicondylitis,Use neutral grip hammer curl instead
+bb_back_squat,knee_pain,relative,High compressive knee load,Reduce depth; high bar position
+bb_back_squat,lower_back_pain,relative,Axial spinal load,Brace core; reduce weight; check form
+bb_back_squat,herniated_disc,relative,Compressive spinal load,Physician clearance; very conservative approach
+bb_back_squat,knee_replacement,absolute,Post-surgical knee cannot tolerate heavy barbell squat,Replace with leg press or bodyweight squat
+bb_back_squat,osteoporosis,caution,Fall risk and spinal compression,Only with supervision and light weight
+bb_front_squat,knee_pain,relative,High knee flexion,Reduce depth
+bb_front_squat,shoulder_impingement,relative,Front rack position stresses shoulder,Use goblet hold instead
+bb_front_squat,lower_back_pain,caution,More upright torso than back squat; generally safer,Monitor carefully
+bulgarian_split_squat,knee_pain,relative,Single leg knee flexion under load,Reduce depth and weight; elevate rear foot less
+bulgarian_split_squat,knee_replacement,absolute,Post-surgical knee cannot tolerate single leg load,Replace with reverse lunge
+forward_lunge,knee_pain,caution,Knee tracking over foot during step,Reduce stride; avoid knee going past toe
+forward_lunge,knee_replacement,relative,Step-through motion with knee loading,Physician clearance; short stride
+reverse_lunge,knee_pain,caution,Less knee stress than forward lunge,Monitor anterior knee pain
+lateral_lunge,knee_pain,caution,Lateral knee load,Reduce depth; maintain knee alignment
+step_up,knee_pain,caution,Knee extension under load,Reduce step height; control descent
+step_up,knee_replacement,relative,Depends on surgical outcome,Physician clearance; low step only
+rdl,lower_back_pain,caution,Hip hinge with spinal load,Maintain neutral spine; reduce range of motion
+rdl,herniated_disc,relative,Flexion with load risks disc,Physician clearance; extremely conservative
+deadlift,lower_back_pain,relative,High spinal compressive and shear force,Physician clearance; brace core; reduce weight
+deadlift,herniated_disc,absolute,Highest risk for herniated disc aggravation,Avoid entirely; replace with hip thrust
+deadlift,osteoporosis,caution,Fall risk and vertebral compression risk,Only with supervision; very light weight
+deadlift,pregnancy_t2,relative,Intra-abdominal pressure and spinal load,Replace with band deadlift or glute bridge
+deadlift,pregnancy_t3,absolute,Contraindicated due to risk profile,Avoid entirely
+sumo_deadlift,lower_back_pain,caution,More upright torso than conventional; often safer,Monitor; keep weight conservative
+sumo_deadlift,hip_replacement,absolute,Wide hip abduction under load post-surgery,Avoid; physician clearance required
+sumo_deadlift,herniated_disc,relative,Reduced flexion vs conventional,Physician clearance; conservative weight
+bb_hip_thrust,lower_back_pain,caution,Spinal extension under load,Maintain neutral spine at top; no hyperextension
+bb_hip_thrust,pregnancy_t3,absolute,Heavy weight on abdomen contraindicated,Replace with bodyweight glute bridge
+box_jump,knee_pain,absolute,High-impact landing with rapid knee flexion,Replace with step-up or squat
+box_jump,knee_replacement,absolute,Post-surgical knee cannot tolerate impact,Avoid entirely
+box_jump,lower_back_pain,relative,Landing impact transmitted to spine,Replace with goblet squat
+box_jump,pregnancy_t1,relative,High impact; check with OB,Replace with step-up
+box_jump,pregnancy_t2,absolute,High impact contraindicated,Avoid
+box_jump,pregnancy_t3,absolute,High impact contraindicated,Avoid
+jump_squat,knee_pain,absolute,High-impact repeated knee loading,Replace with goblet squat
+jump_squat,knee_replacement,absolute,Post-surgical,Avoid entirely
+jump_squat,lower_back_pain,relative,Landing impact,Replace with bodyweight squat
+jump_squat,pregnancy_t2,absolute,High impact,Avoid; replace with bodyweight squat
+jump_squat,pregnancy_t3,absolute,High impact contraindicated,Avoid
+jump_squat,hypertension,caution,Significant cardiovascular demand,Monitor; keep intensity moderate
+side_plank,shoulder_impingement,relative,Weight-bearing through shoulder,Use modified side plank on knee
+dead_bug,pregnancy_t3,caution,Supine position after 20 weeks risks vena cava compression,Use modified version with head elevation
+hollow_body,lower_back_pain,relative,Extreme spinal flexion isometric,Replace with dead bug or plank
+hollow_body,herniated_disc,relative,High intra-abdominal pressure,Replace with bird-dog
+hollow_body,pregnancy_t2,absolute,Extreme core compression harmful to fetus,Avoid
+hollow_body,pregnancy_t3,absolute,Absolutely contraindicated,Avoid
+mountain_climbers,shoulder_impingement,relative,Prolonged shoulder weight-bearing,Reduce duration; consider plank alternatives
+mountain_climbers,lower_back_pain,caution,Hip flexor pull on lumbar,Ensure neutral spine
+mountain_climbers,pregnancy_t2,relative,Prone position and intra-abdominal pressure,Replace with standing or seated cardio
+mountain_climbers,pregnancy_t3,absolute,Prone position contraindicated,Avoid
+hanging_leg_raise,shoulder_impingement,absolute,Full suspension with overhead shoulder load,Replace with reverse crunch
+hanging_leg_raise,rotator_cuff_tear,absolute,Hanging position with body weight on damaged tissue,Avoid entirely
+hanging_leg_raise,lower_back_pain,relative,Hip flexor pull on lumbar while hanging,Replace with reverse crunch
+ab_wheel_rollout,lower_back_pain,relative,Extreme anti-extension demand,Only with proven neutral spine control
+ab_wheel_rollout,herniated_disc,absolute,Very high intra-abdominal pressure and spinal flexion,Avoid entirely
+ab_wheel_rollout,pregnancy_t1,relative,High intra-abdominal pressure,Physician clearance
+ab_wheel_rollout,pregnancy_t2,absolute,High abdominal pressure harmful to fetus,Avoid
+ab_wheel_rollout,pregnancy_t3,absolute,Absolutely contraindicated,Avoid
+burpee,knee_pain,absolute,Repeated high-impact knee flexion,Replace with mountain climbers or step jacks
+burpee,lower_back_pain,absolute,Dynamic spinal flexion through full ROM,Replace with plank or dead bug
+skater_hops,knee_pain,absolute,Lateral impact loading on knee,Replace with lateral shuffle (no hop)
+skater_hops,pregnancy_t2,absolute,High-impact lateral movement,Replace with lateral shuffle
+skater_hops,pregnancy_t3,absolute,High impact contraindicated,Avoid
+tuck_jump,knee_pain,absolute,Explosive knee flexion with landing impact,Replace with step-up
+tuck_jump,lower_back_pain,relative,Extreme intra-abdominal pressure,Replace with squat
+tuck_jump,pregnancy_t1,relative,High intensity and impact,Check with OB
+tuck_jump,pregnancy_t2,absolute,High impact contraindicated,Avoid
+tuck_jump,pregnancy_t3,absolute,Absolutely contraindicated,Avoid
+tuck_jump,hypertension,relative,Extreme cardiovascular demand,Medical clearance required
+kb_swing,lower_back_pain,relative,Hip hinge under dynamic kettlebell load,Physician clearance; very light weight first
+kb_swing,herniated_disc,absolute,High shear force with dynamic flexion/extension,Avoid entirely
+kb_swing,pregnancy_t2,relative,Dynamic abdominal loading,Replace with glute bridge
+kb_swing,pregnancy_t3,absolute,Abdominal compression and impact,Avoid entirely
+explosive_pushup,shoulder_impingement,absolute,Explosive push through impingement zone,Replace with standard push-up
+explosive_pushup,rotator_cuff_tear,absolute,Explosive rotator cuff load,Avoid entirely
+explosive_pushup,lower_back_pain,relative,Prone position with explosive movement,Ensure neutral spine
+pigeon_pose,knee_pain,relative,Lateral rotation in knee joint,Use figure-four stretch lying down instead
+pigeon_pose,knee_replacement,relative,External hip rotation may stress implant,Physician clearance; alternative preferred
+kneeling_hip_flexor,knee_pain,caution,Kneeling puts direct pressure on knee,Use cushion; or replace with standing lunge stretch
+bulgarian_split_squat,plantar_fasciitis,caution,Load through foot,Wear supportive shoes
+clamshell,lower_back_pain,caution,Side-lying position generally safe,Monitor if hip rotation triggers back pain
+seated_leg_ext,knee_pain,relative,Knee extension under load with shear force,Use very light or bodyweight only
+seated_leg_ext,knee_replacement,relative,Physician clearance required,Very limited range of motion
+bb_bent_row,spondylosis,absolute,High-risk for spondylolisthesis aggravation with heavy rows,Replace with cable or machine row
+deadlift,spondylosis,absolute,Extreme spinal shear and compression risk,Physician clearance and imaging required
+bbback_squat,spondylosis,relative,Axial load with compression,Physician clearance; goblet squat preferred
+bb_ohp,epilepsy,caution,Overhead exercise with seizure risk,Ensure spotter; avoid alone
+box_jump,epilepsy,absolute,Fall risk during seizure; impact,Avoid; replace with step-up
+tuck_jump,epilepsy,absolute,Fall risk during seizure,Avoid
+jump_squat,epilepsy,relative,Fall risk during seizure,Supervised only; very careful
+skater_hops,epilepsy,absolute,High fall risk,Avoid
+burpee,epilepsy,absolute,High fall risk and intensity,Avoid
+deadlift,type2_diabetes,caution,Monitor blood glucose before and after,Carry fast-acting glucose; start conservative
+bb_back_squat,type2_diabetes,caution,High intensity drops blood glucose,Monitor blood glucose
+explosive_pushup,heart_failure,absolute,High exertion contraindicated in heart failure,Replace with resistance bands
+bb_ohp,heart_failure,absolute,High blood pressure demand,Avoid entirely
+deadlift,heart_failure,absolute,Extreme cardiovascular demand,Avoid; physician-supervised only
+kb_swing,heart_failure,absolute,High-intensity with Valsalva risk,Avoid entirely
+tuck_jump,heart_failure,absolute,Extreme cardiovascular demand,Avoid
+box_jump,heart_failure,absolute,Extreme cardiovascular demand,Avoid

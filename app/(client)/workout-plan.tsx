@@ -3,7 +3,7 @@ import { WaterTracker } from '@/components/ui/WaterTracker';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable,
+  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +21,12 @@ import { WARMUP_EXERCISES, type ExerciseSide, type WarmupExerciseDefault } from 
 import { WORKOUT_EXERCISES } from '@/constants/workoutExercises';
 import { COOLDOWN_EXERCISES } from '@/constants/cooldownExercises';
 import { MORNING_DRINK_ITEMS, BREAKFAST_ITEMS, LUNCH_ITEMS, EVENING_SNACK_ITEMS, DINNER_ITEMS, type FoodItemDefault } from '@/constants/foodItems';
+import { BREAKFAST_GROUPS, type BreakfastItem } from '@/constants/breakfastGroups';
+import { LUNCH_GROUPS, type LunchItem } from '@/constants/lunchGroups';
+import { DINNER_GROUPS, type DinnerItem } from '@/constants/dinnerGroups';
+import { CRAVING_GROUPS, type CravingItem } from '@/constants/cravingGroups';
 import { SUPPLEMENT_ITEMS, type SupplementItemDefault } from '@/constants/supplementItems';
+import { useSupplementCatalogImages } from '@/hooks/useSupplementCatalogImages';
 
 const DAY_NAMES  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_ABBRS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -104,7 +109,7 @@ function Checkbox({ checked, onPress, color = THEME.colors.teal, locked = false 
 
 // ── Detail line: Sets × Reps · Side · Hold · Rest (exercises) or
 // Quantity · Calories · Macros (food) ───────────────────────────────────
-const SIDE_LABELS: Record<string, string> = { right: 'Each side', left: 'Each side', rotation: 'Rotation', na: '' };
+const SIDE_LABELS: Record<string, string> = { right: 'Each side', left: 'Each side', both: 'Both sides', rotation: 'Rotation', na: '' };
 
 function exerciseDetailLine(item: any): string | null {
   // Food items carry meal_slot — branch to the nutrition-flavoured line.
@@ -207,12 +212,287 @@ SUPPLEMENT_SLOT_KEYS.forEach((key) => { EXERCISE_LIBRARY[key] = SUPPLEMENT_ITEMS
 
 const ALL_SECTIONS_META = [...SECTIONS, ...FOOD_SLOTS, ...SUPPLEMENT_SLOTS];
 
+function findSupplementCatalogId(itemName: string): string | null {
+  return SUPPLEMENT_ITEMS.find(s => s.name === itemName)?.id ?? null;
+}
+
+// Full-size image/name preview — tapping a supplement's name opens this
+// instead of squinting at a thumbnail barely 60px wide in the grid.
+function SupplementPreviewModal({ visible, name, imageUrl, onClose }: {
+  visible: boolean; name: string; imageUrl?: string; onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.suppPreviewBackdrop} onPress={onClose}>
+        <Pressable style={styles.suppPreviewCard} onPress={() => {}}>
+          <View style={styles.suppPreviewImageWrap}>
+            {imageUrl ? (
+              <Image source={{ uri: imageUrl }} style={styles.suppPreviewImage} resizeMode="contain" />
+            ) : (
+              <Text style={{ fontSize: 64 }}>💊</Text>
+            )}
+          </View>
+          <Text style={styles.suppPreviewName}>{name}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.suppPreviewCloseBtn} activeOpacity={0.85}>
+            <Text style={styles.suppPreviewCloseBtnText}>Close</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// Square grid cell for a logged supplement — shows the admin-uploaded
+// catalog photo when one exists for this item, else a pill-icon fallback.
+function SupplementGridCell({ item, imageUrl, onToggle, onRemove, color, locked }: {
+  item: any; imageUrl?: string; onToggle: (id: string, checked: boolean) => void;
+  onRemove?: (id: string) => void; color: string; locked: boolean;
+}) {
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  function handleRemove() {
+    Alert.alert('Remove supplement?', `Remove "${item.item_name}" from this day.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onRemove?.(item.id) },
+    ]);
+  }
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => !locked && onToggle(item.id, item.completed)}
+        activeOpacity={0.85}
+        style={[styles.suppGridCell, { borderColor: item.completed ? color : THEME.colors.border }, locked && { opacity: 0.38 }]}
+      >
+        {item.completed && (
+          <View style={[styles.suppCheckBadge, { backgroundColor: color }]}>
+            <Text style={{ color: '#0A0A0B', fontSize: 12, fontFamily: THEME.fonts.sansMedium }}>✓</Text>
+          </View>
+        )}
+        {!locked && item.is_custom && !item.added_by_coach && onRemove && (
+          <TouchableOpacity onPress={handleRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.suppRemoveX}>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, lineHeight: 16 }}>×</Text>
+          </TouchableOpacity>
+        )}
+        <View style={styles.suppGridImageWrap}>
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.suppGridImage} resizeMode="cover" />
+          ) : (
+            <Text style={{ fontSize: 36 }}>💊</Text>
+          )}
+        </View>
+        <TouchableOpacity onPress={() => setPreviewVisible(true)} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+          <Text numberOfLines={2} style={[styles.suppGridName, item.completed && { color: THEME.colors.textMuted }]}>{item.item_name}</Text>
+        </TouchableOpacity>
+        {item.added_by_coach && (
+          <View style={styles.suppCoachBadge}>
+            <Text style={{ fontSize: 11 }}>🧑‍🏫</Text>
+            <Text style={styles.suppCoachBadgeText}>Assigned by coach</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+      <SupplementPreviewModal visible={previewVisible} name={item.item_name} imageUrl={imageUrl} onClose={() => setPreviewVisible(false)} />
+    </>
+  );
+}
+
+// Horizontal 5-segment progress pill across the meal-time slots — each
+// segment fills as that slot's logged supplements get checked off, so the
+// whole day's supplement adherence reads at a glance (same idea as a daily
+// nutrition tracker, just collapsed into one strip instead of 5 separate bars).
+function SupplementSlotPill({ slots, dayData }: { slots: typeof SUPPLEMENT_SLOTS; dayData: any[] }) {
+  return (
+    <View style={styles.slotPillWrap}>
+      <View style={styles.slotPillTrack}>
+        {slots.map((slot, i) => {
+          const slotItems = dayData.filter((item: any) => item.meal_slot === slot.mealSlot);
+          const done = slotItems.filter((item: any) => item.completed).length;
+          const pct = slotItems.length ? done / slotItems.length : 0;
+          const complete = slotItems.length > 0 && done === slotItems.length;
+          return (
+            <View key={slot.key} style={[styles.slotPillSegment, i > 0 && { marginLeft: 4 }]}>
+              <View style={styles.slotPillSegmentTrack}>
+                <View style={[styles.slotPillSegmentFill, { width: `${pct * 100}%`, backgroundColor: slot.color }]} />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+      <View style={styles.slotPillLabelsRow}>
+        {slots.map((slot) => {
+          const slotItems = dayData.filter((item: any) => item.meal_slot === slot.mealSlot);
+          const done = slotItems.filter((item: any) => item.completed).length;
+          return (
+            <View key={slot.key} style={styles.slotPillLabel}>
+              <Text style={{ fontSize: 12 }}>{slot.icon}</Text>
+              <Text style={[styles.slotPillLabelText, slotItems.length > 0 && done === slotItems.length && { color: slot.color }]}>
+                {slotItems.length ? `${done}/${slotItems.length}` : '—'}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function SupplementAddCell({ color, onPress }: { color: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.suppGridCell, styles.suppAddCell, { borderColor: color }]}>
+      <Text style={{ fontSize: 36, lineHeight: 38, color, fontFamily: THEME.fonts.sansMedium }}>+</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── Confession Booth — standalone craving section below Dinner ────────
+const CRAVING_ROASTS = [
+  "Sneaky. Very sneaky.",
+  "Your coach has been notified. Just kidding. ...Maybe.",
+  "Diet starts tomorrow, right?",
+  "This happened. It's logged. It counts.",
+  "Bold strategy. Let's see how it plays out.",
+  "Your future self is shaking their head.",
+  "We don't judge here. We just count calories.",
+];
+
+function ConfessionBoothSection({
+  items, onToggle, onRemove, onAdd, locked = false,
+}: {
+  items: any[]; onToggle: (id: string, checked: boolean) => void;
+  onRemove: (id: string) => Promise<void>; onAdd: (payload: any) => Promise<void>;
+  locked?: boolean;
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const [open, setOpen] = useState(false);
+  const allDone = items.length > 0 && items.every(i => i.completed);
+  const roast = CRAVING_ROASTS[items.length % CRAVING_ROASTS.length];
+
+  function handleSelectAll() {
+    if (locked) return;
+    const target = !allDone;
+    items.forEach(item => { if (!!item.completed !== target) onToggle(item.id, item.completed); });
+  }
+
+  return (
+    <View style={{ marginTop: 8 }}>
+      {/* Divider */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingHorizontal: 4 }}>
+        <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(249,115,22,0.2)' }} />
+        <Text style={{ color: '#F97316', fontSize: 10, fontFamily: THEME.fonts.sansMedium, marginHorizontal: 8, letterSpacing: 0.8 }}>
+          UNPLANNED CRAVINGS
+        </Text>
+        <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(249,115,22,0.2)' }} />
+      </View>
+
+      {/* Section header row */}
+      <TouchableOpacity
+        onPress={() => setOpen(o => !o)}
+        activeOpacity={0.8}
+        style={{
+          flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14,
+          borderRadius: 12, borderWidth: 1.5,
+          borderStyle: items.length === 0 ? 'dashed' : 'solid',
+          borderColor: '#F97316',
+          backgroundColor: items.length > 0 ? 'rgba(249,115,22,0.08)' : 'rgba(249,115,22,0.04)',
+        }}
+      >
+        <Text style={{ fontSize: 18, marginRight: 10 }}>🙈</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: '#F97316', fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>
+            Confession Booth {items.length > 0 ? `(${items.length})` : ''}
+          </Text>
+          <Text style={{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans, marginTop: 1, fontStyle: 'italic' }}>
+            {items.length === 0 ? 'Pizza, chips, beer... log the damage' : roast}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {!locked && (
+            <TouchableOpacity
+              onPress={() => setShowModal(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ color: '#F97316', fontSize: 20, lineHeight: 22 }}>+</Text>
+            </TouchableOpacity>
+          )}
+          {!locked && items.length > 0 && (
+            <Checkbox checked={allDone} onPress={handleSelectAll} color="#F97316" />
+          )}
+          {items.length > 0 && (
+            <TouchableOpacity onPress={() => setOpen(o => !o)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ color: THEME.colors.textMuted, fontSize: 14 }}>{open ? '▾' : '›'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {/* Logged craving items */}
+      {open && items.length > 0 && (
+        <View style={{ marginTop: 4, paddingHorizontal: 4 }}>
+          {items.map((item: any) => (
+            <View
+              key={item.id}
+              style={{
+                flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10,
+                marginBottom: 4, borderRadius: 10,
+                backgroundColor: item.completed ? 'rgba(249,115,22,0.08)' : 'rgba(255,255,255,0.02)',
+                borderWidth: 1, borderColor: item.completed ? 'rgba(249,115,22,0.3)' : THEME.colors.border,
+              }}
+            >
+              <Checkbox
+                checked={!!item.completed}
+                onPress={() => !locked && onToggle(item.id, item.completed)}
+                color="#F97316"
+              />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={{ color: item.completed ? '#F97316' : THEME.colors.textPrimary, fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>
+                  {item.item_name}
+                </Text>
+                {(item.calories || item.quantity) && (
+                  <Text style={{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans, marginTop: 1 }}>
+                    {item.quantity ? `${item.quantity} · ` : ''}{item.calories ? `${item.calories} kcal` : ''}
+                    {item.fat_g ? ` · ${item.fat_g}g fat` : ''}{item.carbs_g ? ` · ${item.carbs_g}g carbs` : ''}
+                  </Text>
+                )}
+              </View>
+              {!locked && (
+                <TouchableOpacity onPress={() => onRemove(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={{ color: THEME.colors.textMuted, fontSize: 16 }}>×</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
+      <AddExerciseModal
+        visible={showModal}
+        onClose={() => setShowModal(false)}
+        onAddDone={() => setShowModal(false)}
+        sectionColor="#F97316"
+        sectionLabel="Cravings"
+        kind="food"
+        library={[]}
+        onAdd={onAdd}
+        initialCravingMode
+      />
+    </View>
+  );
+}
+
 // ── Collapsible Section Group ─────────────────────────────────────────
-function SectionGroup({ sectionKey, items, onToggle, onAdd, onRemove, locked = false }: {
+function SectionGroup({ sectionKey, items, onToggle, onAdd, onRemove, locked = false, forceOpenState }: {
   sectionKey: string; items: any[]; onToggle: (id: string, checked: boolean) => void;
   onAdd?: (payload: any) => Promise<void>; onRemove?: (id: string) => Promise<void>; locked?: boolean;
+  forceOpenState?: boolean | null; // true = force open, false = force close, null/undefined = user-controlled
 }) {
-  const [open, setOpen]           = useState(true);
+  const { data: supplementImages = {} } = useSupplementCatalogImages();
+  const [open, setOpen]           = useState(false); // default collapsed
+
+  useEffect(() => {
+    if (forceOpenState !== null && forceOpenState !== undefined) {
+      setOpen(forceOpenState);
+    }
+  }, [forceOpenState]);
   const [showGuide, setShowGuide] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const meta      = ALL_SECTIONS_META.find(s => s.key === sectionKey)!;
@@ -287,14 +567,35 @@ function SectionGroup({ sectionKey, items, onToggle, onAdd, onRemove, locked = f
       {/* Items */}
       {open && (
         <View style={styles.sectionItems}>
-          {items.map(item => (
-            <LogItem key={item.id} item={item} onToggle={onToggle} onRemove={onRemove ? (id) => onRemove(id) : undefined} color={meta.color} locked={locked} />
-          ))}
-          {!items.length && addable && !locked && (
-            <TouchableOpacity style={styles.emptySectionCta} onPress={() => setShowAddModal(true)} activeOpacity={0.8}>
-              <Text style={[styles.emptySectionCtaIcon, { color: meta.color }]}>+</Text>
-              <Text style={styles.emptySectionCtaText}>Add to {meta.label}</Text>
-            </TouchableOpacity>
+          {isSupplement ? (
+            <View style={styles.suppGrid}>
+              {items.map(item => (
+                <SupplementGridCell
+                  key={item.id}
+                  item={item}
+                  imageUrl={supplementImages[findSupplementCatalogId(item.item_name) ?? '']}
+                  onToggle={onToggle}
+                  onRemove={onRemove}
+                  color={meta.color}
+                  locked={locked}
+                />
+              ))}
+              {addable && !locked && (
+                <SupplementAddCell color={meta.color} onPress={() => setShowAddModal(true)} />
+              )}
+            </View>
+          ) : (
+            <>
+              {items.map(item => (
+                <LogItem key={item.id} item={item} onToggle={onToggle} onRemove={onRemove ? (id) => onRemove(id) : undefined} color={meta.color} locked={locked} />
+              ))}
+              {!items.length && addable && !locked && (
+                <TouchableOpacity style={styles.emptySectionCta} onPress={() => setShowAddModal(true)} activeOpacity={0.8}>
+                  <Text style={[styles.emptySectionCtaIcon, { color: meta.color }]}>+</Text>
+                  <Text style={styles.emptySectionCtaText}>Add to {meta.label}</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       )}
@@ -311,7 +612,8 @@ function SectionGroup({ sectionKey, items, onToggle, onAdd, onRemove, locked = f
           sectionLabel={meta.label}
           kind={isFood ? 'food' : isSupplement ? 'supplement' : 'exercise'}
           library={EXERCISE_LIBRARY[sectionKey] ?? []}
-          onAdd={async (payload) => { await onAdd!(payload); setShowAddModal(false); }}
+          onAdd={async (payload) => { await onAdd!(payload); }}
+          onAddDone={() => setShowAddModal(false)}
         />
       )}
     </View>
@@ -523,6 +825,89 @@ function FoodGuideModal({ visible, onClose }: { visible: boolean; onClose: () =>
   );
 }
 
+// Labeled numeric text input used in the food macro detail step
+function NumberField({ label, value, onChange, placeholder, decimal = false }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; decimal?: boolean;
+}) {
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={{ color: THEME.colors.textSecondary, fontSize: 11, fontFamily: THEME.fonts.sansMedium, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 6 }}>
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(255,255,255,0.3)"
+        keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
+        style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 1, borderColor: THEME.colors.border }}
+      />
+    </View>
+  );
+}
+
+// Strip trailing quantity suffixes like "(3 pcs)", "(1 bowl)", "(2 tbsp)" from
+// food item names. Parentheticals that start with a letter are kept because
+// they're clarifications: "(Rice Flour Roti)", "(with milk)", "(wheat)" etc.
+function cleanFoodName(name: string): string {
+  return name.replace(/\s*\(\d[^)]*\)/g, '').trim();
+}
+
+// ── Exercise filter helpers ───────────────────────────────────────────────
+const EQUIP_FILTERS: { label: string; icon: string }[] = [
+  { label: 'All',            icon: '⊞' },
+  { label: 'Bodyweight',     icon: '🤸' },
+  { label: 'Dumbbell',       icon: '🏋️' },
+  { label: 'Barbell',        icon: '🪢' },
+  { label: 'Machine',        icon: '⚙️' },
+  { label: 'Resistance Band',icon: '📎' },
+  { label: 'Kettlebell',     icon: '🔔' },
+  { label: 'Suspension Band',icon: '🪝' },
+  { label: 'Cardio',         icon: '🏃' },
+];
+const MUSCLE_FILTERS: { label: string; icon: string }[] = [
+  { label: 'All',         icon: '💪' },
+  { label: 'Chest',       icon: '🫁' },
+  { label: 'Back',        icon: '🔙' },
+  { label: 'Shoulders',   icon: '🔝' },
+  { label: 'Biceps',      icon: '💪' },
+  { label: 'Triceps',     icon: '〽️' },
+  { label: 'Abdominals',  icon: '🎯' },
+  { label: 'Quads',       icon: '🦵' },
+  { label: 'Hamstrings',  icon: '🦿' },
+  { label: 'Glutes',      icon: '🍑' },
+  { label: 'Calves',      icon: '🦶' },
+  { label: 'Cardio',      icon: '❤️' },
+];
+
+function inferEquipment(name: string): string {
+  if (/kettlebell/.test(name)) return 'Kettlebell';
+  if (/barbell/.test(name)) return 'Barbell';
+  if (/dumbbell/.test(name)) return 'Dumbbell';
+  if (/suspension band|trx/.test(name)) return 'Suspension Band';
+  if (/\bresistance band\b|\bband\b/.test(name)) return 'Resistance Band';
+  if (/\bcable\b|leg press|chest press machine|seated row|lat pull|pull.down|machine/.test(name)) return 'Machine';
+  if (/treadmill|elliptical|rowing machine|stationary bike|recumbent bike|stair climbing|jump rope|sprint|jogging|running|walk|cycling|swimming|dance|zumba|hiit circuit/.test(name)) return 'Cardio';
+  return 'Bodyweight';
+}
+
+function inferMuscles(name: string): string[] {
+  const muscles: string[] = [];
+  if (/chest|push.up|press|fly|pec/.test(name)) muscles.push('Chest');
+  if (/row|pull|lat|back|deadlift|rdl|hinge|chin.up|pull.up/.test(name)) muscles.push('Back');
+  if (/shoulder|lateral raise|overhead|military|face pull|band pull/.test(name)) muscles.push('Shoulders');
+  if (/bicep|curl(?!.*leg)/.test(name)) muscles.push('Biceps');
+  if (/tricep|dip|skull|extension/.test(name)) muscles.push('Triceps');
+  if (/crunch|plank|ab|core|dead bug|bird dog|woodchop|oblique/.test(name)) muscles.push('Abdominals');
+  if (/squat|lunge|leg press|step.up|quad|knee extension/.test(name)) muscles.push('Quads');
+  if (/hamstring|leg curl|nordic|glute bridge|hip hinge/.test(name)) muscles.push('Hamstrings');
+  if (/glute|hip abduction|clamshell|hip thrust|donkey/.test(name)) muscles.push('Glutes');
+  if (/calf|heel raise|calf raise/.test(name)) muscles.push('Calves');
+  if (/treadmill|elliptical|rowing machine|stationary bike|recumbent bike|stair climbing|jump rope|sprint|jogging|running|walk|cycling|swimming|dance|zumba|hiit|cardio/.test(name)) muscles.push('Cardio');
+  return muscles.length ? muscles : ['Full Body'];
+}
+
 // ── Add Exercise Modal ──────────────────────────────────────────────────
 // "+" flow for manually-tracked sections (warmup, for now). Two entry
 // points — pick from the curated library or type your own — then a shared
@@ -531,85 +916,389 @@ const SIDE_OPTIONS: { value: ExerciseSide; label: string }[] = [
   { value: 'na',       label: 'N/A' },
   { value: 'right',    label: 'Right' },
   { value: 'left',     label: 'Left' },
+  { value: 'both',     label: 'Both' },
   { value: 'rotation', label: 'Rotation' },
 ];
 
-function NumberField({ label, value, onChange, placeholder, decimal = false }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder: string; decimal?: boolean;
+// Slider data — Reps and Hold have '—' at index 0 meaning "not set"
+const SETS_ITEMS = Array.from({ length: 10 }, (_, i) => String(i + 1));           // 1–10
+const REPS_ITEMS = ['—', ...Array.from({ length: 50 }, (_, i) => String(i + 1))]; // —,1–50
+const HOLD_ITEMS = ['—', ...Array.from({ length: 51 }, (_, i) => String(i + 10))]; // —,10–60
+const REST_ITEMS = Array.from({ length: 51 }, (_, i) => String(i + 10));           // 10–60
+
+// Stepper: [ − ]  value  [ + ] with hold-to-repeat
+function Stepper({
+  items, selectedIndex, onChange, label,
+}: {
+  items: string[]; selectedIndex: number; onChange: (i: number) => void;
+  label: string;
 }) {
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  function startStep(delta: number) {
+    let cur = Math.max(0, Math.min(items.length - 1, selectedIndex + delta));
+    onChange(cur);
+    intervalRef.current = setInterval(() => {
+      cur = Math.max(0, Math.min(items.length - 1, cur + delta));
+      onChange(cur);
+    }, 120);
+  }
+
+  function stopStep() {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+  }
+
+  const atStart = selectedIndex === 0;
+  const atEnd   = selectedIndex === items.length - 1;
+  const value   = items[selectedIndex];
+
   return (
     <View style={{ flex: 1 }}>
       <Text style={aem.fieldLabel}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={(t) => onChange(decimal ? t.replace(/[^0-9.]/g, '') : t.replace(/[^0-9]/g, ''))}
-        placeholder={placeholder}
-        placeholderTextColor="rgba(255,255,255,0.25)"
-        keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
-        style={aem.fieldInput}
-      />
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 12, borderWidth: 1, borderColor: THEME.colors.border,
+        paddingVertical: 6,
+      }}>
+        <TouchableOpacity
+          onPressIn={() => !atStart && startStep(-1)}
+          onPressOut={stopStep}
+          disabled={atStart}
+          style={{ paddingHorizontal: 16, paddingVertical: 10 }}
+          activeOpacity={0.6}
+        >
+          <Text style={{ fontSize: 22, color: atStart ? 'rgba(255,255,255,0.15)' : THEME.colors.teal, lineHeight: 26 }}>−</Text>
+        </TouchableOpacity>
+
+        <View style={{ alignItems: 'center', minWidth: 52 }}>
+          <Text style={{
+            fontSize: 22, fontFamily: THEME.fonts.sansSemibold,
+            color: THEME.colors.teal,
+          }}>
+            {value}
+          </Text>
+          <View style={{ width: 24, height: 2, backgroundColor: THEME.colors.teal, borderRadius: 1, marginTop: 3, opacity: 0.6 }} />
+        </View>
+
+        <TouchableOpacity
+          onPressIn={() => !atEnd && startStep(1)}
+          onPressOut={stopStep}
+          disabled={atEnd}
+          style={{ paddingHorizontal: 16, paddingVertical: 10 }}
+          activeOpacity={0.6}
+        >
+          <Text style={{ fontSize: 22, color: atEnd ? 'rgba(255,255,255,0.15)' : THEME.colors.teal, lineHeight: 26 }}>+</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, library, onAdd }: {
-  visible: boolean; onClose: () => void; sectionColor: string; sectionLabel: string;
-  kind: 'exercise' | 'food' | 'supplement'; library: (WarmupExerciseDefault | FoodItemDefault | SupplementItemDefault)[]; onAdd: (payload: any) => Promise<void>;
+// NumberSlider: ‹ 5 6 [7] 8 9 › — used for Sets & Reps where narrow slots show single digits
+const SLIDER_VISIBLE = 5;
+const SLIDER_HALF    = 2;
+
+function NumberSlider({
+  items, selectedIndex, onChange, label,
+}: {
+  items: string[]; selectedIndex: number; onChange: (i: number) => void;
+  label: string;
 }) {
-  const [step, setStep]   = useState<'choice' | 'list' | 'detail'>('choice');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  function startStep(delta: number) {
+    let cur = Math.max(0, Math.min(items.length - 1, selectedIndex + delta));
+    onChange(cur);
+    intervalRef.current = setInterval(() => {
+      cur = Math.max(0, Math.min(items.length - 1, cur + delta));
+      onChange(cur);
+    }, 100);
+  }
+
+  function stopStep() {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+  }
+
+  const atStart = selectedIndex === 0;
+  const atEnd   = selectedIndex === items.length - 1;
+
+  const slots = Array.from({ length: SLIDER_VISIBLE }, (_, i) => {
+    const idx = selectedIndex - SLIDER_HALF + i;
+    return { idx, val: idx >= 0 && idx < items.length ? items[idx] : null };
+  });
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={aem.fieldLabel}>{label}</Text>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 12, borderWidth: 1, borderColor: THEME.colors.border,
+        paddingVertical: 2,
+      }}>
+        <TouchableOpacity
+          onPressIn={() => !atStart && startStep(-1)}
+          onPressOut={stopStep}
+          disabled={atStart}
+          style={{ paddingHorizontal: 10, paddingVertical: 12 }}
+          activeOpacity={0.6}
+        >
+          <Text style={{ fontSize: 18, color: atStart ? 'rgba(255,255,255,0.12)' : THEME.colors.teal }}>‹</Text>
+        </TouchableOpacity>
+
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+          {slots.map(({ idx, val }, pos) => {
+            const dist     = Math.abs(pos - SLIDER_HALF);
+            const isCenter = pos === SLIDER_HALF;
+            const display  = val ?? '';
+            return (
+              <TouchableOpacity
+                key={pos}
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10 }}
+                onPress={() => val !== null && onChange(idx)}
+                activeOpacity={0.65}
+                disabled={val === null}
+              >
+                <Text style={{
+                  fontSize:   isCenter ? 18 : dist === 1 ? 14 : 11,
+                  fontFamily: isCenter ? THEME.fonts.sansSemibold : THEME.fonts.sans,
+                  color:      isCenter ? THEME.colors.teal : THEME.colors.textMuted,
+                  opacity:    isCenter ? 1 : dist === 1 ? 0.5 : 0.25,
+                }}>
+                  {display}
+                </Text>
+                {isCenter && (
+                  <View style={{ width: 20, height: 2, backgroundColor: THEME.colors.teal, borderRadius: 1, marginTop: 3, opacity: 0.7 }} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          onPressIn={() => !atEnd && startStep(1)}
+          onPressOut={stopStep}
+          disabled={atEnd}
+          style={{ paddingHorizontal: 10, paddingVertical: 12 }}
+          activeOpacity={0.6}
+        >
+          <Text style={{ fontSize: 18, color: atEnd ? 'rgba(255,255,255,0.12)' : THEME.colors.teal }}>›</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+type SupplementScope = 'today' | 'week' | 'month';
+
+// ── Grouped breakfast item type used in review step ──────────────────────────
+interface ReviewItem {
+  name: string;
+  quantity: string;
+  calories: string;
+  protein: string;
+  carbs: string;
+  fat: string;
+}
+
+function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLabel, kind, library, onAdd, initialCravingMode = false }: {
+  visible: boolean; onClose: () => void; onAddDone?: () => void; sectionColor: string; sectionLabel: string;
+  kind: 'exercise' | 'food' | 'supplement'; library: (WarmupExerciseDefault | FoodItemDefault | SupplementItemDefault)[]; onAdd: (payload: any) => Promise<void>;
+  initialCravingMode?: boolean;
+}) {
+  const isBreakfast = kind === 'food' && sectionLabel === 'Breakfast';
+  const isLunch     = kind === 'food' && sectionLabel === 'Lunch';
+  const isDinner    = kind === 'food' && sectionLabel === 'Dinner';
+  const isGrouped   = isBreakfast || isLunch || isDinner;
+
+  // Confession Booth opens directly in grouped/craving mode; others start at 'choice'
+  const initialStep = kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice';
+  const [step, setStep] = useState<'scope' | 'choice' | 'grouped' | 'review' | 'list' | 'detail'>(initialStep);
+  // craving mode: set by ConfessionBoothSection, uses CRAVING_GROUPS and stores as meal_slot='craving'
+  const [cravingMode, setCravingMode] = useState(initialCravingMode);
+  const activeGroups = cravingMode ? CRAVING_GROUPS : isDinner ? DINNER_GROUPS : isLunch ? LUNCH_GROUPS : BREAKFAST_GROUPS;
+  const [scope, setScope] = useState<SupplementScope>('today');
   const [search, setSearch] = useState('');
+  const [filterEquip, setFilterEquip] = useState('All');
+  const [filterMuscle, setFilterMuscle] = useState('All');
   const [name, setName]   = useState('');
-  // Exercise fields
-  const [sets, setSets]   = useState('');
-  const [reps, setReps]   = useState('');
-  const [side, setSide]   = useState<ExerciseSide>('na');
-  const [hold, setHold]   = useState('');
-  const [rest, setRest]   = useState('');
-  // Food fields
+  // Exercise drum-picker indices
+  const [setsIdx, setSetsIdx] = useState(0); // 0 → sets=1
+  const [repsIdx, setRepsIdx] = useState(0); // 0 → '—' (not set)
+  const [side, setSide]           = useState<ExerciseSide>('na');
+  const [allowRotation, setAllowRotation] = useState(false);
+  const [holdIdx, setHoldIdx] = useState(0); // 0 → '—' (not set)
+  const [restIdx, setRestIdx] = useState(0); // 0 → rest=10s
+  // Single food fields (manual / non-breakfast path)
   const [quantity, setQuantity] = useState('');
+  // Quantity counter — populated when picking from library
+  const [qtyCount, setQtyCountRaw] = useState(1);
+  const [qtyUnit,  setQtyUnit]     = useState('');    // e.g. 'piece', 'cup', 'ml', 'tbsp'
+  const [qtyBase,  setQtyBase]     = useState(1);     // always 1 (macros are per-unit)
+  // Per-unit macros — set when food is picked from library; used to scale with qty
+  const [baseCalories, setBaseCalories] = useState(0);
+  const [baseProtein,  setBaseProtein]  = useState(0);
+  const [baseCarbs,    setBaseCarbs]    = useState(0);
+  const [baseFat,      setBaseFat]      = useState(0);
   const [calories, setCalories] = useState('');
   const [protein, setProtein]   = useState('');
   const [carbs, setCarbs]       = useState('');
   const [fat, setFat]           = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Grouped breakfast state ─────────────────────────────────────────────────
+  // Per group: selected item + its inline quantity (editable before review)
+  const defaultGroupOpen = () => Object.fromEntries(activeGroups.map((g, i) => [g.key, i === 0]));
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(defaultGroupOpen);
+  const [groupSelected, setGroupSelected] = useState<Record<string, BreakfastItem | LunchItem | DinnerItem | CravingItem | null>>({});
+  const [groupQty, setGroupQty] = useState<Record<string, number>>({});
+  // Review step: array of items with editable macros
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
+
   function reset() {
-    setStep('choice'); setSearch(''); setName('');
-    setSets(''); setReps(''); setSide('na'); setHold(''); setRest('');
-    setQuantity(''); setCalories(''); setProtein(''); setCarbs(''); setFat('');
+    setStep(kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice');
+    setScope('today'); setSearch(''); setFilterEquip('All'); setFilterMuscle('All'); setName('');
+    setSetsIdx(0); setRepsIdx(0); setSide('na'); setAllowRotation(false); setHoldIdx(0); setRestIdx(0);
+    setQuantity(''); setQtyCountRaw(1); setQtyUnit(''); setQtyBase(1);
+    setBaseCalories(0); setBaseProtein(0); setBaseCarbs(0); setBaseFat(0);
+    setCalories(''); setProtein(''); setCarbs(''); setFat('');
+    setCravingMode(initialCravingMode);
+    setGroupOpen(defaultGroupOpen());
+    setGroupSelected({});
+    setGroupQty({});
+    setReviewItems([]);
   }
+
+  // Reset fully whenever modal becomes visible so stale selections don't persist
+  useEffect(() => { if (visible) reset(); }, [visible]);
 
   function handleClose() { reset(); onClose(); }
 
+  // Stepper for qty: updates qty display + auto-scales macros
+  const QTY_STEP = qtyUnit === 'ml' ? 50 : qtyUnit === 'g' ? 25 : 1;
+  const QTY_MAX  = qtyUnit === 'ml' ? 1000 : qtyUnit === 'g' ? 500 : 20;
+  const QTY_MIN  = qtyUnit === 'ml' ? 50   : qtyUnit === 'g' ? 25  : 1;
+
+  function setQtyCount(newQty: number) {
+    const clamped = Math.max(QTY_MIN, Math.min(QTY_MAX, newQty));
+    setQtyCountRaw(clamped);
+    if (baseCalories > 0) {
+      setQuantity(`${clamped} ${qtyUnit}`);
+      setCalories(String(Math.round(baseCalories * clamped)));
+      setProtein(String(parseFloat((baseProtein * clamped).toFixed(1))));
+      setCarbs(String(parseFloat((baseCarbs * clamped).toFixed(1))));
+      setFat(String(parseFloat((baseFat * clamped).toFixed(1))));
+    }
+  }
+
+  function fmtQtyLabel(qty: number, unit: string): string {
+    const noPlural = ['ml', 'g', 'tbsp', 'tsp'];
+    if (noPlural.includes(unit)) return `${qty} ${unit}`;
+    return qty === 1 ? `${qty} ${unit}` : `${qty} ${unit}s`;
+  }
+
+
   function pickFromLibrary(ex: WarmupExerciseDefault | FoodItemDefault | SupplementItemDefault) {
-    setName(ex.name);
+    setName(kind === 'food' ? cleanFoodName(ex.name) : ex.name);
     if (kind === 'food') {
       const f = ex as FoodItemDefault;
-      setQuantity(f.defaultQuantity);
-      setCalories(String(f.defaultCalories));
-      setProtein(String(f.defaultProteinG));
-      setCarbs(String(f.defaultCarbsG));
-      setFat(String(f.defaultFatG));
+      const unit = f.qtyUnit ?? 'serving';
+      const initQty = unit === 'ml' ? 50 : unit === 'g' ? 25 : 1;
+      setQtyUnit(unit);
+      setQtyBase(1);
+      setQtyCountRaw(initQty);
+      setBaseCalories(f.defaultCalories);
+      setBaseProtein(f.defaultProteinG);
+      setBaseCarbs(f.defaultCarbsG);
+      setBaseFat(f.defaultFatG);
+      setQuantity(`${initQty} ${unit}`);
+      setCalories(String(Math.round(f.defaultCalories * initQty)));
+      setProtein(String(Math.round(f.defaultProteinG * initQty)));
+      setCarbs(String(Math.round(f.defaultCarbsG * initQty)));
+      setFat(String(Math.round(f.defaultFatG * initQty)));
     } else if (kind === 'supplement') {
       const s = ex as SupplementItemDefault;
       setQuantity(s.defaultQuantity);
     } else {
       const e = ex as WarmupExerciseDefault;
-      setSets(String(e.defaultSets));
-      setReps(e.defaultReps != null ? String(e.defaultReps) : '');
+      setSetsIdx(Math.max(0, Math.min(9, e.defaultSets - 1)));
+      // REPS_ITEMS[0]='—', REPS_ITEMS[N]=String(N) for N 1-50
+      setRepsIdx(e.defaultReps != null ? Math.max(0, Math.min(50, e.defaultReps)) : 0);
       setSide(e.defaultSide);
-      setHold(e.defaultHoldSecs != null ? String(e.defaultHoldSecs) : '');
-      setRest(String(e.defaultRestSecs));
+      setAllowRotation(e.defaultSide === 'rotation');
+      // HOLD_ITEMS[0]='—', HOLD_ITEMS[k]=String(k+9) for k 1-51
+      setHoldIdx(e.defaultHoldSecs != null ? Math.max(0, Math.min(51, e.defaultHoldSecs - 9)) : 0);
+      setRestIdx(Math.max(0, Math.min(50, e.defaultRestSecs - 10)));
     }
     setStep('detail');
   }
 
   function startManual() {
-    setName(''); setSets(''); setReps(''); setSide('na'); setHold(''); setRest('');
-    setQuantity(''); setCalories(''); setProtein(''); setCarbs(''); setFat('');
+    setName(''); setSetsIdx(0); setRepsIdx(0); setSide('na'); setAllowRotation(false); setHoldIdx(0); setRestIdx(0);
+    setQuantity(''); setQtyCountRaw(1); setQtyUnit(''); setQtyBase(1);
+    setBaseCalories(0); setBaseProtein(0); setBaseCarbs(0); setBaseFat(0);
+    setCalories(''); setProtein(''); setCarbs(''); setFat('');
     setStep('detail');
   }
 
+  // ── Grouped meal helpers (shared by Breakfast + Lunch) ─────────────────────
+  function selectGroupItem(groupKey: string, item: BreakfastItem | LunchItem | DinnerItem | CravingItem) {
+    const alreadySelected = groupSelected[groupKey]?.id === item.id;
+    setGroupSelected(prev => ({ ...prev, [groupKey]: alreadySelected ? null : item }));
+    if (!alreadySelected) {
+      const unit = (item as BreakfastItem).qtyUnit ?? 'serving';
+      const initQty = unit === 'ml' ? 50 : unit === 'g' ? 25 : 1;
+      setGroupQty(prev => ({ ...prev, [groupKey]: initQty }));
+    }
+  }
+
+  function stepGroupQty(groupKey: string, item: BreakfastItem | LunchItem | DinnerItem | CravingItem, delta: number) {
+    const unit = (item as BreakfastItem).qtyUnit ?? 'serving';
+    const step = unit === 'ml' ? 50 : unit === 'g' ? 25 : 1;
+    const min  = unit === 'ml' ? 50 : unit === 'g' ? 25 : 1;
+    const max  = unit === 'ml' ? 1000 : unit === 'g' ? 500 : 20;
+    setGroupQty(prev => ({
+      ...prev,
+      [groupKey]: Math.max(min, Math.min(max, (prev[groupKey] ?? min) + delta)),
+    }));
+  }
+
+  function goToReview() {
+    const selected = activeGroups
+      .map(g => {
+        const item = groupSelected[g.key];
+        if (!item) return null;
+        const unit = (item as BreakfastItem).qtyUnit ?? 'serving';
+        const qty  = groupQty[g.key] ?? (unit === 'ml' ? 50 : unit === 'g' ? 25 : 1);
+        const scale = qty; // qtyBase is always 1, so scale = qty × 1
+        return {
+          name: cleanFoodName(item.name),
+          quantity: fmtQtyLabel(qty, unit),
+          calories: String(Math.round(item.defaultCalories * scale)),
+          protein:  String(parseFloat((item.defaultProteinG * scale).toFixed(1))),
+          carbs:    String(parseFloat((item.defaultCarbsG   * scale).toFixed(1))),
+          fat:      String(parseFloat((item.defaultFatG     * scale).toFixed(1))),
+        } as ReviewItem;
+      })
+      .filter(Boolean) as ReviewItem[];
+    if (selected.length === 0) {
+      Alert.alert('Nothing selected', 'Select at least one item from any section.');
+      return;
+    }
+    setReviewItems(selected);
+    setStep('review');
+  }
+
+  function updateReviewItem(idx: number, field: keyof ReviewItem, val: string) {
+    setReviewItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
+  }
+
+  // ── Submit handlers ─────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (!name.trim()) { Alert.alert('Add a name', `Please enter ${kind === 'food' ? 'a food' : kind === 'supplement' ? 'a supplement' : 'an exercise'} name.`); return; }
     setSubmitting(true);
@@ -627,18 +1316,19 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
         await onAdd({
           itemName: name.trim(),
           quantity: quantity.trim() || null,
+          scope,
         });
       } else {
         await onAdd({
           itemName: name.trim(),
-          sets:     sets ? Number(sets) : null,
-          reps:     reps ? Number(reps) : null,
+          sets:     setsIdx + 1,
+          reps:     repsIdx > 0 ? repsIdx : null,          // idx 0 = '—' = not set
           side:     side === 'na' ? null : side,
-          holdSecs: hold ? Number(hold) : null,
-          restSecs: rest ? Number(rest) : null,
+          holdSecs: holdIdx > 0 ? holdIdx + 9 : null,      // idx 0 = '—'; idx k → k+9 secs
+          restSecs: restIdx + 10,                           // always 10–60s
         });
       }
-      reset();
+      reset(); onAddDone?.();
     } catch (err: any) {
       Alert.alert('Could not add', err?.message ?? 'Please try again.');
     } finally {
@@ -646,13 +1336,52 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
     }
   }
 
-  const filtered = search.trim()
-    ? library.filter(e => e.name.toLowerCase().includes(search.trim().toLowerCase()))
-    : library;
+  async function handleReviewSubmit() {
+    setSubmitting(true);
+    try {
+      for (const item of reviewItems) {
+        await onAdd({
+          itemName: item.name,
+          quantity: item.quantity || null,
+          calories: item.calories ? Number(item.calories) : null,
+          proteinG: item.protein  ? Number(item.protein)  : null,
+          carbsG:   item.carbs    ? Number(item.carbs)    : null,
+          fatG:     item.fat      ? Number(item.fat)      : null,
+        });
+      }
+      reset(); onAddDone?.();
+    } catch (err: any) {
+      Alert.alert('Could not add', err?.message ?? 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const filtered = library.filter(e => {
+    const n = e.name.toLowerCase();
+    if (search.trim() && !n.includes(search.trim().toLowerCase())) return false;
+    if (kind === 'exercise') {
+      if (filterEquip !== 'All' && inferEquipment(n) !== filterEquip) return false;
+      if (filterMuscle !== 'All' && !inferMuscles(n).includes(filterMuscle)) return false;
+    }
+    return true;
+  });
 
   const noun = kind === 'food' ? 'food' : kind === 'supplement' ? 'supplement' : 'exercise';
   const nounPlural = noun === 'food' ? 'foods' : noun === 'supplement' ? 'supplements' : 'exercises';
   const nounTitleCase = noun === 'food' ? 'Food' : noun === 'supplement' ? 'Supplement' : 'Exercise';
+
+  const selectedCount = activeGroups.filter(g => groupSelected[g.key]).length;
+
+  function titleFor() {
+    if (step === 'scope')   return 'Add supplement';
+    if (step === 'grouped') return cravingMode ? 'The Confession Booth 🙈' : isDinner ? 'Build your dinner' : isLunch ? 'Build your lunch' : 'Build your breakfast';
+    if (step === 'review')  return cravingMode ? 'Own it. We\'re judging... lovingly.' : `Review ${reviewItems.length} item${reviewItems.length > 1 ? 's' : ''}`;
+
+    if (step === 'choice')  return `Add to ${sectionLabel}`;
+    if (step === 'list')    return `Choose a ${noun}`;
+    return name || `${nounTitleCase} details`;
+  }
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose} statusBarTranslucent>
@@ -660,23 +1389,91 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
         <Pressable style={aem.sheet}>
           <View style={aem.handle} />
           <View style={aem.header}>
-            <Text style={aem.title}>
-              {step === 'choice' ? `Add to ${sectionLabel}` : step === 'list' ? `Choose a ${noun}` : name || `${nounTitleCase} details`}
-            </Text>
+            <Text style={aem.title}>{titleFor()}</Text>
             <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={aem.closeX}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {step === 'choice' && (
-            <View style={{ gap: 12, paddingTop: 6 }}>
+          {/* ── Scope (supplements) ────────────────────────────────────────── */}
+          {step === 'scope' && (
+            <View style={{ paddingTop: 6 }}>
+              <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13, marginBottom: 16, textAlign: 'center' }}>
+                Add this supplement for:
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+                {([
+                  { key: 'today', label: 'Today',  icon: '📅', sub: 'Just today' },
+                  { key: 'week',  label: 'Week',   icon: '🗓️', sub: 'All 6 days this week' },
+                  { key: 'month', label: 'Month',  icon: '📆', sub: 'Every day this month' },
+                ] as { key: SupplementScope; label: string; icon: string; sub: string }[]).map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => setScope(opt.key)}
+                    style={{
+                      flex: 1, padding: 14, borderRadius: 12, alignItems: 'center',
+                      borderWidth: 1.5,
+                      borderColor: scope === opt.key ? sectionColor : THEME.colors.border,
+                      backgroundColor: scope === opt.key ? `${sectionColor}18` : THEME.colors.surface2,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 22, marginBottom: 6 }}>{opt.icon}</Text>
+                    <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13, color: scope === opt.key ? sectionColor : THEME.colors.textPrimary }}>
+                      {opt.label}
+                    </Text>
+                    <Text style={{ fontFamily: THEME.fonts.sans, fontSize: 11, color: THEME.colors.textMuted, marginTop: 2, textAlign: 'center' }}>
+                      {opt.sub}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('list')} activeOpacity={0.85}>
                 <Text style={aem.choiceIcon}>📋</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={aem.choiceTitle}>Select from list</Text>
-                  <Text style={aem.choiceSub}>Choose from {library.length} curated {sectionLabel.toLowerCase()} {noun === 'exercise' ? 'exercises' : 'items'}</Text>
+                  <Text style={aem.choiceSub}>Choose from {library.length} curated supplement items</Text>
                 </View>
               </TouchableOpacity>
+              <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor, marginTop: 10 }]} onPress={startManual} activeOpacity={0.85}>
+                <Text style={aem.choiceIcon}>✏️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={aem.choiceTitle}>Write manually</Text>
+                  <Text style={aem.choiceSub}>Type your own supplement name</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ── Choice ────────────────────────────────────────────────────── */}
+          {step === 'choice' && (
+            <View style={{ gap: 12, paddingTop: 6 }}>
+              {isGrouped && (
+                <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('grouped')} activeOpacity={0.85}>
+                  <Text style={aem.choiceIcon}>{isDinner ? '🌙' : isLunch ? '🍛' : '🍽️'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={aem.choiceTitle}>{isDinner ? 'Build my dinner' : isLunch ? 'Build my lunch' : 'Build my breakfast'}</Text>
+
+                    <Text style={aem.choiceSub}>
+                      {isDinner
+                        ? `Pick from ${activeGroups.length} sections — carb base, protein/curry, veg side, salad, accompaniments`
+                        : isLunch
+                        ? `Pick from ${activeGroups.length} sections — carb base, protein/dal, veg side, salad, accompaniments`
+                        : `Pick from ${activeGroups.length} sections — main dish, sides, nuts & sweets, drink`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              {!isGrouped && (
+                <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('list')} activeOpacity={0.85}>
+                  <Text style={aem.choiceIcon}>📋</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={aem.choiceTitle}>Select from list</Text>
+                    <Text style={aem.choiceSub}>Choose from {library.length} curated {sectionLabel.toLowerCase()} {noun === 'exercise' ? 'exercises' : 'items'}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={startManual} activeOpacity={0.85}>
                 <Text style={aem.choiceIcon}>✏️</Text>
                 <View style={{ flex: 1 }}>
@@ -687,8 +1484,236 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
             </View>
           )}
 
-          {step === 'list' && (
+          {/* ── Grouped breakfast picker ───────────────────────────────────── */}
+          {step === 'grouped' && (
             <>
+              <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {activeGroups.map(group => {
+                  const isOpen = groupOpen[group.key];
+                  const selected = groupSelected[group.key];
+                  return (
+                    <View key={group.key} style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: selected ? group.color : THEME.colors.border, overflow: 'hidden' }}>
+                      {/* Group header — tap to toggle */}
+                      <TouchableOpacity
+                        onPress={() => setGroupOpen(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
+                        activeOpacity={0.8}
+                        style={{ flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: selected ? `${group.color}18` : 'rgba(255,255,255,0.03)' }}
+                      >
+                        <Text style={{ fontSize: 18, marginRight: 8 }}>{group.icon}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: THEME.colors.textPrimary, fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>{group.label}</Text>
+                          {selected ? (
+                            <Text style={{ color: group.color, fontSize: 11, fontFamily: THEME.fonts.sans, marginTop: 1 }} numberOfLines={1}>
+                              ✓ {cleanFoodName(selected.name)}
+                            </Text>
+                          ) : cravingMode && 'tagline' in group ? (
+                            <Text style={{ color: THEME.colors.textMuted, fontSize: 10, fontFamily: THEME.fonts.sans, marginTop: 1, fontStyle: 'italic' }} numberOfLines={1}>
+                              {(group as typeof CRAVING_GROUPS[0]).tagline}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={{ color: THEME.colors.textMuted, fontSize: 14 }}>{isOpen ? '▾' : '›'}</Text>
+                      </TouchableOpacity>
+
+                      {/* Items list */}
+                      {isOpen && group.items.map(item => {
+                        const isSelected = groupSelected[group.key]?.id === item.id;
+                        return (
+                          <View key={item.id} style={{ borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
+                            <TouchableOpacity
+                              onPress={() => selectGroupItem(group.key, item)}
+                              activeOpacity={0.7}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10,
+                                backgroundColor: isSelected ? `${group.color}12` : 'transparent',
+                              }}
+                            >
+                              {/* Radio dot */}
+                              <View style={{
+                                width: 18, height: 18, borderRadius: 9, borderWidth: 1.5,
+                                borderColor: isSelected ? group.color : THEME.colors.border,
+                                backgroundColor: isSelected ? group.color : 'transparent',
+                                alignItems: 'center', justifyContent: 'center', marginRight: 10, flexShrink: 0,
+                              }}>
+                                {isSelected && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#000' }} />}
+                              </View>
+
+                              {/* Name + kcal hint + optional roast */}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: isSelected ? THEME.colors.textPrimary : THEME.colors.textSecondary, fontSize: 13, fontFamily: isSelected ? THEME.fonts.sansMedium : THEME.fonts.sans }}>
+                                  {cleanFoodName(item.name)}
+                                </Text>
+                                <Text style={{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans, marginTop: 1 }}>
+                                  {(() => {
+                                    const unit = (item as BreakfastItem).qtyUnit ?? 'serving';
+                                    const qty  = isSelected ? (groupQty[group.key] ?? (unit === 'ml' ? 50 : unit === 'g' ? 25 : 1)) : (unit === 'ml' ? 50 : unit === 'g' ? 25 : 1);
+                                    const cal  = Math.round(item.defaultCalories * qty);
+                                    const pro  = parseFloat((item.defaultProteinG * qty).toFixed(1));
+                                    const fat  = parseFloat((item.defaultFatG * qty).toFixed(1));
+                                    return `${cal} kcal · P ${pro}g · F ${fat}g`;
+                                  })()}
+                                </Text>
+                                {'roasts' in item && isSelected && (() => {
+                                  const roasts = (item as CravingItem).roasts;
+                                  const qty = groupQty[group.key] ?? 1;
+                                  const roastText = roasts[Math.min(qty - 1, roasts.length - 1)];
+                                  return (
+                                    <Text style={{ color: '#F97316', fontSize: 10, fontFamily: THEME.fonts.sans, marginTop: 3, fontStyle: 'italic' }}>
+                                      {roastText}
+                                    </Text>
+                                  );
+                                })()}
+                              </View>
+                            </TouchableOpacity>
+
+                            {/* Inline quantity stepper — only shown when selected */}
+                            {isSelected && (() => {
+                              const unit    = (item as BreakfastItem).qtyUnit ?? 'serving';
+                              const step    = unit === 'ml' ? 50 : unit === 'g' ? 25 : 1;
+                              const min     = step;
+                              const max     = unit === 'ml' ? 1000 : unit === 'g' ? 500 : 20;
+                              const cur     = groupQty[group.key] ?? min;
+                              const atMin   = cur <= min;
+                              const atMax   = cur >= max;
+                              return (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10, gap: 10 }}>
+                                  <Text style={{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sansMedium, textTransform: 'uppercase', letterSpacing: 0.4 }}>Qty</Text>
+                                  <View style={{
+                                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                    backgroundColor: 'rgba(255,255,255,0.03)',
+                                    borderRadius: 10, borderWidth: 1, borderColor: THEME.colors.border,
+                                    paddingVertical: 4,
+                                  }}>
+                                    <TouchableOpacity
+                                      onPress={() => stepGroupQty(group.key, item, -step)}
+                                      disabled={atMin}
+                                      style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+                                      activeOpacity={0.6}
+                                    >
+                                      <Text style={{ fontSize: 20, color: atMin ? 'rgba(255,255,255,0.15)' : group.color, lineHeight: 22 }}>−</Text>
+                                    </TouchableOpacity>
+                                    <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansSemibold, color: group.color, minWidth: 72, textAlign: 'center' }}>
+                                      {fmtQtyLabel(cur, unit)}
+                                    </Text>
+                                    <TouchableOpacity
+                                      onPress={() => stepGroupQty(group.key, item, step)}
+                                      disabled={atMax}
+                                      style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+                                      activeOpacity={0.6}
+                                    >
+                                      <Text style={{ fontSize: 20, color: atMax ? 'rgba(255,255,255,0.15)' : group.color, lineHeight: 22 }}>+</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+                              );
+                            })()}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  onPress={initialCravingMode ? handleClose : () => setStep('choice')}
+                  style={{ flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: THEME.colors.border }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>
+                    {initialCravingMode ? 'Cancel' : '← Back'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[{ flex: 2 }, aem.submitBtn, { backgroundColor: sectionColor }, selectedCount === 0 && { opacity: 0.4 }]}
+                  onPress={goToReview}
+                  disabled={selectedCount === 0}
+                  activeOpacity={0.85}
+                >
+                  <Text style={aem.submitBtnText}>
+                    Review {selectedCount > 0 ? `${selectedCount} item${selectedCount > 1 ? 's' : ''}` : 'selection'} →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* ── Review & tweak macros ──────────────────────────────────────── */}
+          {step === 'review' && (
+            <>
+              <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginBottom: 12 }}>
+                  Adjust quantities or macros before adding. All {reviewItems.length} items will be logged separately.
+                </Text>
+                {reviewItems.map((item, idx) => (
+                  <View key={idx} style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                    <Text style={{ color: sectionColor, fontSize: 13, fontFamily: THEME.fonts.sansMedium, marginBottom: 8 }}>{cleanFoodName(item.name)}</Text>
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={aem.fieldLabel}>Quantity</Text>
+                      <TextInput
+                        value={item.quantity}
+                        onChangeText={v => updateReviewItem(idx, 'quantity', v)}
+                        style={aem.fieldInput}
+                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        placeholder="e.g. 1 bowl"
+                      />
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={aem.fieldLabel}>Calories</Text>
+                        <TextInput value={item.calories} onChangeText={v => updateReviewItem(idx, 'calories', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="kcal" keyboardType="numeric" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={aem.fieldLabel}>Protein (g)</Text>
+                        <TextInput value={item.protein} onChangeText={v => updateReviewItem(idx, 'protein', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" />
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={aem.fieldLabel}>Carbs (g)</Text>
+                        <TextInput value={item.carbs} onChangeText={v => updateReviewItem(idx, 'carbs', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={aem.fieldLabel}>Fat (g)</Text>
+                        <TextInput value={item.fat} onChangeText={v => updateReviewItem(idx, 'fat', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setStep('grouped')}
+                  style={{ flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: THEME.colors.border }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>← Back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[{ flex: 2 }, aem.submitBtn, { backgroundColor: sectionColor }, submitting && { opacity: 0.6 }]}
+                  onPress={() => handleReviewSubmit()}
+                  disabled={submitting}
+                  activeOpacity={0.85}
+                >
+                  {submitting
+                    ? <ActivityIndicator color="#000" />
+                    : <Text style={aem.submitBtnText}>
+                        {cravingMode
+                          ? `Confess ${reviewItems.length} item${reviewItems.length > 1 ? 's' : ''} 🙈`
+                          : `Add ${reviewItems.length} item${reviewItems.length > 1 ? 's' : ''} to ${sectionLabel}`}
+                      </Text>}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* ── Craving slot picker ───────────────────────────────────────── */}
+
+          {/* ── Flat list (non-breakfast food / exercises) ─────────────────── */}
+          {step === 'list' && (
+            <View style={{ flex: 1 }}>
               <TextInput
                 value={search}
                 onChangeText={setSearch}
@@ -696,7 +1721,78 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 style={aem.searchInput}
               />
-              <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+              {kind === 'exercise' && (
+                <View style={{ marginBottom: 8 }}>
+                  {/* Equipment filter row */}
+                  <Text style={aem.filterRowLabel}>Equipment</Text>
+                  <View style={{ height: 34, marginBottom: 8 }}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 24 }}
+                    >
+                      {EQUIP_FILTERS.map(({ label, icon }) => {
+                        const active = filterEquip === label;
+                        return (
+                          <TouchableOpacity
+                            key={label}
+                            onPress={() => setFilterEquip(label)}
+                            activeOpacity={0.75}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 4,
+                              paddingHorizontal: 10, height: 30, borderRadius: 15,
+                              borderWidth: 1,
+                              borderColor: active ? sectionColor : THEME.colors.border,
+                              backgroundColor: active ? `${sectionColor}20` : 'rgba(255,255,255,0.04)',
+                            }}
+                          >
+                            <Text style={{ fontSize: 12 }}>{icon}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: active ? sectionColor : THEME.colors.textMuted }}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {/* Fade-out scroll hint */}
+                      <Text style={{ color: 'rgba(255,255,255,0.18)', fontSize: 14, paddingLeft: 2 }}>›</Text>
+                    </ScrollView>
+                  </View>
+                  {/* Muscle group filter row */}
+                  <Text style={aem.filterRowLabel}>Muscle Group</Text>
+                  <View style={{ height: 34 }}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 24 }}
+                    >
+                      {MUSCLE_FILTERS.map(({ label, icon }) => {
+                        const active = filterMuscle === label;
+                        return (
+                          <TouchableOpacity
+                            key={label}
+                            onPress={() => setFilterMuscle(label)}
+                            activeOpacity={0.75}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 4,
+                              paddingHorizontal: 10, height: 30, borderRadius: 15,
+                              borderWidth: 1,
+                              borderColor: active ? '#A78BFA' : THEME.colors.border,
+                              backgroundColor: active ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.04)',
+                            }}
+                          >
+                            <Text style={{ fontSize: 12 }}>{icon}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: active ? '#A78BFA' : THEME.colors.textMuted }}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      <Text style={{ color: 'rgba(255,255,255,0.18)', fontSize: 14, paddingLeft: 2 }}>›</Text>
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
                 {filtered.map(ex => (
                   <TouchableOpacity key={ex.id} style={aem.listRow} onPress={() => pickFromLibrary(ex)} activeOpacity={0.7}>
                     <Text style={aem.listRowText}>{ex.name}</Text>
@@ -704,14 +1800,15 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
                   </TouchableOpacity>
                 ))}
                 {!filtered.length && (
-                  <Text style={aem.emptyText}>No matches — try “Write manually” instead.</Text>
+                  <Text style={aem.emptyText}>No matches — try "Write manually" instead.</Text>
                 )}
               </ScrollView>
-            </>
+            </View>
           )}
 
+          {/* ── Single item detail (manual entry or picked from flat list) ─── */}
           {step === 'detail' && (
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 460 }}>
               <View style={{ marginBottom: 14 }}>
                 <Text style={aem.fieldLabel}>{nounTitleCase} name</Text>
                 <TextInput
@@ -725,16 +1822,51 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
 
               {kind === 'food' ? (
                 <>
-                  <View style={{ marginBottom: 14 }}>
+                  {/* Quantity — stepper when from library, text input for manual */}
+                  <View style={{ marginBottom: 16 }}>
                     <Text style={aem.fieldLabel}>Quantity</Text>
-                    <TextInput
-                      value={quantity}
-                      onChangeText={setQuantity}
-                      placeholder="e.g. 1 bowl, 200g"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      style={aem.fieldInput}
-                    />
+                    {qtyUnit ? (
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                        backgroundColor: 'rgba(255,255,255,0.03)',
+                        borderRadius: 12, borderWidth: 1, borderColor: THEME.colors.border,
+                        paddingVertical: 6,
+                      }}>
+                        <TouchableOpacity
+                          onPress={() => setQtyCount(qtyCount - QTY_STEP)}
+                          disabled={qtyCount <= QTY_MIN}
+                          style={{ paddingHorizontal: 18, paddingVertical: 10 }}
+                          activeOpacity={0.6}
+                        >
+                          <Text style={{ fontSize: 22, color: qtyCount <= QTY_MIN ? 'rgba(255,255,255,0.15)' : THEME.colors.teal, lineHeight: 26 }}>−</Text>
+                        </TouchableOpacity>
+                        <View style={{ alignItems: 'center', minWidth: 90 }}>
+                          <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansSemibold, color: THEME.colors.teal }}>
+                            {fmtQtyLabel(qtyCount, qtyUnit)}
+                          </Text>
+                          <View style={{ width: 28, height: 2, backgroundColor: THEME.colors.teal, borderRadius: 1, marginTop: 3, opacity: 0.6 }} />
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => setQtyCount(qtyCount + QTY_STEP)}
+                          disabled={qtyCount >= QTY_MAX}
+                          style={{ paddingHorizontal: 18, paddingVertical: 10 }}
+                          activeOpacity={0.6}
+                        >
+                          <Text style={{ fontSize: 22, color: qtyCount >= QTY_MAX ? 'rgba(255,255,255,0.15)' : THEME.colors.teal, lineHeight: 26 }}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TextInput
+                        value={quantity}
+                        onChangeText={setQuantity}
+                        placeholder="e.g. 1 bowl, 200g"
+                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        style={aem.fieldInput}
+                      />
+                    )}
                   </View>
+
+                  {/* Macros — auto-calculated from qty; user can still tweak */}
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
                     <NumberField label="Calories (kcal)" value={calories} onChange={setCalories} placeholder="e.g. 350" />
                     <NumberField label="Protein (g)" value={protein} onChange={setProtein} placeholder="e.g. 12" decimal />
@@ -757,14 +1889,16 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
                 </View>
               ) : (
                 <>
-                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-                    <NumberField label="Sets" value={sets} onChange={setSets} placeholder="e.g. 2" />
-                    <NumberField label="Reps" value={reps} onChange={setReps} placeholder="e.g. 12" />
+                  {/* Sets + Reps sliders */}
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                    <NumberSlider items={SETS_ITEMS} selectedIndex={setsIdx} onChange={setSetsIdx} label="Sets" />
+                    <NumberSlider items={REPS_ITEMS} selectedIndex={repsIdx} onChange={setRepsIdx} label="Reps" />
                   </View>
 
+                  {/* Side pills — Rotation only shown when exercise library marks it applicable */}
                   <Text style={aem.fieldLabel}>Side</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-                    {SIDE_OPTIONS.map(opt => (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                    {SIDE_OPTIONS.filter(opt => opt.value !== 'rotation' || allowRotation).map(opt => (
                       <TouchableOpacity
                         key={opt.value}
                         onPress={() => setSide(opt.value)}
@@ -775,9 +1909,10 @@ function AddExerciseModal({ visible, onClose, sectionColor, sectionLabel, kind, 
                     ))}
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
-                    <NumberField label="Hold (secs)" value={hold} onChange={setHold} placeholder="e.g. 30" />
-                    <NumberField label="Rest (secs)" value={rest} onChange={setRest} placeholder="e.g. 15" />
+                  {/* Hold + Rest sliders */}
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
+                    <Stepper items={HOLD_ITEMS} selectedIndex={holdIdx} onChange={setHoldIdx} label="Hold (secs)" />
+                    <Stepper items={REST_ITEMS} selectedIndex={restIdx} onChange={setRestIdx} label="Rest (secs)" />
                   </View>
                 </>
               )}
@@ -804,7 +1939,7 @@ const aem = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#0E1320', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, maxHeight: '85%',
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, height: '82%',
   },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'center', marginBottom: 14 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
@@ -842,6 +1977,7 @@ const aem = StyleSheet.create({
   sidePillText: { color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sansMedium },
   submitBtn: { borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 6 },
   submitBtnText: { color: '#000', fontSize: 15, fontFamily: THEME.fonts.sansMedium },
+  filterRowLabel: { fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: 'rgba(255,255,255,0.3)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 5 },
 });
 
 // ── Progress Bar ──────────────────────────────────────────────────────
@@ -1017,14 +2153,50 @@ function SelectionSegment({ path, color, lit, cx, cy }: { path: string; color: s
   );
 }
 
-function MealSelectionWheel({ slots }: { slots: MealSlotLit[] }) {
+function MealSelectionWheel({ slots, hasCravings = false, onSlotPress }: { slots: MealSlotLit[]; hasCravings?: boolean; onSlotPress?: (key: string) => void }) {
+  // When cravings exist, squeeze 5 meal segments into 300° and give the
+  // remaining 60° to the 🙈 confession segment right after Dinner.
+  const CRAVING_DEG = 60;
+  const mealSpan = hasCravings ? 360 - CRAVING_DEG : 360;
   const n = slots.length;
-  const step = 360 / n;
+  const step = mealSpan / n;
   const segments = slots.map((s, i) => ({
     ...s,
     path: selDonutArc(SEL_CX, SEL_CY, SEL_OUTER, SEL_INNER, i * step + SEL_GAP / 2, (i + 1) * step - SEL_GAP / 2),
     labelPoint: selPolar(SEL_CX, SEL_CY, SEL_OUTER + 18, (i + 0.5) * step),
   }));
+  // Confession segment occupies the remaining arc after Dinner
+  const confStart = mealSpan + SEL_GAP / 2;
+  const confEnd   = 360 - SEL_GAP / 2;
+  const confMid   = (confStart + confEnd) / 2;
+  const confSegment = hasCravings ? {
+    key: 'craving', label: 'Oops 🙈', icon: '🙈', color: '#F97316', lit: true,
+    path: selDonutArc(SEL_CX, SEL_CY, SEL_OUTER, SEL_INNER, confStart, confEnd),
+    labelPoint: selPolar(SEL_CX, SEL_CY, SEL_OUTER + 18, confMid),
+  } : null;
+
+  function handleWheelPress(e: any) {
+    if (!onSlotPress) return;
+    const { locationX, locationY } = e.nativeEvent;
+    const dx = locationX - SEL_CX;
+    const dy = locationY - SEL_CY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < SEL_INNER - 6 || dist > SEL_OUTER + 8) return;
+    let angle = (Math.atan2(dy, dx) * 180 / Math.PI) + 90;
+    if (angle < 0) angle += 360;
+    if (angle >= 360) angle -= 360;
+    // Check meal slots
+    for (let i = 0; i < slots.length; i++) {
+      const startDeg = i * step + SEL_GAP / 2;
+      const endDeg   = (i + 1) * step - SEL_GAP / 2;
+      if (angle >= startDeg && angle <= endDeg) { onSlotPress(slots[i].key); return; }
+    }
+    // Check craving segment
+    if (hasCravings) {
+      const confStart = mealSpan + SEL_GAP / 2;
+      if (angle >= confStart) { onSlotPress('craving'); }
+    }
+  }
 
   const litCount = segments.filter(s => s.lit).length;
   const wasAllLit = useRef(false);
@@ -1078,12 +2250,13 @@ function MealSelectionWheel({ slots }: { slots: MealSlotLit[] }) {
         <Text style={{ fontSize: 18 }}>🍽</Text>
         <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: '#A78BFA', flex: 1 }}>Meal Sections</Text>
         <View style={{ backgroundColor: 'rgba(129,140,248,0.15)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(129,140,248,0.35)' }}>
-          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#A78BFA' }}>{litCount}/{n}</Text>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#A78BFA' }}>{litCount}/{n}{hasCravings ? ' +🙈' : ''}</Text>
         </View>
       </View>
 
-      {/* Big centered wheel */}
+      {/* Big centered wheel — tappable to jump to that meal section */}
       <View style={{ alignItems: 'center', paddingTop: 20, paddingBottom: 10 }}>
+        <TouchableOpacity activeOpacity={onSlotPress ? 0.92 : 1} onPress={handleWheelPress} style={{ alignItems: 'center' }}>
         <Animated.View style={{ width: SEL_SZ, height: SEL_SZ, transform: [{ scale: wheelBounce }] }}>
           {/* Glow halo when fully lit */}
           <Animated.View pointerEvents="none" style={{
@@ -1096,11 +2269,14 @@ function MealSelectionWheel({ slots }: { slots: MealSlotLit[] }) {
             {segments.map(seg => (
               <SelectionSegment key={seg.key} path={seg.path} color={seg.color} lit={seg.lit} cx={SEL_CX} cy={SEL_CY} />
             ))}
+            {confSegment && (
+              <SelectionSegment key="craving" path={confSegment.path} color="#F97316" lit={true} cx={SEL_CX} cy={SEL_CY} />
+            )}
             <Circle cx={SEL_CX} cy={SEL_CY} r={SEL_INNER - 6} fill="rgba(8,12,28,0.95)" />
           </Svg>
 
           {/* Section icons around the ring */}
-          {segments.map(seg => (
+          {[...segments, ...(confSegment ? [confSegment] : [])].map(seg => (
             <Text
               key={seg.key}
               style={{
@@ -1141,6 +2317,12 @@ function MealSelectionWheel({ slots }: { slots: MealSlotLit[] }) {
             </Animated.View>
           )}
         </Animated.View>
+        {onSlotPress && (
+          <Text style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.22)', fontFamily: THEME.fonts.sans, marginTop: 6 }}>
+            Tap a segment to jump to that section
+          </Text>
+        )}
+        </TouchableOpacity>
 
         {litCount === n && (
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
@@ -1151,14 +2333,17 @@ function MealSelectionWheel({ slots }: { slots: MealSlotLit[] }) {
 
       {/* Section legend chips */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 16 }}>
-        {segments.map(seg => (
+        {[...segments, ...(confSegment ? [confSegment] : [])].map(seg => (
           <View key={seg.key} style={{
             flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6,
-            borderRadius: 14, backgroundColor: seg.lit ? `${seg.color}20` : 'rgba(255,255,255,0.04)',
-            borderWidth: 1, borderColor: seg.lit ? `${seg.color}55` : 'rgba(255,255,255,0.08)',
+            borderRadius: 14,
+            backgroundColor: seg.key === 'craving' ? 'rgba(249,115,22,0.12)' : seg.lit ? `${seg.color}20` : 'rgba(255,255,255,0.04)',
+            borderWidth: seg.key === 'craving' ? 1.5 : 1,
+            borderColor: seg.key === 'craving' ? 'rgba(249,115,22,0.5)' : seg.lit ? `${seg.color}55` : 'rgba(255,255,255,0.08)',
+            borderStyle: seg.key === 'craving' ? 'dashed' : 'solid',
           }}>
             <Text style={{ fontSize: 12 }}>{seg.icon}</Text>
-            <Text style={{ color: seg.lit ? THEME.colors.textPrimary : THEME.colors.textMuted, fontFamily: THEME.fonts.sansMedium, fontSize: 11 }}>{seg.label}</Text>
+            <Text style={{ color: seg.key === 'craving' ? '#F97316' : seg.lit ? THEME.colors.textPrimary : THEME.colors.textMuted, fontFamily: THEME.fonts.sansMedium, fontSize: 11 }}>{seg.label}</Text>
           </View>
         ))}
       </View>
@@ -1242,9 +2427,9 @@ function DailyNutritionRing({ calories, protein, fat, locked }: {
 
   return (
     <View style={{
-      marginHorizontal: 14, marginTop: 12, marginBottom: 4, padding: 16, borderRadius: 16,
+      marginHorizontal: 14, marginTop: 14, marginBottom: 6, padding: 18, borderRadius: 18,
       backgroundColor: 'rgba(76,201,134,0.05)', borderWidth: 0.5, borderColor: 'rgba(76,201,134,0.18)',
-      flexDirection: 'row', alignItems: 'center', gap: 16, opacity: locked ? 0.5 : 1,
+      flexDirection: 'row', alignItems: 'center', gap: 18, opacity: locked ? 0.5 : 1,
     }}>
       <View style={{ width: RING_SZ, height: RING_SZ }}>
         <Svg width={RING_SZ} height={RING_SZ} style={StyleSheet.absoluteFill}>
@@ -1259,27 +2444,27 @@ function DailyNutritionRing({ calories, protein, fat, locked }: {
           }} />
         )}
         <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 20, lineHeight: 22 }}>{calories}</Text>
-          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 9 }}>kcal logged</Text>
+          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 23, lineHeight: 25 }}>{calories}</Text>
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 9, marginTop: 1 }}>kcal logged</Text>
         </View>
       </View>
-      <View style={{ flex: 1, gap: 7 }}>
+      <View style={{ flex: 1, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#F59E0B' }} />
-          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 12, flex: 1 }}>Calories</Text>
-          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>{calories} / {CAL_TARGET}</Text>
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11.5, flex: 1 }}>Calories</Text>
+          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>{calories} <Text style={{ color: THEME.colors.textMuted, fontSize: 11 }}>/ {CAL_TARGET}</Text></Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CC986' }} />
-          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 12, flex: 1 }}>Protein</Text>
-          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>{protein}g / {PROTEIN_TARGET}g</Text>
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11.5, flex: 1 }}>Protein</Text>
+          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>{protein}g <Text style={{ color: THEME.colors.textMuted, fontSize: 11 }}>/ {PROTEIN_TARGET}g</Text></Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#A78BFA' }} />
-          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 12, flex: 1 }}>Fat</Text>
-          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>{fat}g / {FAT_TARGET}g</Text>
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11.5, flex: 1 }}>Fat</Text>
+          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>{fat}g <Text style={{ color: THEME.colors.textMuted, fontSize: 11 }}>/ {FAT_TARGET}g</Text></Text>
         </View>
-        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 10, marginTop: 2 }}>
+        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 10, marginTop: 3 }}>
           From everything checked off below
         </Text>
       </View>
@@ -1287,8 +2472,11 @@ function DailyNutritionRing({ calories, protein, fat, locked }: {
   );
 }
 
+const suppBtnStyle  = { paddingHorizontal: 6, paddingVertical: 2 } as const;
+const suppIconStyle = { fontSize: 16, fontFamily: THEME.fonts.sans } as const;
+
 // ── Day Panel (content for the selected day) ──────────────────────────
-function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise }: {
+function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise, scrollViewRef }: {
   dayNumber: number;
   resolvedGrouped: any;
   weekStart: string;
@@ -1296,7 +2484,27 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
   onToggleAll: (dayNumber: number, check: boolean) => void;
   onAddExercise: (dayNumber: number, itemType: string, itemsForOrder: any[], payload: any, mealSlot?: string) => Promise<void>;
   onRemoveExercise: (id: string) => Promise<void>;
+  scrollViewRef: React.RefObject<ScrollView>;
 }) {
+  const [expandedFoodSlot, setExpandedFoodSlot] = useState<string | null>(null);
+  const [suppAllOpen, setSuppAllOpen] = useState<boolean | null>(null);
+  const foodSectionOffsets = useRef<Record<string, number>>({});
+
+  function handleMealSlotPress(slotKey: string) {
+    setExpandedFoodSlot(slotKey);
+    setTimeout(() => {
+      const cardTop  = foodSectionOffsets.current['__cardTop'] ?? 0;
+      const slotRel  = foodSectionOffsets.current[slotKey] ?? 0;
+      const y = cardTop + slotRel;
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 80), animated: true });
+    }, 80);
+    setTimeout(() => setExpandedFoodSlot(null), 600);
+  }
+
+  function handleSuppExpandAll(open: boolean) {
+    setSuppAllOpen(open);
+    setTimeout(() => setSuppAllOpen(null), 600);
+  }
   const { isTodayDay, isDayFuture, isDayPast, total, pct, allDone } =
     dayStats(resolvedGrouped, dayNumber, weekStart);
   const dayData  = resolvedGrouped[dayNumber] || {};
@@ -1381,7 +2589,9 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
           color: slot.color,
           lit: foodItems.some((i: any) => i.meal_slot === slot.key && i.completed),
         }));
-        return <MealSelectionWheel slots={slots} />;
+        const cravingItems = foodItems.filter((i: any) => i.meal_slot === 'craving');
+        const hasCravings = cravingItems.length > 0;
+        return <MealSelectionWheel slots={slots} hasCravings={hasCravings} onSlotPress={handleMealSlotPress} />;
       })()}
 
       {/* Daily Nutrition Ring — live summary of everything checked off below */}
@@ -1394,42 +2604,131 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
         return <DailyNutritionRing calories={totalCalories} protein={totalProtein} fat={totalFat} locked={isDayFuture} />;
       })()}
 
-      {/* Food — 5 meal-time sections, each independently addable. All rows
-          share item_type='food'; meal_slot buckets them for display. */}
-      {FOOD_SLOTS.map(slot => {
-        const slotItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === slot.key);
+      {/* Confession Damage Bar — only shown when craving items are logged & checked */}
+      {(() => {
+        const cravingEaten = (dayData['food'] || []).filter((i: any) => i.meal_slot === 'craving');
+        if (cravingEaten.length === 0) return null;
+        const cCal  = cravingEaten.reduce((s: number, i: any) => s + (i.calories ?? 0), 0);
+        const cFat  = cravingEaten.reduce((s: number, i: any) => s + (i.fat_g ?? 0), 0);
+        const cCarb = cravingEaten.reduce((s: number, i: any) => s + (i.carbs_g ?? 0), 0);
+        const roasts = [
+          'Included. Regretfully.',
+          'These count. Just so you know.',
+          'Added to your permanent record.',
+          'Coach sees this. Enjoy.',
+          'No take-backs. It is logged.',
+        ];
+        const roast = roasts[cravingEaten.length % roasts.length];
         return (
-          <SectionGroup
-            key={slot.key}
-            sectionKey={slot.key}
-            items={slotItems}
-            onToggle={onToggle}
-            locked={isDayFuture}
-            onAdd={(payload: any) => onAddExercise(dayNumber, 'food', slotItems, payload, slot.key)}
-            onRemove={onRemoveExercise}
-          />
+          <View style={{
+            marginHorizontal: 14, marginTop: -4, marginBottom: 8,
+            borderRadius: 12, borderWidth: 1, borderColor: 'rgba(249,115,22,0.35)',
+            backgroundColor: 'rgba(249,115,22,0.07)', paddingVertical: 8, paddingHorizontal: 14,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+              <Text style={{ fontSize: 13, marginRight: 6 }}>🙈</Text>
+              <Text style={{ color: '#F97316', fontSize: 11, fontFamily: THEME.fonts.sansMedium, flex: 1 }}>
+                Confession Damage
+              </Text>
+              <Text style={{ color: THEME.colors.textMuted, fontSize: 10, fontFamily: THEME.fonts.sans, fontStyle: 'italic' }}>
+                {roast}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 0 }}>
+              {[
+                { label: 'Calories', value: `${cCal}`, unit: 'kcal', color: '#F97316' },
+                { label: 'Fat',      value: `${cFat}`,  unit: 'g',    color: '#FB923C' },
+                { label: 'Carbs',    value: `${cCarb}`, unit: 'g',    color: '#FBBF24' },
+              ].map((stat, i) => (
+                <View key={stat.label} style={{ flex: 1, alignItems: 'center', borderLeftWidth: i > 0 ? 1 : 0, borderLeftColor: 'rgba(249,115,22,0.2)' }}>
+                  <Text style={{ color: stat.color, fontSize: 15, fontFamily: THEME.fonts.sansMedium }}>{stat.value}<Text style={{ fontSize: 10 }}>{stat.unit}</Text></Text>
+                  <Text style={{ color: THEME.colors.textMuted, fontSize: 10, fontFamily: THEME.fonts.sans }}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
         );
-      })}
+      })()}
 
-      {/* Supplements — same 5 meal-time slots as nutrition, but their own
-          item_type='supplement' so they stay out of calorie/macro totals. */}
-      <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: '#A78BFA', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 14, marginBottom: 8, marginHorizontal: 14 }}>
-        💊 Supplements
-      </Text>
-      {SUPPLEMENT_SLOTS.map(slot => {
-        const slotItems = (dayData['supplement'] || []).filter((i: any) => i.meal_slot === slot.mealSlot);
-        return (
-          <SectionGroup
-            key={slot.key}
-            sectionKey={slot.key}
-            items={slotItems}
-            onToggle={onToggle}
-            locked={isDayFuture}
-            onAdd={(payload: any) => onAddExercise(dayNumber, 'supplement', slotItems, payload, slot.mealSlot)}
-            onRemove={onRemoveExercise}
-          />
-        );
-      })}
+      {/* Nutrition category card — groups all 5 food meal-time sections under
+          one clearly bordered/elevated container so they read as a single
+          deliberate category rather than 5 loose stacked sections. Tint uses
+          the existing dinner/food accent already present in FOOD_SLOTS. */}
+      <View
+        style={styles.categoryCard}
+        onLayout={e => { foodSectionOffsets.current['__cardTop'] = e.nativeEvent.layout.y; }}
+      >
+        <View style={[styles.categoryCardHeader, { borderBottomColor: 'rgba(74,222,128,0.15)' }]}>
+          <Text style={styles.categoryCardIcon}>🥗</Text>
+          <Text style={[styles.categoryCardLabel, { color: '#4ADE80' }]}>Nutrition</Text>
+        </View>
+        <View style={styles.categoryCardBody}>
+          {FOOD_SLOTS.map(slot => {
+            const slotItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === slot.key);
+            return (
+              <View key={slot.key} onLayout={e => { foodSectionOffsets.current[slot.key] = e.nativeEvent.layout.y; }}>
+                <SectionGroup
+                  sectionKey={slot.key}
+                  items={slotItems}
+                  onToggle={onToggle}
+                  locked={isDayFuture}
+                  onAdd={(payload: any) => onAddExercise(dayNumber, 'food', slotItems, payload, slot.key)}
+                  onRemove={onRemoveExercise}
+                  forceOpenState={expandedFoodSlot === slot.key ? true : undefined}
+                />
+              </View>
+            );
+          })}
+          {/* ── Confession Booth — standalone craving logger ─────────────── */}
+          {(() => {
+            const cravingItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === 'craving');
+            return (
+              <ConfessionBoothSection
+                items={cravingItems}
+                onToggle={onToggle}
+                onRemove={onRemoveExercise}
+                onAdd={(payload: any) => onAddExercise(dayNumber, 'food', cravingItems, payload, 'craving')}
+                locked={isDayFuture}
+              />
+            );
+          })()}
+        </View>
+      </View>
+
+      {/* Supplements category card — same treatment, using the existing
+          purple supplement accent (#A78BFA) already used throughout this
+          file for supplement-related UI (meal wheel header, nutrition ring
+          fat segment, SUPPLEMENT_SLOTS color). */}
+      <View style={[styles.categoryCard, { marginTop: 16 }]}>
+        <View style={[styles.categoryCardHeader, { borderBottomColor: 'rgba(167,139,250,0.18)' }]}>
+          <Text style={styles.categoryCardIcon}>💊</Text>
+          <Text style={[styles.categoryCardLabel, { color: '#A78BFA', flex: 1 }]}>Supplements</Text>
+          <TouchableOpacity onPress={() => handleSuppExpandAll(true)} activeOpacity={0.7} style={suppBtnStyle}>
+            <Text style={[suppIconStyle, { color: '#A78BFA' }]}>☰</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleSuppExpandAll(false)} activeOpacity={0.7} style={suppBtnStyle}>
+            <Text style={[suppIconStyle, { color: 'rgba(167,139,250,0.5)' }]}>⊟</Text>
+          </TouchableOpacity>
+        </View>
+        <SupplementSlotPill slots={SUPPLEMENT_SLOTS} dayData={dayData['supplement'] || []} />
+        <View style={styles.categoryCardBody}>
+          {SUPPLEMENT_SLOTS.map(slot => {
+            const slotItems = (dayData['supplement'] || []).filter((i: any) => i.meal_slot === slot.mealSlot);
+            return (
+              <SectionGroup
+                key={slot.key}
+                sectionKey={slot.key}
+                items={slotItems}
+                onToggle={onToggle}
+                locked={isDayFuture}
+                onAdd={(payload: any) => onAddExercise(dayNumber, 'supplement', slotItems, payload, slot.mealSlot)}
+                onRemove={onRemoveExercise}
+                forceOpenState={suppAllOpen}
+              />
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
@@ -1509,6 +2808,7 @@ function parseDateLocal(str: string): Date {
 }
 
 function ManualLogView({ userId }: { userId: string }) {
+  const scrollViewRef = useRef<ScrollView>(null);
   const { profile, fetchProfile, setProfile } = useAuthStore();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -1536,58 +2836,8 @@ function ManualLogView({ userId }: { userId: string }) {
   }, []);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(currentWeekStart);
 
-  // Compute plan end date
-  const planEndDate = useMemo<Date | null>(() => {
-    if (!startDate || !planIntensity) return null;
-    const weeks = INTENSITY_WEEKS[planIntensity] ?? 20;
-    const sd = parseDateLocal(startDate);
-    return addDaysToDate(sd, weeks * 7 - 1);
-  }, [startDate, planIntensity]);
-
-  // Is the selected week within the active plan?
-  const weekInPlan = useMemo<boolean | null>(() => {
-    if (!startDate) return null; // no plan set
-    const sd = parseDateLocal(startDate);
-    sd.setHours(0, 0, 0, 0);
-    const weekMon = parseDateLocal(selectedWeekStart);
-    const weekSat = addDaysToDate(weekMon, 5);
-    if (!planEndDate) return null;
-    const ed = new Date(planEndDate); ed.setHours(23, 59, 59, 999);
-    return weekSat >= sd && weekMon <= ed;
-  }, [startDate, planEndDate, selectedWeekStart]);
-
-     const { logs, grouped, weekStart, isLoading, shouldInit, initWeek, needsWaterSeed, ensureWaterSeeded, reseedFood, batchSave, isSaving, addItem, removeItem } =
+     const { logs, grouped, weekStart, isLoading, shouldInit, initWeek, needsWaterSeed, ensureWaterSeeded, batchSave, isSaving, addItem, removeItem } =
     useManualLog(userId, profile, selectedWeekStart);
-
-  const rawProgramId = (profile as any)?.workout_program_id ?? '';
-  const isFBRPlan    = PROGRAMS_ENABLED && (rawProgramId === 'total_transformation' || rawProgramId === 'FBR');
-  const [dietType, setDietType] = useState<'veg' | 'non_veg'>((profile as any)?.diet_type ?? 'veg');
-  const [isDietSwitching, setIsDietSwitching] = useState(false);
-
-  // Sync dietType when profile loads (initial useState may run before profile is hydrated)
-  useEffect(() => {
-    const stored = (profile as any)?.diet_type as 'veg' | 'non_veg' | null;
-    if (stored) setDietType(stored);
-  }, [(profile as any)?.diet_type]);
-
-  async function handleDietToggle(next: 'veg' | 'non_veg') {
-    if (next === dietType || isDietSwitching) return;
-    const prev = dietType;
-    setIsDietSwitching(true);
-    setDietType(next);
-    try {
-      const { error } = await supabase.from('profiles').update({ diet_type: next }).eq('id', userId);
-      if (error) throw error;
-      // Refresh auth store so profile.diet_type is current on next mount
-      setProfile({ ...(profile as any), diet_type: next });
-      await reseedFood(next);
-    } catch (err) {
-      console.error('[DietToggle] failed:', err);
-      setDietType(prev);
-    } finally {
-      setIsDietSwitching(false);
-    }
-  }
 
   // Local pending state: overrides DB values until Save is pressed
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -1710,10 +2960,68 @@ function ManualLogView({ userId }: { userId: string }) {
   // currently showing (already meal_slot-filtered for food), used only to
   // compute the next item_order.
   const handleAddExercise = useCallback(async (dayNumber: number, itemType: string, itemsForOrder: any[], payload: any, mealSlot?: string) => {
+    const { scope, ...itemPayload } = payload;
+    const effectiveMealSlot = mealSlot;
     const realOrders = itemsForOrder.map((i: any) => i.item_order || 0);
     const nextOrder  = realOrders.length ? Math.max(...realOrders) + 1 : 1;
-    await addItem({ dayNumber, itemType, itemOrder: nextOrder, mealSlot, ...payload });
-  }, [addItem]);
+
+    // For supplements with week/month scope, bulk-insert across multiple days
+    if (itemType === 'supplement' && (scope === 'week' || scope === 'month')) {
+      // Determine which (weekStart, dayNumber) pairs to insert
+      const pairs: { ws: string; dn: number }[] = [];
+
+      if (scope === 'week') {
+        for (let d = 1; d <= 6; d++) pairs.push({ ws: weekStart, dn: d });
+      } else {
+        // month: find every Monday whose week overlaps with the current calendar month
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth(); // 0-indexed
+        const firstDay = new Date(year, month, 1);
+        const lastDay  = new Date(year, month + 1, 0);
+        // Walk from the Monday at-or-before the 1st, to the Monday on-or-after the last
+        const firstMon = new Date(firstDay);
+        const dow0 = firstMon.getDay();
+        firstMon.setDate(firstMon.getDate() - (dow0 === 0 ? 6 : dow0 - 1));
+        for (let mon = new Date(firstMon); mon <= lastDay; mon.setDate(mon.getDate() + 7)) {
+          const ws = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
+          for (let d = 1; d <= 6; d++) {
+            // actual calendar date for this (ws, d)
+            const actualDate = new Date(mon);
+            actualDate.setDate(actualDate.getDate() + d - 1);
+            // only include days that fall within this calendar month
+            if (actualDate >= firstDay && actualDate <= lastDay) {
+              pairs.push({ ws, dn: d });
+            }
+          }
+        }
+      }
+
+      const rows = pairs.map(({ ws, dn }) => ({
+        client_id:       userId,
+        week_start_date: ws,
+        day_number:      dn,
+        item_type:       'supplement',
+        item_name:       itemPayload.itemName,
+        item_order:      nextOrder,
+        completed:       false,
+        meal_slot:       effectiveMealSlot ?? null,
+        quantity:        itemPayload.quantity ?? null,
+        is_custom:       true,
+      }));
+
+      const { error } = await supabase.from('manual_workout_logs').upsert(rows, {
+        onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+        ignoreDuplicates: true,
+      });
+      if (error) throw error;
+      // Invalidate all weeks for this user so any visible week re-fetches
+      queryClient.invalidateQueries({ queryKey: ['manual_logs', userId] });
+      return;
+    }
+
+    await addItem({ dayNumber, itemType, itemOrder: nextOrder, mealSlot: effectiveMealSlot, ...itemPayload });
+  }, [addItem, weekStart, userId]);
 
   const handleRemoveExercise = useCallback(async (id: string) => {
     await removeItem(id);
@@ -1782,6 +3090,7 @@ function ManualLogView({ userId }: { userId: string }) {
       queryClient.invalidateQueries({ queryKey: ['client', userId, 'week_activity'] });
       queryClient.invalidateQueries({ queryKey: ['client', userId, 'week_stats'] });
       queryClient.invalidateQueries({ queryKey: ['client', userId, 'total_days_logged'] });
+      queryClient.invalidateQueries({ queryKey: ['training_load', userId] });
       // Recalculate alignment streak after every save (fire-and-forget)
       recalcStreak();
     } catch {
@@ -1814,6 +3123,7 @@ function ManualLogView({ userId }: { userId: string }) {
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE, paddingHorizontal: 16 }}
         showsVerticalScrollIndicator={false}
       >
@@ -1846,64 +3156,6 @@ function ManualLogView({ userId }: { userId: string }) {
       </TouchableOpacity>
     </View>
   </View>
-  {/* Active plan indicator */}
-  {startDate && (
-    <View style={{ marginTop: 10, backgroundColor: 'rgba(0,196,180,0.07)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: 'rgba(0,196,180,0.2)' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text style={{ fontSize: 14 }}>
-          {{ beginner: '🌱', medium: '⚡', hard: '🔥' }[planIntensity ?? 'beginner'] ?? '📋'}
-        </Text>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
-            Plan active · started {new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </Text>
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
-            {{ home: '🏠 Home', gym: '🏋️ Gym', hybrid: '🔄 Hybrid' }[planTrainingType ?? 'home'] ?? '🏠 Home'}
-            {'  ·  '}
-            {{ beginner: 'Beginner', medium: 'Medium', hard: 'Hard' }[planIntensity ?? 'beginner'] ?? 'Beginner'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Veg / Non-Veg diet toggle — FBR only */}
-      {isFBRPlan && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 }}>
-          <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 0.5 }}>DIET</Text>
-          <View style={{ flexDirection: 'row', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-            <TouchableOpacity
-              onPress={() => handleDietToggle('veg')}
-              activeOpacity={0.8}
-              disabled={isDietSwitching}
-              style={{
-                paddingHorizontal: 14, paddingVertical: 5,
-                backgroundColor: dietType === 'veg' ? '#4ADE80' : 'rgba(255,255,255,0.05)',
-              }}
-            >
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: dietType === 'veg' ? '#000' : 'rgba(255,255,255,0.4)' }}>
-                🌿 Veg
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleDietToggle('non_veg')}
-              activeOpacity={0.8}
-              disabled={isDietSwitching}
-              style={{
-                paddingHorizontal: 14, paddingVertical: 5,
-                backgroundColor: dietType === 'non_veg' ? '#FB923C' : 'rgba(255,255,255,0.05)',
-              }}
-            >
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: dietType === 'non_veg' ? '#000' : 'rgba(255,255,255,0.4)' }}>
-                🍗 Non-Veg
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {isDietSwitching && (
-            <ActivityIndicator size="small" color={THEME.colors.teal} />
-          )}
-        </View>
-      )}
-    </View>
-  )}
 </View>
 
         {/* ── Routines ── deactivated for now: superseded by the per-section
@@ -2005,6 +3257,7 @@ function ManualLogView({ userId }: { userId: string }) {
               onToggleAll={handleToggleAll}
               onAddExercise={handleAddExercise}
               onRemoveExercise={handleRemoveExercise}
+              scrollViewRef={scrollViewRef}
             />
           </View>
       </ScrollView>
@@ -2085,18 +3338,49 @@ upcomingPillText:{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: THE
   dayBody:     { paddingBottom: 10 },
   progressTrack:{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   progressFill: { height: 3, borderRadius: 2 },
-  sectionGroup: { marginTop: 10, marginHorizontal: 14 },
-  sectionHeader:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 9, marginBottom: 2 },
+  sectionGroup: { marginTop: 14, marginHorizontal: 14 },
+  sectionHeader:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, marginBottom: 3 },
   sectionIcon:  { fontSize: 15 },
-  sectionLabel: { fontSize: 12, fontFamily: THEME.fonts.sansMedium, letterSpacing: 0.4, flex: 1 },
-  sectionPill:  { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  sectionPillText: { fontSize: 11, fontFamily: THEME.fonts.sansMedium },
+  sectionLabel: { fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, letterSpacing: 0.3, flex: 1 },
+  sectionPill:  { borderWidth: 1, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3 },
+  sectionPillText: { fontSize: 12, fontFamily: THEME.fonts.sansMedium },
   sectionChevron:  { color: THEME.colors.textMuted, fontSize: 14 },
   sectionItems: { paddingHorizontal: 4 },
-  logRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 8, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
-  logItemName:  { flex: 1, color: THEME.colors.textSecondary, fontSize: 13, fontFamily: THEME.fonts.sans, lineHeight: 19 },
+  // Outer category card — wraps the 5 Nutrition or 5 Supplement SectionGroups
+  // so they read as one deliberate category (rounded card, soft elevation,
+  // generous internal breathing room) instead of a loose stack. Borrows the
+  // "rounded stat-card rows with calm separation" quality from the
+  // habit-tracker / Kalo references — color stays whatever is passed via the
+  // header's inline tint, base card uses existing THEME tokens only.
+  categoryCard: {
+    marginHorizontal: 14,
+    marginTop: 18,
+    borderRadius: 18,
+    backgroundColor: THEME.colors.surface2,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  categoryCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  categoryCardIcon: { fontSize: 16 },
+  categoryCardLabel: { fontSize: 14.5, fontFamily: THEME.fonts.sansMedium, letterSpacing: 0.3 },
+  categoryCardBody: { paddingVertical: 4, paddingBottom: 10 },
+  logRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 10, gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
+  logItemName:  { flex: 1, color: THEME.colors.textSecondary, fontSize: 13.5, fontFamily: THEME.fonts.sans, lineHeight: 19 },
   logItemDone:  { color: THEME.colors.textMuted, textDecorationLine: 'line-through' },
-  logItemDetail:{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans, marginTop: 2 },
+  logItemDetail:{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans, marginTop: 3 },
   logTime:      { color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans, flexShrink: 0 },
   addBtn:       { width: 20, height: 20, borderRadius: 10, borderWidth: 1.2, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   addBtnText:   { fontSize: 13, fontFamily: THEME.fonts.sansMedium, lineHeight: 15 },
@@ -2107,6 +3391,35 @@ upcomingPillText:{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: THE
   },
   emptySectionCtaIcon: { fontSize: 16, fontFamily: THEME.fonts.sansMedium },
   emptySectionCtaText: { color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sansMedium },
+  suppGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 4 },
+  suppGridCell:    {
+    width: '47%', aspectRatio: 0.68, borderRadius: 16, borderWidth: 1.5,
+    backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 10, paddingTop: 12, paddingBottom: 10, gap: 8,
+  },
+  suppAddCell:     { borderStyle: 'dashed', backgroundColor: 'transparent' },
+  suppGridImageWrap: { width: '72%', aspectRatio: 1, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: THEME.colors.surface3 },
+  suppGridImage:   { width: '100%', height: '100%' },
+  suppGridName:    { fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, textAlign: 'center', lineHeight: 17, textDecorationLine: 'underline' },
+  suppCheckBadge:  { position: 'absolute', top: 8, left: 8, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  suppCoachBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: `${THEME.colors.amber}20` },
+  suppCoachBadgeText: { fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber },
+  suppRemoveX:     { position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  suppPreviewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 32 },
+  suppPreviewCard: { width: '100%', maxWidth: 340, backgroundColor: THEME.colors.surface2, borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border },
+  suppPreviewImageWrap: { width: 220, height: 220, borderRadius: 16, backgroundColor: THEME.colors.surface3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 18 },
+  suppPreviewImage: { width: '100%', height: '100%' },
+  suppPreviewName: { fontSize: 17, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textAlign: 'center', lineHeight: 23, marginBottom: 20 },
+  suppPreviewCloseBtn: { paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12, backgroundColor: THEME.colors.teal },
+  suppPreviewCloseBtnText: { color: THEME.colors.background, fontFamily: THEME.fonts.sansSemibold, fontSize: 14 },
+  slotPillWrap:          { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10 },
+  slotPillTrack:         { flexDirection: 'row' },
+  slotPillSegment:       { flex: 1 },
+  slotPillSegmentTrack:  { height: 7, borderRadius: 4, backgroundColor: THEME.colors.surface3, overflow: 'hidden' },
+  slotPillSegmentFill:   { height: '100%', borderRadius: 4 },
+  slotPillLabelsRow:     { flexDirection: 'row', marginTop: 6 },
+  slotPillLabel:         { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  slotPillLabelText:     { fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted },
   checkOuter:   { width: 24, height: 24, borderRadius: 7, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   checkTick:    { color: '#000', fontSize: 13, fontFamily: THEME.fonts.sansMedium, lineHeight: 16 },
   guideBtn:     { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(100,181,246,0.5)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },

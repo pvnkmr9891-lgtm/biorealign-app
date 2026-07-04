@@ -93,6 +93,13 @@ export default function AdminDashboard() {
       color: '#93C5FD',
     },
     {
+      emoji: '🏋️',
+      title: 'Fitness analytics',
+      subtitle: 'Avg domain scores by athlete status & age band',
+      route: '/(admin)/fitness-analytics',
+      color: '#34D399',
+    },
+    {
       emoji: '📚',
       title: 'Clients by Goals',
       subtitle: 'Client distribution by selected goal',

@@ -45,8 +45,8 @@ function groupByDate(messages: any[]) {
 export default function MessagingScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { enrollmentId, clientId, clientName } = useLocalSearchParams<{
-    enrollmentId: string;
+  const { coachId, clientId, clientName } = useLocalSearchParams<{
+    coachId: string;
     clientId: string;
     clientName: string;
   }>();
@@ -54,16 +54,16 @@ export default function MessagingScreen() {
   const [text, setText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
-  const { data: messages = [], isLoading } = useMessages(enrollmentId);
+  const { data: messages = [], isLoading } = useMessages(coachId, clientId);
   const { mutateAsync: sendMessage, isPending } = useSendMessage();
   const { mutate: markRead } = useMarkMessagesRead();
 
   // Mark messages as read when screen opens
   useEffect(() => {
-    if (enrollmentId && messages.length > 0) {
-      markRead(enrollmentId);
+    if (coachId && clientId && messages.length > 0) {
+      markRead({ coachId, clientId });
     }
-  }, [enrollmentId, messages.length]);
+  }, [coachId, clientId, messages.length]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -76,7 +76,7 @@ export default function MessagingScreen() {
     const body = text.trim();
     if (!body || isPending) return;
     setText('');
-    await sendMessage({ enrollmentId, receiverId: clientId, body });
+    await sendMessage({ coachId, clientId, receiverId: clientId, body });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 

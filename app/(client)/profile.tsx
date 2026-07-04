@@ -13,13 +13,17 @@ import { useClientEnrollments, PROGRAM_CATALOGUE } from '@/hooks/usePrograms';
 import { PROGRAMS } from '@/constants/programs';
 import { PROGRAMS_ENABLED, COACH_REQUEST_ENABLED } from '@/constants/featureFlags';
 import { useMyCoachStatus, useCoachProfile } from '@/hooks/useCoachDirectory';
-import { useMyDetailedAssessment } from '@/hooks/useDetailedAssessment';
+import { useMyDetailedAssessment, useSaveAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
+import { DETAILED_ASSESSMENT_STAGES } from '@/constants/detailedAssessmentQuestions';
 import { INTENSITY_META, TYPE_META } from '@/store/onboardingStore';
 import { SUPPORT_EMAIL } from '@/constants/contact';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { THEME } from '@/constants/theme';
+import {
+  DetailedStageEditor, ProfileOverviewCard,
+} from '@/components/profile/ClientProfileView';
 
 // ── Privacy Policy Modal ──────────────────────────────────────────────────────
 function PrivacyPolicyModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -333,6 +337,169 @@ function AssessmentSummaryCard({ clientId }: { clientId: string }) {
   );
 }
 
+// ── Small local display primitives (mirrors ClientProfileView's Row,
+// kept local here since it isn't exported — it's a trivial wrapper). ──
+function PRow({ label, value }: { label: string; value: any }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+      <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, flex: 1 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textTransform: 'capitalize', textAlign: 'right', flex: 1 }}>{value ?? '—'}</Text>
+    </View>
+  );
+}
+
+function PFieldValue({ label, value, color }: { label: string; value: any; color: string }) {
+  const v = value == null || value === '' ? null : Array.isArray(value) ? (value.length ? value : null) : value;
+  if (v == null) return <PRow label={label} value={null} />;
+  if (Array.isArray(v)) {
+    return (
+      <View style={{ paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)' }}>
+        <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 6 }}>{label}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {v.map((item: string) => (
+            <View key={item} style={{ backgroundColor: `${color}18`, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 }}>
+              <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color }}>{item}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+  return <PRow label={label} value={v} />;
+}
+
+function PEmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 56, paddingHorizontal: 8 }}>
+      <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <Text style={{ fontSize: 30 }}>{icon}</Text>
+      </View>
+      <Text style={{ fontSize: 17, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, textAlign: 'center' }}>{title}</Text>
+      {subtitle && <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center', marginTop: 6, lineHeight: 20 }}>{subtitle}</Text>}
+    </View>
+  );
+}
+
+// ── My Detailed Assessment tab — self-scoped adaptation of ClientProfileView's
+// AssessmentTab. No "Mark as Reviewed" (coach/admin-only action). Uses the
+// client's own self-service save mutation (useSaveAssessmentStage) rather than
+// the coach-scoped useUpdateDetailedAssessmentStage, and preserves the row's
+// existing current_stage so editing an already-submitted assessment doesn't
+// reset/advance the client's onboarding stage pointer.
+function MyDetailedAssessmentTab({ profile }: { profile: any }) {
+  const { data: assessment, isLoading } = useMyDetailedAssessment();
+  const { mutateAsync: saveStage, isPending: isSavingStage } = useSaveAssessmentStage();
+  const [openStage, setOpenStage] = useState<string | null>(DETAILED_ASSESSMENT_STAGES[0]?.key ?? null);
+  const [editingStage, setEditingStage] = useState<string | null>(null);
+
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
+
+  if (!assessment) {
+    return (
+      <PEmptyState
+        icon="📝"
+        title="No Detailed Assessment yet"
+        subtitle="Once you request a coach and they approve you, your Detailed Assessment will appear here."
+      />
+    );
+  }
+
+  if (assessment.status === 'in_progress') {
+    return (
+      <PEmptyState
+        icon="📝"
+        title="Not submitted yet"
+        subtitle={`You haven't finished your Detailed Assessment yet (currently on stage ${assessment.current_stage ?? 1}).`}
+      />
+    );
+  }
+
+  const isReviewed = assessment.status === 'reviewed';
+  const isAthlete = !!(assessment as any).is_athlete;
+  const stages = DETAILED_ASSESSMENT_STAGES.filter((s) => !s.athleteOnly || isAthlete);
+
+  const handleSaveStage = async (stageKey: AssessmentStageKey, data: Record<string, any>) => {
+    // Preserve the assessment's own current_stage unchanged — this is an edit
+    // of an already-submitted assessment, not onboarding progression.
+    await saveStage({ stageKey, data, nextStage: assessment.current_stage ?? DETAILED_ASSESSMENT_STAGES.length });
+  };
+
+  return (
+    <View>
+      <View style={{ backgroundColor: isReviewed ? `${THEME.colors.success ?? '#4CC986'}15` : `${THEME.colors.amber}15`, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 0.5, borderColor: isReviewed ? `${THEME.colors.success ?? '#4CC986'}30` : `${THEME.colors.amber}30`, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text style={{ fontSize: 20 }}>{isReviewed ? '✅' : '🔔'}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: isReviewed ? (THEME.colors.success ?? '#4CC986') : THEME.colors.amber }}>
+            {isReviewed ? 'Reviewed by your coach' : 'Submitted — awaiting review'}
+          </Text>
+          {assessment.submitted_at && (
+            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
+              {new Date(assessment.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {stages.map((stage, i) => {
+        const data = (assessment as any)[stage.key] ?? {};
+        const isOpen = openStage === stage.key;
+        const isEditingThis = editingStage === stage.key;
+        const stageColors = ['#00C4B4', '#F59E0B', '#60A5FA', '#C084FC', '#4CC986'];
+        const color = stageColors[i % stageColors.length];
+
+        return (
+          <View key={stage.key} style={{ marginBottom: 10, backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, overflow: 'hidden' }}>
+            <TouchableOpacity
+              onPress={() => setOpenStage(isOpen ? null : stage.key)}
+              activeOpacity={0.8}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16 }}
+            >
+              <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: `${color}20`, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 15 }}>{stage.icon}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{stage.title}</Text>
+                <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>{stage.subtitle}</Text>
+              </View>
+              <Text style={{ color: THEME.colors.textMuted, fontSize: 16, transform: [{ rotate: isOpen ? '90deg' : '0deg' }] }}>›</Text>
+            </TouchableOpacity>
+
+            {isOpen && (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 14, borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
+                {isEditingThis ? (
+                  <DetailedStageEditor
+                    stage={stage}
+                    data={data}
+                    color={color}
+                    onDone={() => setEditingStage(null)}
+                    onSave={handleSaveStage}
+                    saving={isSavingStage}
+                  />
+                ) : (
+                  <>
+                    {stage.fields.map((field) => {
+                      const value = field.crossTableProfileDiet
+                        ? (profile?.diet_type === 'veg' ? 'Veg' : profile?.diet_type === 'non_veg' ? 'Non-Veg' : null)
+                        : data[field.key];
+                      return <PFieldValue key={field.key} label={field.label} value={value} color={color} />;
+                    })}
+                    <TouchableOpacity
+                      onPress={() => setEditingStage(stage.key)}
+                      style={{ alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: `${color}18` }}
+                    >
+                      <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color }}>✏️ Edit</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function calcChildAge(dob: string | undefined): number | null {
   if (!dob) return null;
   const d = new Date(dob + 'T00:00:00');
@@ -597,7 +764,7 @@ export default function ProfileScreen() {
   const qc = useQueryClient();
   const [showEdit, setShowEdit]           = useState(false);
   const [showPrivacy, setShowPrivacy]     = useState(false);
-  const [activeSection, setActiveSection] = useState<'overview' | 'assessment' | 'enrollments'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'detailedAssessment' | 'assessment' | 'enrollments'>('overview');
 
   const initials = profile?.full_name
     ?.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() ?? '?';
@@ -664,11 +831,8 @@ export default function ProfileScreen() {
         {/* Section tabs */}
         <View style={{ flexDirection: 'row', marginHorizontal: 24, marginBottom: 20, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 4, borderWidth: 0.5, borderColor: THEME.colors.border }}>
           {[
-            { key: 'overview',    label: 'Overview' },
-            ...(PROGRAMS_ENABLED ? [
-              { key: 'assessment',  label: 'Assessment' },
-              { key: 'enrollments', label: 'Programs' },
-            ] : []),
+            { key: 'overview',           label: 'Overview' },
+            { key: 'detailedAssessment', label: 'Detailed Assessment' },
           ].map(tab => (
             <TouchableOpacity
               key={tab.key}
@@ -690,19 +854,7 @@ export default function ProfileScreen() {
             <View style={{ gap: 12 }}>
               {COACH_REQUEST_ENABLED && <CoachStatusCard />}
 
-              {/* Quick score cards */}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                {[
-                  { label: 'Fitness',   value: '—', color: THEME.scoreColors?.fitness   ?? THEME.colors.teal },
-                  { label: 'Recovery',  value: '—', color: THEME.scoreColors?.recovery  ?? '#60A5FA' },
-                  { label: 'Longevity', value: '—', color: THEME.scoreColors?.longevity ?? THEME.colors.amber },
-                ].map(s => (
-                  <View key={s.label} style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}>
-                    <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: s.color }}>{s.value}</Text>
-                    <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{s.label}</Text>
-                  </View>
-                ))}
-              </View>
+              {user?.id && <ProfileOverviewCard clientId={user.id} profile={profile} color={THEME.colors.teal} />}
 
               {/* Links */}
               <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, overflow: 'hidden' }}>
@@ -724,7 +876,13 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* Assessment tab */}
+          {/* Detailed Assessment tab */}
+          {activeSection === 'detailedAssessment' && (
+            <MyDetailedAssessmentTab profile={profile} />
+          )}
+
+          {/* Old gated Assessment tab — dead while PROGRAMS_ENABLED is false,
+              no longer reachable from the tab bar above either way. */}
           {PROGRAMS_ENABLED && activeSection === 'assessment' && user?.id && (
             <>
               <AssessmentSummaryCard clientId={user.id} />
@@ -732,7 +890,8 @@ export default function ProfileScreen() {
             </>
           )}
 
-          {/* Enrollments tab */}
+          {/* Old Enrollments/Programs tab — dead while PROGRAMS_ENABLED is
+              false, no longer reachable from the tab bar above either way. */}
           {PROGRAMS_ENABLED && activeSection === 'enrollments' && (
             <EnrollmentCard />
           )}

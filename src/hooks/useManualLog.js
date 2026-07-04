@@ -172,7 +172,6 @@ export function useManualLog(userId, profile, weekStartOverride) {
     // (a different device/session), which this client query has no other
     // way to learn about. Poll in the background so additions show up
     // without the client needing to leave and reopen the screen.
-    refetchInterval: 20000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('manual_workout_logs')
@@ -436,7 +435,7 @@ export function useManualLog(userId, profile, weekStartOverride) {
       sets, reps, side, holdSecs, restSecs,
       quantity, calories, proteinG, carbsG, fatG,
     }) => {
-      const { error } = await supabase.from('manual_workout_logs').insert({
+      const { error } = await supabase.from('manual_workout_logs').upsert({
         client_id:       userId,
         week_start_date: weekStart,
         day_number:      dayNumber,
@@ -456,6 +455,9 @@ export function useManualLog(userId, profile, weekStartOverride) {
         carbs_g:         carbsG ?? null,
         fat_g:           fatG ?? null,
         is_custom:       true,
+      }, {
+        onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+        ignoreDuplicates: true,
       });
       if (error) throw error;
     },

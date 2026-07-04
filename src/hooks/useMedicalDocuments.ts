@@ -52,6 +52,7 @@ export interface MedicalAnalysis {
   summary_text: string;
   sent_to_coach_at: string | null;
   sent_to_expert_at: string | null;
+  coach_viewed_at: string | null;
   created_at: string;
 }
 

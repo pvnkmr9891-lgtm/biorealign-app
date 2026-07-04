@@ -61,7 +61,7 @@ export default function CoachInboxScreen() {
             No conversations yet
           </Text>
           <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center', lineHeight: 22 }}>
-            Conversations with your clients will appear here once they're enrolled.
+            Conversations with your assigned clients will appear here.
           </Text>
         </View>
       ) : (
@@ -73,11 +73,11 @@ export default function CoachInboxScreen() {
 
             return (
               <TouchableOpacity
-                key={conv.enrollmentId}
+                key={conv.clientId}
                 onPress={() => router.push({
                   pathname: '/(coach)/messaging',
                   params: {
-                    enrollmentId: conv.enrollmentId,
+                    coachId: conv.coachId,
                     clientId: conv.clientId,
                     clientName: conv.clientName,
                   },

@@ -538,7 +538,6 @@ export function useClientRehabAppointments(clientId: string) {
 export function useAdminRehabAvailabilityWindows() {
   return useQuery({
     queryKey: ['admin', 'rehab_windows'],
-    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_availability_windows')
@@ -768,7 +767,6 @@ export function useAdminCoachesList() {
 export function useAdminRehabQueue() {
   return useQuery({
     queryKey: ['admin', 'rehab_queue'],
-    refetchInterval: 15000, // pick up new client requests without a manual reload
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_requests')
@@ -793,7 +791,6 @@ export function useAdminRehabCalendar({ startDate, endDate }: { startDate: strin
   return useQuery({
     queryKey: ['admin', 'rehab_calendar', startDate, endDate],
     enabled: !!startDate && !!endDate,
-    refetchInterval: 15000, // pick up newly-booked client slots without a manual reload
     queryFn: async () => {
       const { data, error } = await supabase
         .from('rehab_appointments')
@@ -982,6 +979,71 @@ export function useAdminMedicalRecordsClients(filter: MedicalRecordsClientFilter
       const { data: clients, error: clientsErr } = await supabase.from('profiles').select('id, full_name, phone').in('id', clientIds);
       if (clientsErr) throw clientsErr;
       return clients ?? [];
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Fitness assessment analytics — average domain scores segmented by
+// athlete-toggle status and by age band (>=60 vs <60, the scoring cutoff
+// where real normative data exists). Deliberately simple aggregate stat
+// cards, not a full BI tool — only the most recent assessment per client
+// contributes, so one client's history doesn't skew the average.
+// ---------------------------------------------------------------------------
+export function useAdminFitnessAnalytics() {
+  return useQuery({
+    queryKey: ['admin', 'fitness_analytics'],
+    queryFn: async () => {
+      const { data: assessments, error } = await supabase
+        .from('fitness_assessments')
+        .select('id, client_id, client_age_at_assessment, is_athlete, assessment_date, results:fitness_domain_results(domain, domain_score, score_status)')
+        .order('assessment_date', { ascending: false });
+      if (error) throw error;
+
+      // Keep only each client's most recent assessment.
+      const latestByClient = new Map<string, typeof assessments[number]>();
+      (assessments ?? []).forEach((a: any) => {
+        if (!latestByClient.has(a.client_id)) latestByClient.set(a.client_id, a);
+      });
+      const latest = Array.from(latestByClient.values());
+
+      const domains = ['strength', 'flexibility', 'endurance', 'agility'] as const;
+
+      function avgFor(rows: any[], domain: string): number | null {
+        const scores = rows
+          .flatMap((a) => a.results ?? [])
+          .filter((r: any) => r.domain === domain && r.score_status === 'scored' && r.domain_score != null)
+          .map((r: any) => Number(r.domain_score));
+        if (scores.length === 0) return null;
+        return Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+      }
+
+      const athleteRows = latest.filter((a: any) => a.is_athlete === true);
+      const nonAthleteRows = latest.filter((a: any) => a.is_athlete !== true);
+      const over60Rows = latest.filter((a: any) => a.client_age_at_assessment >= 60);
+      const under60Rows = latest.filter((a: any) => a.client_age_at_assessment < 60);
+
+      const byAthleteStatus = domains.map((d) => ({
+        domain: d,
+        athlete: avgFor(athleteRows, d),
+        nonAthlete: avgFor(nonAthleteRows, d),
+      }));
+
+      const byAgeBand = domains.map((d) => ({
+        domain: d,
+        over60: avgFor(over60Rows, d),
+        under60: avgFor(under60Rows, d),
+      }));
+
+      return {
+        totalClientsAssessed: latest.length,
+        athleteCount: athleteRows.length,
+        nonAthleteCount: nonAthleteRows.length,
+        over60Count: over60Rows.length,
+        under60Count: under60Rows.length,
+        byAthleteStatus,
+        byAgeBand,
+      };
     },
   });
 }

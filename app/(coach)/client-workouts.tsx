@@ -10,7 +10,8 @@ import { WARMUP_EXERCISES } from '@/constants/warmupExercises';
 import { WORKOUT_EXERCISES } from '@/constants/workoutExercises';
 import { COOLDOWN_EXERCISES } from '@/constants/cooldownExercises';
 import { MORNING_DRINK_ITEMS, BREAKFAST_ITEMS, LUNCH_ITEMS, EVENING_SNACK_ITEMS, DINNER_ITEMS, FoodItemDefault } from '@/constants/foodItems';
-import { SUPPLEMENT_ITEMS, SupplementItemDefault } from '@/constants/supplementItems';
+import { SUPPLEMENT_ITEMS, SupplementItemDefault, getSupplementInteractionWarning } from '@/constants/supplementItems';
+import { useClientProfile } from '@/hooks/useCoachClientOverview';
 import { THEME } from '@/constants/theme';
 
 const SUCCESS = THEME.colors.success ?? '#4CC986';
@@ -76,6 +77,7 @@ function shiftWeek(weekStart: string, delta: number) {
 }
 
 type ModalTarget = { kind: 'exercise'; key: EditableSection } | { kind: 'meal'; key: MealSlot } | { kind: 'supplement'; key: MealSlot };
+type SupplementScope = 'today' | 'week' | 'month';
 
 // ── Add Exercise Modal ──────────────────────────────────────────────────
 function AddExerciseModal({
@@ -344,20 +346,21 @@ function AddMealModal({
 
 // ── Add Supplement Modal ─────────────────────────────────────────────────
 function AddSupplementModal({
-  visible, onClose, slot, onAdd,
+  visible, onClose, slot, onAdd, warningFor,
 }: {
   visible: boolean;
   onClose: () => void;
   slot: MealSlot | null;
-  onAdd: (payload: { itemName: string; quantity: string; applyToWeek: boolean }) => void;
+  onAdd: (payload: { itemName: string; quantity: string; scope: SupplementScope }) => void;
+  warningFor: (name: string) => string | null;
 }) {
-  const [step, setStep] = useState<'choose' | 'list' | 'manual'>('choose');
+  const [step, setStep] = useState<'scope' | 'choose' | 'list' | 'manual'>('scope');
+  const [scope, setScope] = useState<SupplementScope>('today');
   const [search, setSearch] = useState('');
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [applyToWeek, setApplyToWeek] = useState(false);
 
-  const reset = () => { setStep('choose'); setSearch(''); setName(''); setQuantity(''); setApplyToWeek(false); };
+  const reset = () => { setStep('scope'); setScope('today'); setSearch(''); setName(''); setQuantity(''); };
   const close = () => { reset(); onClose(); };
 
   if (!slot) return null;
@@ -370,7 +373,7 @@ function AddSupplementModal({
 
   const submit = () => {
     if (!name.trim()) { Alert.alert('Name required', 'Please enter a supplement name.'); return; }
-    onAdd({ itemName: name.trim(), quantity: quantity.trim(), applyToWeek });
+    onAdd({ itemName: name.trim(), quantity: quantity.trim(), scope });
     close();
   };
 
@@ -379,9 +382,34 @@ function AddSupplementModal({
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={close} />
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '85%', backgroundColor: THEME.colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Text style={{ fontSize: 18, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>Add supplement — {SUPPLEMENT_META[slot].label}</Text>
+          <Text style={{ fontSize: 18, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>
+            {step === 'scope' ? 'Add supplement' : `Add supplement — ${SUPPLEMENT_META[slot].label}`}
+          </Text>
           <TouchableOpacity onPress={close}><Text style={{ fontSize: 20, color: THEME.colors.textMuted }}>✕</Text></TouchableOpacity>
         </View>
+
+        {step === 'scope' && (
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4 }}>How many days to add this supplement?</Text>
+            {([
+              { value: 'today' as const, icon: '📅', label: 'Today', sub: 'Add only to this day' },
+              { value: 'week' as const,  icon: '🗓️', label: 'This Week', sub: 'Add to all 6 days this week' },
+              { value: 'month' as const, icon: '📆', label: 'This Month', sub: 'Add to every day this calendar month' },
+            ] as const).map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                onPress={() => { setScope(opt.value); setStep('choose'); }}
+                style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+              >
+                <Text style={{ fontSize: 22 }}>{opt.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{opt.label}</Text>
+                  <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{opt.sub}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {step === 'choose' && (
           <View style={{ gap: 12 }}>
@@ -425,15 +453,12 @@ function AddSupplementModal({
             <TextInput value={quantity} onChangeText={setQuantity} placeholder="Dosage (e.g. 5g, 1 capsule)" placeholderTextColor={THEME.colors.textMuted}
               style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, marginBottom: 16, borderWidth: 0.5, borderColor: THEME.colors.border }} />
 
-            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 8 }}>Apply to</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
-              <TouchableOpacity onPress={() => setApplyToWeek(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: !applyToWeek ? THEME.colors.teal : THEME.colors.surface2, borderWidth: 0.5, borderColor: !applyToWeek ? THEME.colors.teal : THEME.colors.border }}>
-                <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: !applyToWeek ? THEME.colors.background : THEME.colors.textSecondary }}>This day only</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setApplyToWeek(true)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: applyToWeek ? THEME.colors.teal : THEME.colors.surface2, borderWidth: 0.5, borderColor: applyToWeek ? THEME.colors.teal : THEME.colors.border }}>
-                <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: applyToWeek ? THEME.colors.background : THEME.colors.textSecondary }}>Entire week (all 6 days)</Text>
-              </TouchableOpacity>
-            </View>
+            {name.trim() && warningFor(name) && (
+              <View style={{ backgroundColor: '#F8717120', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 0.5, borderColor: '#F87171' }}>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#F87171', marginBottom: 2 }}>⚠️ Safety caution</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, lineHeight: 17 }}>{warningFor(name)}</Text>
+              </View>
+            )}
 
             <TouchableOpacity onPress={submit} style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 8 }}>
               <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Add Supplement</Text>
@@ -447,10 +472,10 @@ function AddSupplementModal({
 
 // ── A section block (works for both exercise sections and meal slots) ────
 function ItemSection({
-  icon, label, color, items, detailLine, onAddPress, onRemove,
+  icon, label, color, items, detailLine, onAddPress, onRemove, warningFor,
 }: {
   icon: string; label: string; color: string; items: any[]; detailLine: (i: any) => string | null;
-  onAddPress: () => void; onRemove: (id: string) => void;
+  onAddPress: () => void; onRemove: (id: string) => void; warningFor?: (i: any) => string | null;
 }) {
   return (
     <View style={{ marginBottom: 16 }}>
@@ -472,8 +497,10 @@ function ItemSection({
         </View>
       ) : (
         <View style={{ gap: 6 }}>
-          {items.map((item: any) => (
-            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.colors.surface2, borderRadius: 11, padding: 11, borderWidth: 0.5, borderColor: item.completed ? `${SUCCESS}40` : THEME.colors.border, gap: 9 }}>
+          {items.map((item: any) => {
+            const warning = warningFor?.(item) ?? null;
+            return (
+            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.colors.surface2, borderRadius: 11, padding: 11, borderWidth: 0.5, borderColor: warning ? '#F87171' : (item.completed ? `${SUCCESS}40` : THEME.colors.border), gap: 9 }}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{item.item_name}</Text>
@@ -485,6 +512,12 @@ function ItemSection({
                   )}
                 </View>
                 {detailLine(item) && <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{detailLine(item)}</Text>}
+                {warning && (
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4, marginTop: 6, backgroundColor: '#F8717120', borderRadius: 7, padding: 7 }}>
+                    <Text style={{ fontSize: 10.5 }}>⚠️</Text>
+                    <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sans, color: '#F87171', flex: 1, lineHeight: 14 }}>{warning}</Text>
+                  </View>
+                )}
               </View>
               {item.completed && (
                 <View style={{ backgroundColor: `${SUCCESS}20`, borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
@@ -496,7 +529,8 @@ function ItemSection({
                 <Text style={{ fontSize: 16, color: THEME.colors.textMuted }}>×</Text>
               </TouchableOpacity>
             </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </View>
@@ -513,6 +547,12 @@ export default function ClientWorkoutsScreen() {
   const { data: exGrouped, isLoading: exLoading } = useClientWeekLogs(clientId, weekStart);
   const { data: mealGrouped, isLoading: mealLoading } = useClientWeekNutrition(clientId, weekStart);
   const { data: supplementGrouped, isLoading: supplementLoading } = useClientWeekSupplements(clientId, weekStart);
+  // Single source of truth for conditions/medications is now profiles
+  // (Overview tab), not the Detailed Assessment, which no longer asks them.
+  const { data: clientProfile } = useClientProfile(clientId);
+  const clientHealth = clientProfile as { conditions?: string[]; medications?: string[] } | undefined;
+  const supplementWarningFor = (item: { item_name?: string }) =>
+    item?.item_name ? getSupplementInteractionWarning(item.item_name, clientHealth) : null;
   const { mutateAsync: addExercise } = useCoachAddExercise();
   const { mutateAsync: removeExercise } = useCoachRemoveExercise();
   const { mutateAsync: addMeal } = useCoachAddMeal();
@@ -557,10 +597,30 @@ export default function ClientWorkoutsScreen() {
     }
   };
 
-  const onAddSupplement = async (payload: { itemName: string; quantity: string; applyToWeek: boolean }) => {
+  const onAddSupplement = async (payload: { itemName: string; quantity: string; scope: SupplementScope }) => {
     if (!modalTarget || modalTarget.kind !== 'supplement' || !supplementGrouped) return;
     const slot = modalTarget.key;
-    const dayNumbers = payload.applyToWeek ? [1, 2, 3, 4, 5, 6] : [selectedDay];
+    let dayNumbers: number[];
+    if (payload.scope === 'week') {
+      dayNumbers = [1, 2, 3, 4, 5, 6];
+    } else if (payload.scope === 'month') {
+      // Find all day_numbers in the current calendar month for the active weekStart
+      const today = new Date();
+      const year = today.getFullYear(), month = today.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const [wy, wm, wd] = weekStart.split('-').map(Number);
+      const monDate = new Date(wy, wm - 1, wd);
+      const collected: number[] = [];
+      for (let d = 1; d <= 6; d++) {
+        const actual = new Date(monDate);
+        actual.setDate(actual.getDate() + d - 1);
+        if (actual >= firstDay && actual <= lastDay) collected.push(d);
+      }
+      dayNumbers = collected.length ? collected : [selectedDay];
+    } else {
+      dayNumbers = [selectedDay];
+    }
     const startOrderByDay: Record<number, number> = {};
     dayNumbers.forEach((d) => { startOrderByDay[d] = (supplementGrouped[d]?.[slot]?.length ?? 0) + 1; });
     try {
@@ -672,6 +732,7 @@ export default function ClientWorkoutsScreen() {
               detailLine={supplementDetailLine}
               onAddPress={() => setModalTarget({ kind: 'supplement', key: slot })}
               onRemove={onRemoveSupplement}
+              warningFor={supplementWarningFor}
             />
           ))}
         </ScrollView>
@@ -694,6 +755,7 @@ export default function ClientWorkoutsScreen() {
         slot={modalTarget?.kind === 'supplement' ? modalTarget.key : null}
         onClose={() => setModalTarget(null)}
         onAdd={onAddSupplement}
+        warningFor={(name) => getSupplementInteractionWarning(name, clientHealth)}
       />
     </SafeAreaView>
   );

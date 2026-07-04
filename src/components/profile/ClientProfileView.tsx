@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Image, Dimensions, Modal, Pressable, Linking, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CalendarGrid } from '@/components/ui/CalendarGrid';
@@ -6,30 +6,41 @@ import { WeekStatusStrip } from '@/components/ui/WeekStatusStrip';
 import { MacroRing } from '@/components/coach/DayMacroSummary';
 import { MetricTrendChart } from '@/components/ui/MetricTrendChart';
 import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
-import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend } from '@/hooks/useCoachClientOverview';
-import { useClientDetailedAssessment, useMarkAssessmentReviewed } from '@/hooks/useDetailedAssessment';
-import { DETAILED_ASSESSMENT_STAGES } from '@/constants/detailedAssessmentQuestions';
+import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals, useClientWeightAdherenceTrend } from '@/hooks/useCoachClientOverview';
+import { WeightAdherenceChart } from '@/components/coach/WeightAdherenceChart';
+import { VitalsSparklines } from '@/components/ui/VitalsSparklines';
+import { WeeklyDigestCard } from '@/components/coach/WeeklyDigestCard';
+import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
+import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
+import { useClientDetailedAssessment, useMarkAssessmentReviewed, useUpdateDetailedAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
+import { DETAILED_ASSESSMENT_STAGES, AssessmentField, FieldType } from '@/constants/detailedAssessmentQuestions';
+import { useUpdateClientAssessment } from '@/hooks/useClientAssessment';
 import { getWeekStart } from '@/hooks/useManualLog';
 import { useClientMedicalDocuments, useClientMedicalAnalyses, DocumentCategory, AnalysisDocResult, MedicalDocument } from '@/hooks/useMedicalDocuments';
+import { useMarkAnalysisViewedByCoach } from '@/hooks/useCoachDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import { useUpdateProfile } from '@/hooks/useClient';
 import { useClientRehabRequests, useClientRehabAppointments, useRespondToRehabRequest, useAdminMarkRehabPaid } from '@/hooks/useAdmin';
 import { FeedbackThreadModal } from '@/components/medical/FeedbackThreadModal';
 import { EditProfileModal } from '@/components/profile/EditProfileModal';
+import { useClientFitnessAssessments, FitnessDomain } from '@/hooks/useFitnessAssessment';
+import { DomainRadarChart, scoreBand } from '@/components/ui/DomainRadarChart';
+import { SupplementCalendarTracker } from '@/components/supplements/SupplementCalendarTracker';
 import { supabase } from '@/lib/supabase';
 import { THEME } from '@/constants/theme';
 
 const SUCCESS = THEME.colors.success ?? '#4CC986';
 
-type TabKey = 'profile' | 'overview' | 'assessment' | 'measurements' | 'pictures' | 'workouts' | 'medical' | 'recovery';
+type TabKey = 'profile' | 'overview' | 'assessment' | 'measurements' | 'pictures' | 'workouts' | 'medical' | 'recovery' | 'fitness';
 const TABS: { key: TabKey; label: string; icon: string; color: string }[] = [
   { key: 'profile',      label: 'Profile',      icon: '👤', color: '#8b78e8' },
   { key: 'overview',     label: 'Overview',     icon: '🏠', color: THEME.colors.teal },
-  { key: 'assessment',   label: 'Assessment',   icon: '📝', color: THEME.colors.amber },
+  { key: 'assessment',   label: 'Detailed Assessment', icon: '📝', color: THEME.colors.amber },
   { key: 'measurements', label: 'Body',         icon: '📏', color: '#60A5FA' },
   { key: 'pictures',     label: 'Pictures',     icon: '📷', color: '#C084FC' },
   { key: 'workouts',     label: 'Workouts',     icon: '💪', color: SUCCESS },
   { key: 'medical',      label: 'Medical',      icon: '🩺', color: '#F87171' },
+  { key: 'fitness',      label: 'Fitness',      icon: '🏋️', color: '#34D399' },
 ];
 // Recovery review/respond is admin-only (Eshwar reviews from admin login) —
 // appended conditionally in ClientProfileView, not always shown to coaches.
@@ -60,16 +71,6 @@ function Row({ label, value }: { label: string; value: any }) {
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.05)' }}>
       <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, flex: 1 }}>{label}</Text>
       <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textTransform: 'capitalize', textAlign: 'right', flex: 1 }}>{value ?? '—'}</Text>
-    </View>
-  );
-}
-
-function StatTile({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
-  return (
-    <View style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border, gap: 4 }}>
-      <Text style={{ fontSize: 18 }}>{icon}</Text>
-      <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color }}>{value}</Text>
-      <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center' }}>{label}</Text>
     </View>
   );
 }
@@ -190,76 +191,650 @@ function ProfileTab({ clientId }: { clientId: string }) {
 }
 
 // ── Overview tab ───────────────────────────────────────────────────────
-function OverviewTab({ clientId }: { clientId: string }) {
+function OverviewTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const { data: profile, isLoading } = useClientProfile(clientId);
-  const { data: metrics = [] } = useClientBodyMetrics(clientId);
-  const { data: summary } = useClientWorkoutSummary(clientId, getWeekStart());
-  const { data: assessment } = useClientDetailedAssessment(clientId);
-  const latest = metrics[0];
+  const { data: vitals = [] } = useClientCheckinVitals(clientId);
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
 
-  const pct = summary && summary.total > 0 ? Math.round((summary.done / summary.total) * 100) : 0;
-  const assessmentLabel = assessment?.status === 'reviewed' ? 'Reviewed' : assessment?.status === 'submitted' ? 'To review' : 'In progress';
-  const assessmentColor = assessment?.status === 'reviewed' ? SUCCESS : assessment?.status === 'submitted' ? THEME.colors.amber : THEME.colors.textMuted;
-
   return (
     <View>
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-        <StatTile icon="💪" label="This Week" value={summary && summary.total > 0 ? `${pct}%` : '—'} color={THEME.colors.teal} />
-        <StatTile icon="⚖️" label="Latest Weight" value={latest?.weight_kg ? `${latest.weight_kg}kg` : '—'} color="#60A5FA" />
-        <StatTile icon="📝" label="Assessment" value={assessmentLabel} color={assessmentColor} />
-      </View>
-
-      <Card accent={THEME.colors.teal}>
-        <SectionHeader icon="👤" title="Profile" color={THEME.colors.teal} />
-        <Row label="Phone" value={profile?.phone} />
-        <Row label="Gender" value={profile?.gender} />
-        <Row label="Diet" value={profile?.diet_type} />
-        <Row label="Height" value={profile?.height_cm ? `${profile.height_cm} cm` : null} />
-        <Row label="Weight" value={profile?.weight_kg ? `${profile.weight_kg} kg` : null} />
-        <FieldValue label="Health goals" value={profile?.health_goals} color={THEME.colors.teal} />
-        <FieldValue label="Conditions" value={profile?.conditions} color={THEME.colors.amber} />
-      </Card>
-
-      <Card accent="#60A5FA">
-        <SectionHeader icon="📏" title="Latest Measurement" color="#60A5FA" />
-        {latest ? (
-          <>
-            <Row label="Recorded" value={new Date(latest.recorded_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} />
-            <Row label="Weight" value={latest.weight_kg ? `${latest.weight_kg} kg` : null} />
-            <Row label="Body fat" value={latest.body_fat_pct ? `${latest.body_fat_pct}%` : null} />
-          </>
-        ) : (
-          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>No measurements logged yet</Text>
-        )}
-      </Card>
-
-      <Card accent={SUCCESS}>
-        <SectionHeader icon="💪" title="This Week's Progress" color={SUCCESS} />
-        {summary && summary.total > 0 ? (
-          <>
-            <View style={{ height: 8, backgroundColor: THEME.colors.surface3, borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
-              <View style={{ height: '100%', width: `${pct}%`, backgroundColor: SUCCESS, borderRadius: 4 }} />
-            </View>
-            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
-              {summary.done} of {summary.total} items completed
-            </Text>
-          </>
-        ) : (
-          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>No workout activity yet</Text>
-        )}
-      </Card>
+      <ProfileOverviewCard clientId={clientId} profile={profile} color={THEME.colors.teal} />
+      <WeeklyDigestCard clientId={clientId} clientName={clientName} />
+      <VitalsSparklines rows={vitals} />
     </View>
   );
 }
 
 // ── Assessment tab ─────────────────────────────────────────────────────
+// Small inline editor primitives shared by both the General Assessment
+// editor (plain string/array/number fields, schema-less) and the Detailed
+// Assessment stage editor (typed FieldType per field).
+
+export function EditChipToggle({ options, value, onChange, color }: { options: string[]; value: string[]; onChange: (v: string[]) => void; color: string }) {
+  const toggle = (opt: string) => {
+    onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      {options.map((opt) => {
+        const selected = value.includes(opt);
+        return (
+          <TouchableOpacity
+            key={opt}
+            onPress={() => toggle(opt)}
+            style={{ backgroundColor: selected ? color : THEME.colors.surface3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+          >
+            <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{opt}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+export function EditSelectRow({ options, value, onChange, color }: { options: string[]; value: string; onChange: (v: string) => void; color: string }) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      {options.map((opt) => {
+        const selected = value === opt;
+        return (
+          <TouchableOpacity
+            key={opt}
+            onPress={() => onChange(opt)}
+            style={{ backgroundColor: selected ? color : THEME.colors.surface3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+          >
+            <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{opt}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+export function EditList({ value, onChange, color }: { value: string[]; onChange: (v: string[]) => void; color: string }) {
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const v = draft.trim();
+    if (!v) return;
+    onChange([...value, v]);
+    setDraft('');
+  };
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: value.length ? 8 : 0 }}>
+        {value.map((item, idx) => (
+          <View key={`${item}-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${color}18`, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 }}>
+            <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color }}>{item}</Text>
+            <TouchableOpacity onPress={() => onChange(value.filter((_, i) => i !== idx))}>
+              <Text style={{ fontSize: 12, color }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Add an item"
+          placeholderTextColor={THEME.colors.textMuted}
+          style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+          onSubmitEditing={add}
+        />
+        <TouchableOpacity onPress={add} style={{ paddingHorizontal: 14, justifyContent: 'center', backgroundColor: color, borderRadius: 10 }}>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>+ Add</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// Predefined chips + free-text "+ Add" — for fields with common options that
+// still need to support a client-specific custom entry (e.g. a condition or
+// medication not in the preset list).
+export function ChipsAndAddList({ options, value, onChange, color }: { options: string[]; value: string[]; onChange: (v: string[]) => void; color: string }) {
+  const [draft, setDraft] = useState('');
+  const toggle = (opt: string) => {
+    onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
+  };
+  const add = () => {
+    const v = draft.trim();
+    if (!v || value.includes(v)) return;
+    onChange([...value, v]);
+    setDraft('');
+  };
+  const extras = value.filter((v) => !options.includes(v));
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {options.map((opt) => {
+          const selected = value.includes(opt);
+          return (
+            <TouchableOpacity
+              key={opt}
+              onPress={() => toggle(opt)}
+              style={{ backgroundColor: selected ? color : THEME.colors.surface3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+            >
+              <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{opt}</Text>
+            </TouchableOpacity>
+          );
+        })}
+        {extras.map((item, idx) => (
+          <View key={`${item}-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${color}18`, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 }}>
+            <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color }}>{item}</Text>
+            <TouchableOpacity onPress={() => onChange(value.filter((v) => v !== item))}>
+              <Text style={{ fontSize: 12, color }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Add another"
+          placeholderTextColor={THEME.colors.textMuted}
+          style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+          onSubmitEditing={add}
+        />
+        <TouchableOpacity onPress={add} style={{ paddingHorizontal: 14, justifyContent: 'center', backgroundColor: color, borderRadius: 10 }}>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>+ Add</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const OVERVIEW_INPUT_STYLE = { backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border } as const;
+const HEALTH_GOAL_OPTIONS = ['Weight loss', 'Muscle gain', 'Posture correction', 'Pain relief', 'General fitness', 'Athletic performance', 'Better sleep', 'Stress reduction'];
+const MEDICAL_CONDITION_OPTIONS = ['Diabetes', 'Hypertension', 'Thyroid', 'PCOS/PCOD', 'Cardiac', 'Asthma', 'Arthritis'];
+
+function buildOverviewDraft(p: any) {
+  return {
+    full_name: p?.full_name ?? '',
+    gender: p?.gender ?? '',
+    dob: p?.dob ?? '',
+    phone: p?.phone ?? '',
+    height_cm: p?.height_cm != null ? String(p.height_cm) : '',
+    weight_kg: p?.weight_kg != null ? String(p.weight_kg) : '',
+    health_goals: Array.isArray(p?.health_goals) ? p.health_goals : [],
+    conditions: Array.isArray(p?.conditions) ? p.conditions : [],
+    medications: Array.isArray(p?.medications) ? p.medications : [],
+    supplements: Array.isArray(p?.supplements) ? p.supplements : [],
+    occupation: p?.occupation ?? '',
+    location: p?.location ?? '',
+    diet_type: p?.diet_type ?? '',
+  };
+}
+
+// Single shared Overview card — exactly the fields BioRealign wants visible
+// across client-self, coach, and admin profile screens, all writing through
+// the same profiles columns so the three views never drift out of sync.
+export function ProfileOverviewCard({ clientId, profile, color = THEME.colors.teal }: { clientId: string; profile: any; color?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => buildOverviewDraft(profile));
+  const { mutateAsync: updateProfile, isPending } = useUpdateProfile();
+
+  const startEditing = () => {
+    setDraft(buildOverviewDraft(profile));
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      await updateProfile({
+        targetUserId: clientId,
+        data: {
+          full_name: draft.full_name.trim() || null,
+          gender: draft.gender || null,
+          dob: draft.dob.trim() || null,
+          phone: draft.phone.trim() || null,
+          height_cm: draft.height_cm ? Number(draft.height_cm) : null,
+          weight_kg: draft.weight_kg ? Number(draft.weight_kg) : null,
+          health_goals: draft.health_goals,
+          conditions: draft.conditions,
+          medications: draft.medications,
+          supplements: draft.supplements,
+          occupation: draft.occupation.trim() || null,
+          location: draft.location.trim() || null,
+          diet_type: draft.diet_type || null,
+        },
+      });
+      setEditing(false);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save. Please try again.');
+    }
+  };
+
+  return (
+    <Card accent={color}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <SectionHeader icon="👤" title="Overview" color={color} />
+        {!editing && (
+          <TouchableOpacity onPress={startEditing} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: `${color}18` }}>
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color }}>✏️ Edit</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {editing ? (
+        <View style={{ gap: 12 }}>
+          <View>
+            <EditFieldLabel label="Name" />
+            <TextInput value={draft.full_name} onChangeText={(t) => setDraft((d) => ({ ...d, full_name: t }))} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Gender" />
+            <EditSelectRow options={['Male', 'Female', 'Other']} value={draft.gender} onChange={(v) => setDraft((d) => ({ ...d, gender: v }))} color={color} />
+          </View>
+          <View>
+            <EditFieldLabel label="Date of birth" />
+            <TextInput value={draft.dob} onChangeText={(t) => setDraft((d) => ({ ...d, dob: t }))} placeholder="YYYY-MM-DD" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Contact" />
+            <TextInput value={draft.phone} onChangeText={(t) => setDraft((d) => ({ ...d, phone: t }))} keyboardType="phone-pad" placeholder="+91 98765 43210" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Height (cm)" />
+            <TextInput value={draft.height_cm} onChangeText={(t) => setDraft((d) => ({ ...d, height_cm: t.replace(/[^0-9.]/g, '') }))} keyboardType="numeric" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Weight (kg)" />
+            <TextInput value={draft.weight_kg} onChangeText={(t) => setDraft((d) => ({ ...d, weight_kg: t.replace(/[^0-9.]/g, '') }))} keyboardType="numeric" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Health goals" />
+            <ChipsAndAddList options={HEALTH_GOAL_OPTIONS} value={draft.health_goals} onChange={(v) => setDraft((d) => ({ ...d, health_goals: v }))} color={color} />
+          </View>
+          <View>
+            <EditFieldLabel label="Medical conditions" />
+            <ChipsAndAddList options={MEDICAL_CONDITION_OPTIONS} value={draft.conditions} onChange={(v) => setDraft((d) => ({ ...d, conditions: v }))} color={THEME.colors.amber} />
+          </View>
+          <View>
+            <EditFieldLabel label="Medications" />
+            <EditList value={draft.medications} onChange={(v) => setDraft((d) => ({ ...d, medications: v }))} color="#F87171" />
+          </View>
+          <View>
+            <EditFieldLabel label="Supplements" />
+            <EditList value={draft.supplements} onChange={(v) => setDraft((d) => ({ ...d, supplements: v }))} color="#34D399" />
+          </View>
+          <View>
+            <EditFieldLabel label="Occupation" />
+            <TextInput value={draft.occupation} onChangeText={(t) => setDraft((d) => ({ ...d, occupation: t }))} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Location" />
+            <TextInput value={draft.location} onChangeText={(t) => setDraft((d) => ({ ...d, location: t }))} placeholder="City, State" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+          </View>
+          <View>
+            <EditFieldLabel label="Diet" />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['veg', 'non_veg'] as const).map((v) => {
+                const selected = draft.diet_type === v;
+                return (
+                  <TouchableOpacity
+                    key={v}
+                    onPress={() => setDraft((d) => ({ ...d, diet_type: v }))}
+                    style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: selected ? color : THEME.colors.surface3, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+                  >
+                    <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{v === 'veg' ? 'Veg' : 'Non-Veg'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          <SaveCancelBar onCancel={() => setEditing(false)} onSave={handleSave} saving={isPending} />
+        </View>
+      ) : (
+        <>
+          <Row label="Name" value={profile?.full_name} />
+          <Row label="Gender" value={profile?.gender} />
+          <Row label="Date of birth" value={profile?.dob ? new Date(profile.dob).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null} />
+          <Row label="Contact" value={profile?.phone} />
+          <Row label="Height" value={profile?.height_cm ? `${profile.height_cm} cm` : null} />
+          <Row label="Weight" value={profile?.weight_kg ? `${profile.weight_kg} kg` : null} />
+          <FieldValue label="Health goals" value={profile?.health_goals} color={color} />
+          <FieldValue label="Medical conditions" value={profile?.conditions} color={THEME.colors.amber} />
+          <FieldValue label="Medications" value={profile?.medications} color="#F87171" />
+          <FieldValue label="Supplements" value={profile?.supplements} color="#34D399" />
+          <Row label="Occupation" value={profile?.occupation} />
+          <Row label="Location" value={profile?.location} />
+          <Row label="Diet" value={profile?.diet_type === 'veg' ? 'Veg' : profile?.diet_type === 'non_veg' ? 'Non-Veg' : null} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+export function EditScale({ value, max, onChange, color }: { value: number | null; max: number; onChange: (v: number) => void; color: string }) {
+  const nums = Array.from({ length: max }, (_, i) => i + 1);
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+      {nums.map((n) => {
+        const selected = value === n;
+        return (
+          <TouchableOpacity
+            key={n}
+            onPress={() => onChange(n)}
+            style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? color : THEME.colors.surface3, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+          >
+            <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{n}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+export function EditFieldLabel({ label }: { label: string }) {
+  return <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>{label}</Text>;
+}
+
+export function SaveCancelBar({ onCancel, onSave, saving }: { onCancel: () => void; onSave: () => void; saving: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+      <TouchableOpacity onPress={onCancel} disabled={saving} style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingVertical: 11, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}>
+        <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Cancel</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onSave} disabled={saving} style={{ flex: 1, backgroundColor: THEME.colors.teal, borderRadius: 10, paddingVertical: 11, alignItems: 'center', opacity: saving ? 0.7 : 1 }}>
+        {saving ? <ActivityIndicator size="small" color={THEME.colors.background} /> : <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Save</Text>}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Detailed Assessment — per-field typed editor ───────────────────────
+export function DetailedFieldEditor({ field, value, onChange, color, allStageData }: { field: AssessmentField; value: any; onChange: (v: any) => void; color: string; allStageData: Record<string, any> }) {
+  const type: FieldType = field.type;
+
+  if (type === 'chips' || type === 'select') {
+    const options = field.options ?? [];
+    if (type === 'chips') {
+      return <EditChipToggle options={options} value={Array.isArray(value) ? value : []} onChange={onChange} color={color} />;
+    }
+    return <EditSelectRow options={options} value={typeof value === 'string' ? value : ''} onChange={onChange} color={color} />;
+  }
+
+  if (type === 'list') {
+    return <EditList value={Array.isArray(value) ? value : []} onChange={onChange} color={color} />;
+  }
+
+  if (type === 'scale') {
+    return <EditScale value={typeof value === 'number' ? value : null} max={field.max ?? 10} onChange={onChange} color={color} />;
+  }
+
+  if (type === 'textarea') {
+    return (
+      <TextInput
+        value={typeof value === 'string' ? value : ''}
+        onChangeText={onChange}
+        placeholder={field.placeholder}
+        placeholderTextColor={THEME.colors.textMuted}
+        multiline
+        style={{ minHeight: 70, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border, textAlignVertical: 'top' }}
+      />
+    );
+  }
+
+  if (type === 'toggle') {
+    return (
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {[true, false].map((v) => {
+          const selected = !!value === v;
+          return (
+            <TouchableOpacity
+              key={String(v)}
+              onPress={() => onChange(v)}
+              style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9, backgroundColor: selected ? color : THEME.colors.surface3, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+            >
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{v ? 'Yes' : 'No'}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  }
+
+  if (type === 'pain_per_item') {
+    // value is Record<string, number> keyed by entries of the sibling list field
+    const items: string[] = field.dependsOnKey ? (allStageData[field.dependsOnKey] ?? []) : [];
+    const painMap: Record<string, number> = value && typeof value === 'object' ? value : {};
+    if (!items.length) return <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>No items to rate yet.</Text>;
+    return (
+      <View style={{ gap: 10 }}>
+        {items.map((item) => (
+          <View key={item}>
+            <EditFieldLabel label={item} />
+            <EditScale value={typeof painMap[item] === 'number' ? painMap[item] : null} max={10} onChange={(n) => onChange({ ...painMap, [item]: n })} color={color} />
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  if (type === 'number_unit') {
+    const v = value && typeof value === 'object' ? value : { value: '', unit: field.units?.[0] ?? '' };
+    return (
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <TextInput
+          value={String(v.value ?? '')}
+          onChangeText={(t) => onChange({ ...v, value: t.replace(/[^0-9.]/g, '') })}
+          keyboardType="numeric"
+          placeholder={field.placeholder}
+          placeholderTextColor={THEME.colors.textMuted}
+          style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+        />
+        {(field.units ?? []).map((u) => {
+          const selected = v.unit === u;
+          return (
+            <TouchableOpacity
+              key={u}
+              onPress={() => onChange({ ...v, unit: u })}
+              style={{ paddingHorizontal: 12, justifyContent: 'center', borderRadius: 10, backgroundColor: selected ? color : THEME.colors.surface3, borderWidth: 0.5, borderColor: selected ? color : THEME.colors.border }}
+            >
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: selected ? THEME.colors.background : THEME.colors.textSecondary }}>{u}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  }
+
+  // text, number, date — plain TextInput
+  return (
+    <TextInput
+      value={value == null ? '' : String(value)}
+      onChangeText={(t) => onChange(type === 'number' ? t.replace(/[^0-9.]/g, '') : t)}
+      placeholder={field.placeholder}
+      placeholderTextColor={THEME.colors.textMuted}
+      keyboardType={type === 'number' ? 'numeric' : 'default'}
+      style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+    />
+  );
+}
+
+// `onSave`/`saving` are passed in rather than this component owning a mutation
+// hook directly — the coach/admin call site (here in ClientProfileView) wraps
+// useUpdateDetailedAssessmentStage(clientId), while the client self-edit call
+// site (app/(client)/profile.tsx) wraps useSaveAssessmentStage() instead, since
+// that's the self-service mutation the client's own onboarding flow already
+// uses (and it also needs to pass through the assessment's current_stage
+// unchanged, which only the caller has in scope).
+export function DetailedStageEditor({ stage, data, color, onDone, onSave, saving }: { stage: typeof DETAILED_ASSESSMENT_STAGES[number]; data: Record<string, any>; color: string; onDone: () => void; onSave: (stageKey: typeof DETAILED_ASSESSMENT_STAGES[number]['key'], data: Record<string, any>) => Promise<void>; saving: boolean }) {
+  const [draft, setDraft] = useState<Record<string, any>>(() => ({ ...data }));
+
+  const setField = (key: string, v: any) => setDraft((d) => ({ ...d, [key]: v }));
+
+  const handleSave = async () => {
+    try {
+      await onSave(stage.key, draft);
+      onDone();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save this section. Please try again.');
+    }
+  };
+
+  return (
+    <View style={{ gap: 14 }}>
+      {stage.fields.map((field) => {
+        if (field.crossTableProfileDiet) return null; // lives on profiles, not editable here
+        return (
+          <View key={field.key}>
+            <EditFieldLabel label={field.label} />
+            <DetailedFieldEditor field={field} value={draft[field.key]} onChange={(v) => setField(field.key, v)} color={color} allStageData={draft} />
+          </View>
+        );
+      })}
+      <SaveCancelBar onCancel={onDone} onSave={handleSave} saving={saving} />
+    </View>
+  );
+}
+
+// ── General Assessment — flat-column editor (no typed schema; matches
+// app/(admin)/assessment-detail.tsx's grouping, ported inline) ─────────
+type GAFieldKind = 'text' | 'number' | 'chips';
+
+interface GAFieldDef { key: string; label: string; kind: GAFieldKind }
+
+export const GENERAL_ASSESSMENT_SECTIONS: { title: string; icon: string; color: string; fields: GAFieldDef[] }[] = [
+  {
+    title: 'Personal Foundation', icon: '🧬', color: THEME.colors.teal,
+    fields: [
+      { key: 'occupation_type', label: 'Occupation', kind: 'text' },
+      { key: 'work_hours_daily', label: 'Work hours/day', kind: 'number' },
+      { key: 'daily_activity_level', label: 'Activity level', kind: 'text' },
+      { key: 'available_minutes_per_day', label: 'Available time (min/day)', kind: 'number' },
+      { key: 'primary_stressor', label: 'Primary stressor', kind: 'text' },
+      { key: 'previous_coaching', label: 'Previous coaching', kind: 'text' },
+    ],
+  },
+  {
+    title: 'Body & Health', icon: '🩺', color: '#F87171',
+    fields: [
+      { key: 'height_cm', label: 'Height (cm)', kind: 'number' },
+      { key: 'weight_kg', label: 'Weight (kg)', kind: 'number' },
+      { key: 'breathing_quality', label: 'Breathing', kind: 'text' },
+      { key: 'medications', label: 'Medications', kind: 'text' },
+      { key: 'complaints', label: 'Complaints', kind: 'chips' },
+      { key: 'conditions', label: 'Medical conditions', kind: 'chips' },
+      { key: 'energy_morning', label: 'Energy — morning (1-10)', kind: 'number' },
+      { key: 'energy_afternoon', label: 'Energy — afternoon (1-10)', kind: 'number' },
+      { key: 'energy_evening', label: 'Energy — evening (1-10)', kind: 'number' },
+    ],
+  },
+  {
+    title: 'Movement & Fitness', icon: '🏋️', color: '#C4B5FD',
+    fields: [
+      { key: 'last_exercise_period', label: 'Last exercised', kind: 'text' },
+      { key: 'weekly_frequency', label: 'Weekly frequency', kind: 'number' },
+      { key: 'workout_environment', label: 'Environment', kind: 'text' },
+      { key: 'flexibility_score', label: 'Flexibility score (1-10)', kind: 'number' },
+      { key: 'balance_score', label: 'Balance score (1-10)', kind: 'number' },
+      { key: 'posture_issues', label: 'Posture issues', kind: 'chips' },
+      { key: 'pain_during_movement', label: 'Pain during movement', kind: 'chips' },
+      { key: 'available_equipment', label: 'Available equipment', kind: 'chips' },
+    ],
+  },
+  {
+    title: 'Nutrition & Recovery', icon: '🥗', color: THEME.colors.amber,
+    fields: [
+      { key: 'diet_type', label: 'Diet type', kind: 'text' },
+      { key: 'meals_per_day', label: 'Meals per day', kind: 'number' },
+      { key: 'meal_timing', label: 'Meal timing', kind: 'text' },
+      { key: 'hydration_glasses', label: 'Hydration (glasses/day)', kind: 'number' },
+      { key: 'caffeine_cups', label: 'Caffeine (cups/day)', kind: 'number' },
+      { key: 'alcohol_frequency', label: 'Alcohol', kind: 'text' },
+      { key: 'sleep_hours_avg', label: 'Avg sleep (hrs)', kind: 'number' },
+      { key: 'sleep_quality_avg', label: 'Sleep quality (1-10)', kind: 'number' },
+      { key: 'stress_level', label: 'Stress level (1-10)', kind: 'number' },
+      { key: 'food_allergies', label: 'Food allergies', kind: 'chips' },
+      { key: 'recovery_tools', label: 'Recovery tools used', kind: 'chips' },
+    ],
+  },
+  {
+    title: 'Goals & Mindset', icon: '🎯', color: '#34D399',
+    fields: [
+      { key: 'primary_goal', label: 'Primary goal', kind: 'text' },
+      { key: 'timeline', label: 'Timeline', kind: 'text' },
+      { key: 'commitment_level', label: 'Daily commitment', kind: 'text' },
+      { key: 'secondary_goals', label: 'Secondary goals', kind: 'chips' },
+      { key: 'past_blockers', label: 'Past blockers', kind: 'chips' },
+      { key: 'ideal_outcome', label: 'Ideal outcome', kind: 'text' },
+      { key: 'coach_notes_from_client', label: 'Note to coach', kind: 'text' },
+    ],
+  },
+];
+
+export function GeneralAssessmentEditor({ clientId, assessment, onDone }: { clientId: string; assessment: Record<string, any>; onDone: () => void }) {
+  const [draft, setDraft] = useState<Record<string, any>>(() => ({ ...assessment }));
+  const { mutateAsync: updateAssessment, isPending } = useUpdateClientAssessment();
+
+  const setField = (key: string, v: any) => setDraft((d) => ({ ...d, [key]: v }));
+
+  // Only ever submit fields that are actually rendered (the flat typed
+  // columns) — never the raw answers/program_key jsonb from onboarding.
+  const editableKeys = GENERAL_ASSESSMENT_SECTIONS.flatMap((s) => s.fields.map((f) => f.key));
+
+  const handleSave = async () => {
+    const payload: Record<string, any> = {};
+    for (const key of editableKeys) {
+      let v = draft[key];
+      if (typeof v === 'string' && v.trim() === '') v = null;
+      payload[key] = v;
+    }
+    try {
+      await updateAssessment({ clientId, payload });
+      onDone();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save the assessment. Please try again.');
+    }
+  };
+
+  return (
+    <View>
+      {GENERAL_ASSESSMENT_SECTIONS.map((section) => (
+        <Card key={section.title} accent={section.color}>
+          <SectionHeader icon={section.icon} title={section.title} color={section.color} />
+          <View style={{ gap: 12 }}>
+            {section.fields.map((field) => {
+              const value = draft[field.key];
+              return (
+                <View key={field.key}>
+                  <EditFieldLabel label={field.label} />
+                  {field.kind === 'chips' ? (
+                    <EditList value={Array.isArray(value) ? value : []} onChange={(v) => setField(field.key, v)} color={section.color} />
+                  ) : (
+                    <TextInput
+                      value={value == null ? '' : String(value)}
+                      onChangeText={(t) => setField(field.key, field.kind === 'number' ? t.replace(/[^0-9.]/g, '') : t)}
+                      keyboardType={field.kind === 'number' ? 'numeric' : 'default'}
+                      placeholderTextColor={THEME.colors.textMuted}
+                      style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+                    />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      ))}
+      <SaveCancelBar onCancel={onDone} onSave={handleSave} saving={isPending} />
+    </View>
+  );
+}
+
 function AssessmentTab({ clientId, clientName }: { clientId: string; clientName: string }) {
   const { data: assessment, isLoading } = useClientDetailedAssessment(clientId);
   const { data: clientProfile } = useClientProfile(clientId);
   const { mutateAsync: markReviewed, isPending } = useMarkAssessmentReviewed();
+  const { mutateAsync: saveStage, isPending: isSavingStage } = useUpdateDetailedAssessmentStage(clientId);
   const [openStage, setOpenStage] = useState<string | null>(DETAILED_ASSESSMENT_STAGES[0]?.key ?? null);
+  const [editingStage, setEditingStage] = useState<string | null>(null);
+
+  const handleSaveStage = async (stageKey: AssessmentStageKey, data: Record<string, any>) => {
+    await saveStage({ stageKey, data });
+  };
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
 
@@ -268,7 +843,7 @@ function AssessmentTab({ clientId, clientName }: { clientId: string; clientName:
       <EmptyState
         icon="📝"
         title="Not submitted yet"
-        subtitle={`${clientName} is on stage ${assessment?.current_stage ?? 1}.`}
+        subtitle={`${clientName} hasn't requested a coach / taken the Detailed Assessment yet (currently on stage ${assessment?.current_stage ?? 1}).`}
       />
     );
   }
@@ -294,6 +869,7 @@ function AssessmentTab({ clientId, clientName }: { clientId: string; clientName:
       {stages.map((stage, i) => {
         const data = (assessment as any)[stage.key] ?? {};
         const isOpen = openStage === stage.key;
+        const isEditingThis = editingStage === stage.key;
         const stageColors = ['#00C4B4', '#F59E0B', '#60A5FA', '#C084FC', '#4CC986'];
         const color = stageColors[i % stageColors.length];
 
@@ -316,13 +892,32 @@ function AssessmentTab({ clientId, clientName }: { clientId: string; clientName:
 
             {isOpen && (
               <View style={{ paddingHorizontal: 16, paddingBottom: 14, borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
-                {stage.fields.map((field) => {
-                  // diet_preference's value lives on profiles.diet_type, not in this stage's jsonb.
-                  const value = field.crossTableProfileDiet
-                    ? (clientProfile?.diet_type === 'veg' ? 'Veg' : clientProfile?.diet_type === 'non_veg' ? 'Non-Veg' : null)
-                    : data[field.key];
-                  return <FieldValue key={field.key} label={field.label} value={value} color={color} />;
-                })}
+                {isEditingThis ? (
+                  <DetailedStageEditor
+                    stage={stage}
+                    data={data}
+                    color={color}
+                    onDone={() => setEditingStage(null)}
+                    onSave={handleSaveStage}
+                    saving={isSavingStage}
+                  />
+                ) : (
+                  <>
+                    {stage.fields.map((field) => {
+                      // diet_preference's value lives on profiles.diet_type, not in this stage's jsonb.
+                      const value = field.crossTableProfileDiet
+                        ? (clientProfile?.diet_type === 'veg' ? 'Veg' : clientProfile?.diet_type === 'non_veg' ? 'Non-Veg' : null)
+                        : data[field.key];
+                      return <FieldValue key={field.key} label={field.label} value={value} color={color} />;
+                    })}
+                    <TouchableOpacity
+                      onPress={() => setEditingStage(stage.key)}
+                      style={{ alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: `${color}18` }}
+                    >
+                      <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color }}>✏️ Edit</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             )}
           </View>
@@ -367,11 +962,25 @@ function shiftOverviewWeek(weekStart: string, delta: number) {
 function MeasurementsTab({ clientId }: { clientId: string }) {
   const { data: metrics = [], isLoading } = useClientBodyMetrics(clientId);
   const { data: nutritionTrend = [] } = useClientNutritionTrend(clientId);
+  const { data: oopsTrend = [] } = useClientOopsTrend(clientId);
+  const { data: trainingLoad } = useClientTrainingLoadScores(clientId);
+  const { data: weightAdherence = [] } = useClientWeightAdherenceTrend(clientId);
   const [selectedMetric, setSelectedMetric] = useState('weight_kg');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [nutritionView, setNutritionView] = useState<'total' | 'oops'>('total');
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
-  if (!metrics.length) return <EmptyState icon="📏" title="No measurements yet" subtitle="Measurements logged by the client will show up here." />;
+  if (!metrics.length) {
+    return (
+      <View>
+        <Card>
+          <SectionHeader icon="💊" title="Supplement Tracker" color="#A78BFA" />
+          <SupplementCalendarTracker clientId={clientId} />
+        </Card>
+        <EmptyState icon="📏" title="No measurements yet" subtitle="Measurements logged by the client will show up here." />
+      </View>
+    );
+  }
 
   // Chronological (oldest→newest) for the trend chart and week strip
   const chronological = [...metrics].reverse();
@@ -383,10 +992,9 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
   for (let i = 11; i >= 0; i--) recentWeeks.push(shiftOverviewWeek(latestAnchor, -i));
 
   const availableMetrics = METRIC_FIELDS.filter((f) => metrics.some((m: any) => m[f.key] != null));
-  const isNutritionSelected = selectedMetric === 'nutrition';
   const activeField = availableMetrics.find((f) => f.key === selectedMetric) ?? availableMetrics[0];
-  const trendPoints = isNutritionSelected ? [] : chronological.filter((m: any) => m[activeField.key] != null).map((m: any) => ({ date: m.recorded_date, value: Number(m[activeField.key]) }));
-  const trendCardColor = isNutritionSelected ? '#F59E0B' : activeField.color;
+  const trendPoints = chronological.filter((m: any) => m[activeField.key] != null).map((m: any) => ({ date: m.recorded_date, value: Number(m[activeField.key]) }));
+  const trendCardColor = activeField.color;
 
   const onSelectWeek = (wk: string) => {
     const match = metrics.find((m: any) => m.recorded_date === wk);
@@ -407,12 +1015,12 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
         />
       </Card>
 
-      {/* Trend analysis — pick a metric, see it charted across every week at once */}
+      {/* Trend analysis — pick a body metric, see it charted across every week at once */}
       <Card accent={trendCardColor}>
         <SectionHeader icon="📈" title="Trend Analysis" color={trendCardColor} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 6 }}>
           {availableMetrics.map((f) => {
-            const active = !isNutritionSelected && f.key === activeField.key;
+            const active = f.key === activeField.key;
             return (
               <TouchableOpacity
                 key={f.key}
@@ -423,16 +1031,63 @@ function MeasurementsTab({ clientId }: { clientId: string }) {
               </TouchableOpacity>
             );
           })}
-          <TouchableOpacity
-            onPress={() => setSelectedMetric('nutrition')}
-            style={{ paddingHorizontal: 11, paddingVertical: 7, borderRadius: 9, backgroundColor: isNutritionSelected ? '#F59E0B' : THEME.colors.surface3 }}
-          >
-            <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: isNutritionSelected ? THEME.colors.background : THEME.colors.textSecondary }}>🍽️ Nutrition</Text>
-          </TouchableOpacity>
         </ScrollView>
-        {isNutritionSelected
+        <MetricTrendChart points={trendPoints} color={activeField.color} unit={activeField.suffix} />
+      </Card>
+
+      {/* Weight vs adherence — the "why isn't the weight moving" overlay */}
+      {weightAdherence.length >= 2 && (
+        <Card accent={THEME.colors.teal}>
+          <SectionHeader icon="⚖️" title="Weight vs Adherence" color={THEME.colors.teal} />
+          <WeightAdherenceChart points={weightAdherence} />
+        </Card>
+      )}
+
+      {/* Training Load — daily Cardio / Strength / Mobility scores, auto-derived
+          from workout logs. Separate from the 8-domain Fitness Assessment tab. */}
+      {trainingLoad && (
+        <View style={{ marginBottom: 4 }}>
+          <TrainingLoadSection data={trainingLoad} />
+        </View>
+      )}
+
+      {/* Nutrition trend — calories / protein / fat across weeks */}
+      <Card accent="#F59E0B">
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <SectionHeader icon="🍽️" title="Nutrition Trend" color="#F59E0B" />
+          <View style={{ flexDirection: 'row', backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 3, gap: 3 }}>
+            <TouchableOpacity
+              onPress={() => setNutritionView('total')}
+              style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: nutritionView === 'total' ? THEME.colors.teal : 'transparent' }}
+            >
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: nutritionView === 'total' ? '#fff' : THEME.colors.textMuted }}>Total</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setNutritionView('oops')}
+              style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: nutritionView === 'oops' ? '#F97316' : 'transparent' }}
+            >
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: nutritionView === 'oops' ? '#fff' : THEME.colors.textMuted }}>Oops 🙈</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {nutritionView === 'total'
           ? <NutritionTrendChart points={nutritionTrend} />
-          : <MetricTrendChart points={trendPoints} color={activeField.color} unit={activeField.suffix} />}
+          : oopsTrend.length === 0
+            ? (
+              <View style={{ paddingVertical: 28, alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 28 }}>🥗</Text>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Clean as a whistle.</Text>
+                <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center', paddingHorizontal: 16 }}>No confession booth entries this period.</Text>
+              </View>
+            )
+            : <NutritionTrendChart points={oopsTrend} accentColor="#F97316" />
+        }
+      </Card>
+
+      {/* Supplement calendar tracker — one calendar per supplement, green=done red=missed */}
+      <Card>
+        <SectionHeader icon="💊" title="Supplement Tracker" color="#A78BFA" />
+        <SupplementCalendarTracker clientId={clientId} />
       </Card>
 
       {/* Detail log — tap any week to expand its full readout */}
@@ -725,12 +1380,20 @@ function MedicalDocumentSummaryModal({ doc, visible, onClose }: { doc: AnalysisD
 }
 
 function MedicalRecordsTab({ clientId }: { clientId: string }) {
-  const { user } = useAuth();
+  const { user, isCoach } = useAuth();
   const { data: docs = [], isLoading: docsLoading } = useClientMedicalDocuments(clientId);
   const { data: analyses = [], isLoading: analysesLoading } = useClientMedicalAnalyses(clientId);
   const latestAnalysis = analyses[0];
   const [summaryDoc, setSummaryDoc] = useState<AnalysisDocResult | null>(null);
   const [feedbackDoc, setFeedbackDoc] = useState<MedicalDocument | null>(null);
+
+  const { mutate: markAnalysisViewed } = useMarkAnalysisViewedByCoach();
+  useEffect(() => {
+    if (!isCoach) return;
+    (analyses as any[]).forEach((a) => {
+      if (a.sent_to_coach_at && !a.coach_viewed_at) markAnalysisViewed(a.id);
+    });
+  }, [isCoach, analyses]);
 
   if (docsLoading || analysesLoading) {
     return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 24 }} />;
@@ -870,7 +1533,7 @@ function WorkoutsTab({ clientId, clientName }: { clientId: string; clientName: s
             <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>{pct}%</Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 16 }}>
+        <View style={{ flexDirection: 'row', gap: 16, flexWrap: 'wrap' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: THEME.colors.teal }} />
             <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>💪 {summary.exDone}/{summary.exTotal} exercises</Text>
@@ -879,14 +1542,21 @@ function WorkoutsTab({ clientId, clientName }: { clientId: string; clientName: s
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: NUTRITION_COLOR }} />
             <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>🍽️ {summary.nutDone}/{summary.nutTotal} meals</Text>
           </View>
+          {(summary.supTotal ?? 0) > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#A78BFA' }} />
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>💊 {summary.supDone}/{summary.supTotal} supplements</Text>
+            </View>
+          )}
         </View>
       </Card>
 
       {Object.entries(summary.byDay).sort(([a], [b]) => Number(a) - Number(b)).map(([day, stat]) => {
-        const dayTotal = stat.exTotal + stat.nutTotal;
-        const dayDone = dayTotal > 0 && stat.exDone + stat.nutDone === dayTotal;
+        const dayTotal = stat.exTotal + stat.nutTotal + (stat.supTotal ?? 0);
+        const dayDone = dayTotal > 0 && stat.exDone + stat.nutDone + (stat.supDone ?? 0) === dayTotal;
         const exPct = stat.exTotal ? Math.round((stat.exDone / stat.exTotal) * 100) : 0;
         const nutPct = stat.nutTotal ? Math.round((stat.nutDone / stat.nutTotal) * 100) : 0;
+        const supPct = (stat.supTotal ?? 0) ? Math.round(((stat.supDone ?? 0) / stat.supTotal) * 100) : 0;
         return (
           <Card key={day} accent={dayDone ? SUCCESS : THEME.colors.border}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -895,7 +1565,7 @@ function WorkoutsTab({ clientId, clientName }: { clientId: string; clientName: s
                 {dayDone && <Text style={{ fontSize: 12 }}>✅</Text>}
               </View>
               <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
-                {dayTotal === 0 ? 'Nothing planned' : `${stat.exDone + stat.nutDone}/${dayTotal}`}
+                {dayTotal === 0 ? 'Nothing planned' : `${stat.exDone + stat.nutDone + (stat.supDone ?? 0)}/${dayTotal}`}
               </Text>
             </View>
 
@@ -915,13 +1585,25 @@ function WorkoutsTab({ clientId, clientName }: { clientId: string; clientName: s
                   )}
 
                   {stat.nutTotal > 0 && (
-                    <View>
+                    <View style={{ marginBottom: (stat.supTotal ?? 0) > 0 ? 8 : 0 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                         <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>🍽️ Nutrition</Text>
                         <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{stat.nutDone}/{stat.nutTotal}</Text>
                       </View>
                       <View style={{ height: 5, backgroundColor: THEME.colors.surface3, borderRadius: 3, overflow: 'hidden' }}>
                         <View style={{ height: '100%', width: `${nutPct}%`, backgroundColor: NUTRITION_COLOR, borderRadius: 3 }} />
+                      </View>
+                    </View>
+                  )}
+
+                  {(stat.supTotal ?? 0) > 0 && (
+                    <View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>💊 Supplements</Text>
+                        <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{stat.supDone}/{stat.supTotal}</Text>
+                      </View>
+                      <View style={{ height: 5, backgroundColor: THEME.colors.surface3, borderRadius: 3, overflow: 'hidden' }}>
+                        <View style={{ height: '100%', width: `${supPct}%`, backgroundColor: '#A78BFA', borderRadius: 3 }} />
                       </View>
                     </View>
                   )}
@@ -1056,6 +1738,128 @@ function RehabTab({ clientId }: { clientId: string }) {
   );
 }
 
+// ── Fitness tab (coach + admin) — same scores/trend the client sees, plus
+// raw results with units, evidence-strength tags, and full assessment
+// history. Launches the shared assessment-entry flow (coach screen, also
+// registered under (admin) as a thin re-export for parity).
+const FITNESS_DOMAIN_META: Record<FitnessDomain, { label: string; icon: string; color: string }> = {
+  strength:    { label: 'Strength',    icon: '💪', color: '#8b78e8' },
+  flexibility: { label: 'Flexibility', icon: '🤸', color: THEME.colors.amber },
+  endurance:   { label: 'Endurance',   icon: '🫁', color: '#60A5FA' },
+  agility:     { label: 'Agility',     icon: '🏃', color: SUCCESS },
+};
+
+function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { clientId: string; clientName: string; isAdminContext: boolean }) {
+  const router = useRouter();
+  const { data: assessments = [], isLoading } = useClientFitnessAssessments(clientId);
+
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
+
+  const newAssessmentButton = (
+    <TouchableOpacity
+      onPress={() => router.push({ pathname: isAdminContext ? '/(admin)/fitness-assessment-new' : '/(coach)/fitness-assessment-new', params: { clientId, clientName } })}
+      activeOpacity={0.85}
+      style={{ backgroundColor: '#34D399', borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16 }}
+    >
+      <Text style={{ fontSize: 16 }}>🏋️</Text>
+      <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>New Fitness Assessment</Text>
+    </TouchableOpacity>
+  );
+
+  if (assessments.length === 0) {
+    return (
+      <View>
+        {newAssessmentButton}
+        <EmptyState icon="🏋️" title="No assessments yet" subtitle="Run a fitness assessment to start tracking this client's domain scores." />
+      </View>
+    );
+  }
+
+  // Radar data: latest vs first assessment (only scored domains)
+  const toRadarPoints = (a: (typeof assessments)[number]) =>
+    a.results
+      .filter((r) => r.score_status === 'scored' && r.domain_score != null)
+      .map((r) => ({ domain: r.domain as FitnessDomain, score: r.domain_score }));
+
+  const latestAssessment = assessments[0];
+  const firstAssessment = assessments[assessments.length - 1];
+  const latestPoints = toRadarPoints(latestAssessment);
+  const baselinePoints = assessments.length > 1 ? toRadarPoints(firstAssessment) : undefined;
+
+  return (
+    <View>
+      {newAssessmentButton}
+      {latestPoints.length > 0 && (
+        <Card accent={THEME.colors.teal}>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 2 }}>Domain profile</Text>
+          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>
+            0–100, scored against age & sex norms
+          </Text>
+          <DomainRadarChart
+            latest={latestPoints}
+            latestDate={latestAssessment.assessment_date}
+            baseline={baselinePoints}
+            baselineDate={baselinePoints ? firstAssessment.assessment_date : undefined}
+          />
+        </Card>
+      )}
+      <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 10 }}>ASSESSMENT HISTORY</Text>
+      {assessments.map((a, idx) => (
+        <Card key={a.id} accent={idx === 0 ? '#34D399' : undefined}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+              {new Date(a.assessment_date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </Text>
+            {idx === 0 && (
+              <View style={{ backgroundColor: '#34D39920', borderRadius: 7, paddingHorizontal: 7, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sansMedium, color: '#34D399' }}>LATEST</Text>
+              </View>
+            )}
+          </View>
+          <Row label="Age at assessment" value={`${a.client_age_at_assessment} yrs`} />
+          <Row label="Gender" value={a.client_gender} />
+          <Row label="Athlete (snapshot)" value={a.is_athlete} />
+          {a.notes && <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 6, fontStyle: 'italic' }}>"{a.notes}"</Text>}
+
+          <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, gap: 8 }}>
+            {a.results.map((r) => {
+              const meta = FITNESS_DOMAIN_META[r.domain as FitnessDomain] ?? { label: r.domain, icon: '📊', color: THEME.colors.textMuted };
+              const outOfRange = r.score_status === 'age_out_of_range';
+              return (
+                <View key={r.id} style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{meta.icon} {meta.label}</Text>
+                    {outOfRange ? (
+                      <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Age out of range</Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {r.domain_score != null && (
+                          <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: scoreBand(r.domain_score).color }}>
+                            {scoreBand(r.domain_score).label}
+                          </Text>
+                        )}
+                        <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: meta.color }}>{r.domain_score != null ? Math.round(r.domain_score) : '—'}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+                    {r.test_protocol_used}: {r.raw_result_primary}{r.raw_result_secondary != null ? ` / ${r.raw_result_secondary}` : ''} {r.raw_result_unit}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
+                    <View style={{ backgroundColor: `${meta.color}18`, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sansMedium, color: meta.color, textTransform: 'capitalize' }}>{r.evidence_strength} evidence</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
 // ── Shared shell — used by both the coach's client-overview screen and the
 // admin's client-profile screen. Adding a field/screen to a client's own
 // login? Add the matching tab/field here once, both contexts pick it up.
@@ -1114,13 +1918,14 @@ export function ClientProfileView({
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         {tab === 'profile'      && <ProfileTab clientId={clientId} />}
-        {tab === 'overview'     && <OverviewTab clientId={clientId} />}
+        {tab === 'overview'     && <OverviewTab clientId={clientId} clientName={clientName} />}
         {tab === 'assessment'   && <AssessmentTab clientId={clientId} clientName={clientName} />}
         {tab === 'measurements' && <MeasurementsTab clientId={clientId} />}
         {tab === 'pictures'     && <PicturesTab clientId={clientId} />}
         {tab === 'workouts'     && <WorkoutsTab clientId={clientId} clientName={clientName} />}
         {tab === 'medical'      && <MedicalRecordsTab clientId={clientId} />}
         {tab === 'recovery'     && <RehabTab clientId={clientId} />}
+        {tab === 'fitness'      && <FitnessAssessmentTab clientId={clientId} clientName={clientName} isAdminContext={showRecoveryTab} />}
       </ScrollView>
     </View>
   );

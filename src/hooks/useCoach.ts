@@ -11,7 +11,7 @@ export const coachKeys = {
   client:        (uid: string, clientId: string) => ['coach', uid, 'client', clientId] as const,
   sessions:      (uid: string) => ['coach', uid, 'sessions'] as const,
   todaySessions: (uid: string) => ['coach', uid, 'sessions', 'today'] as const,
-  messages:      (enrollmentId: string) => ['messages', enrollmentId] as const,
+  messages:      (coachId: string, clientId: string) => ['messages', coachId, clientId] as const,
   inbox:         (uid: string) => ['coach', uid, 'inbox'] as const,
   unreadCount:   (uid: string) => ['coach', uid, 'unread'] as const,
 };
@@ -179,51 +179,43 @@ export function useCoachInbox() {
     queryKey: coachKeys.inbox(user?.id ?? ''),
     enabled: !!user?.id,
     queryFn: async () => {
-      // Get all enrollments for this coach with client info
-      const { data: enrollments, error } = await supabase
-        .from('enrollments')
-        .select(`
-          id,
-          client_id,
-          client:profiles!enrollments_client_id_fkey(id, full_name, avatar_url)
-        `)
-        .eq('coach_id', user!.id)
-        .eq('status', 'active');
+      // Coach's assigned clients (Lite mode — via assigned_coach_id)
+      const { data: clients, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('assigned_coach_id', user!.id);
 
       if (error) throw error;
-      if (!enrollments?.length) return [];
+      if (!clients?.length) return [];
 
-      // Get last message + unread count per enrollment
+      // Get last message + unread count per client
       const conversations = await Promise.all(
-        enrollments.map(async (enroll: any) => {
-      const [lastMsgRes, unreadRes] = await Promise.all([
-  supabase
-    .from('messages')
-    .select('id, body, sent_at, sender_id, read_at')
-    .eq('enrollment_id', enroll.id)
-    .order('sent_at', { ascending: false })
-    .limit(1)
-    .maybeSingle(),
-  supabase
-    .from('messages')
-    .select('id, receiver_id, read_at')
-    .eq('enrollment_id', enroll.id)
-    .is('read_at', null),
-]);
+        clients.map(async (client: any) => {
+          const [lastMsgRes, unreadRes] = await Promise.all([
+            supabase
+              .from('messages')
+              .select('id, body, sent_at, sender_id, read_at')
+              .eq('coach_id', user!.id)
+              .eq('client_id', client.id)
+              .order('sent_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('messages')
+              .select('id, receiver_id, read_at')
+              .eq('coach_id', user!.id)
+              .eq('client_id', client.id)
+              .eq('receiver_id', user!.id)
+              .is('read_at', null),
+          ]);
 
-// Count only messages where THIS coach is the receiver
-const unreadCount = (unreadRes.data ?? [])
-  .filter((m: any) => m.receiver_id === user!.id).length;
-
-console.log('[Inbox]', enroll.client?.full_name, 'unread:', unreadCount, 'raw data:', unreadRes.data);
-
-return {
-  enrollmentId: enroll.id,
-  clientId:     enroll.client_id,
-  clientName:   enroll.client?.full_name ?? 'Unknown',
-  lastMessage:  lastMsgRes.data ?? null,
-  unreadCount,
-};
+          return {
+            clientId:    client.id,
+            coachId:     user!.id,
+            clientName:  client.full_name ?? 'Unknown',
+            lastMessage: lastMsgRes.data ?? null,
+            unreadCount: (unreadRes.data ?? []).length,
+          };
         })
       );
 
@@ -262,27 +254,27 @@ export function useCoachUnreadCount() {
 // ---------------------------------------------------------------------------
 // Messages with Realtime subscription
 // ---------------------------------------------------------------------------
-export function useMessages(enrollmentId: string) {
+export function useMessages(coachId: string, clientId: string) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
   // Realtime subscription
   useEffect(() => {
-    if (!enrollmentId) return;
+    if (!coachId || !clientId) return;
 
     const channel = supabase
-      .channel(`messages:${enrollmentId}`)
+      .channel(`messages:${coachId}:${clientId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `enrollment_id=eq.${enrollmentId}`,
+          filter: `client_id=eq.${clientId}`,
         },
         () => {
           // Invalidate on new message — triggers refetch
-          qc.invalidateQueries({ queryKey: coachKeys.messages(enrollmentId) });
+          qc.invalidateQueries({ queryKey: coachKeys.messages(coachId, clientId) });
           if (user?.id) {
             qc.invalidateQueries({ queryKey: coachKeys.inbox(user.id) });
             qc.invalidateQueries({ queryKey: coachKeys.unreadCount(user.id) });
@@ -294,11 +286,11 @@ export function useMessages(enrollmentId: string) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [enrollmentId, user?.id]);
+  }, [coachId, clientId, user?.id]);
 
   return useQuery({
-    queryKey: coachKeys.messages(enrollmentId),
-    enabled: !!enrollmentId,
+    queryKey: coachKeys.messages(coachId, clientId),
+    enabled: !!coachId && !!clientId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('messages')
@@ -306,7 +298,8 @@ export function useMessages(enrollmentId: string) {
           *,
           sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
         `)
-        .eq('enrollment_id', enrollmentId)
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
         .order('sent_at', { ascending: true });
 
       if (error) throw error;
@@ -323,19 +316,20 @@ export function useMarkMessagesRead() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (enrollmentId: string) => {
+    mutationFn: async ({ coachId, clientId }: { coachId: string; clientId: string }) => {
       const { error } = await supabase
         .from('messages')
         .update({ read_at: new Date().toISOString() })
-        .eq('enrollment_id', enrollmentId)
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
         .eq('receiver_id', user!.id)
         .is('read_at', null);
 
       if (error) throw error;
     },
-    onSuccess: (_, enrollmentId) => {
+    onSuccess: (_, vars) => {
       if (user?.id) {
-        qc.invalidateQueries({ queryKey: coachKeys.messages(enrollmentId) });
+        qc.invalidateQueries({ queryKey: coachKeys.messages(vars.coachId, vars.clientId) });
         qc.invalidateQueries({ queryKey: coachKeys.inbox(user.id) });
         qc.invalidateQueries({ queryKey: coachKeys.unreadCount(user.id) });
       }
@@ -352,17 +346,18 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: async ({
-      enrollmentId, receiverId, body,
+      coachId, clientId, receiverId, body,
     }: {
-      enrollmentId: string; receiverId: string; body: string;
+      coachId: string; clientId: string; receiverId: string; body: string;
     }) => {
       const { data, error } = await supabase
         .from('messages')
         .insert({
-          enrollment_id: enrollmentId,
-          sender_id:     user!.id,
-          receiver_id:   receiverId,
-          body:          body.trim(),
+          coach_id:    coachId,
+          client_id:   clientId,
+          sender_id:   user!.id,
+          receiver_id: receiverId,
+          body:        body.trim(),
         })
         .select()
         .single();
@@ -371,7 +366,7 @@ export function useSendMessage() {
       return data;
     },
     onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: coachKeys.messages(vars.enrollmentId) });
+      qc.invalidateQueries({ queryKey: coachKeys.messages(vars.coachId, vars.clientId) });
       if (user?.id) {
         qc.invalidateQueries({ queryKey: coachKeys.inbox(user.id) });
       }
@@ -380,7 +375,7 @@ export function useSendMessage() {
 }
 
 // ---------------------------------------------------------------------------
-// Client: get their coach + enrollment for messaging
+// Client: get their assigned coach for messaging
 // ---------------------------------------------------------------------------
 export function useClientCoachInfo() {
   const { user } = useAuth();
@@ -389,22 +384,19 @@ export function useClientCoachInfo() {
     queryKey: ['client', user?.id ?? '', 'coach_info'],
     enabled: !!user?.id,
     queryFn: async () => {
-      // Get active enrollment with coach info
-      const { data: enrollment, error } = await supabase
-        .from('enrollments')
+      const { data: profile, error } = await supabase
+        .from('profiles')
         .select(`
-          id,
-          coach_id,
-          coach:profiles!enrollments_coach_id_fkey(id, full_name, avatar_url)
+          assigned_coach_id,
+          coach:profiles!profiles_assigned_coach_id_fkey(id, full_name, avatar_url)
         `)
-        .eq('client_id', user!.id)
-        .eq('status', 'active')
-        .order('started_at', { ascending: false })
-        .limit(1)
+        .eq('id', user!.id)
         .maybeSingle();
 
       if (error) throw error;
-      return enrollment;
+      if (!profile?.assigned_coach_id) return null;
+
+      return { coachId: profile.assigned_coach_id, coach: profile.coach };
     },
   });
 }

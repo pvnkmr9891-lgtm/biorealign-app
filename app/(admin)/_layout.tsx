@@ -25,6 +25,8 @@ export default function AdminLayout() {
       <Stack.Screen name="goal-clients" />
       <Stack.Screen name="medical-records" />
       <Stack.Screen name="medical-records-clients" />
+      <Stack.Screen name="fitness-assessment-new" />
+      <Stack.Screen name="fitness-analytics" />
       <Stack.Screen name="settings" />
     </Stack>
   );

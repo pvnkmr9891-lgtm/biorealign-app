@@ -37,3 +37,9 @@ yarn-error.*
 *.p12
 *.key
 *.mobileprovision
+
+# Local tooling / editor state
+.obsidian/
+.claude/worktrees/
+supabase/.temp/
+_patch_*.py
