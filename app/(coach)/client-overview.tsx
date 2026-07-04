@@ -9,7 +9,7 @@ export default function ClientOverviewScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
-      <ClientProfileView clientId={clientId} clientName={clientName} ownerLabel="Your client" onBack={() => router.back()} initialTab={tab as any} />
+      <ClientProfileView clientId={clientId} clientName={clientName} ownerLabel="Your client" onBack={() => router.back()} showPlanTab initialTab={tab as any} />
     </SafeAreaView>
   );
 }
