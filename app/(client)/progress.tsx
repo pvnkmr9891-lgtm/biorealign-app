@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useActiveEnrollment, useProgressHistory } from '@/hooks/useClient';
 import { useAuth } from '@/hooks/useAuth';
-import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useSetPhotoVisibility, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
+import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useDeleteBodyMetric, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useSetPhotoVisibility, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
 import { useMyTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { useWeeklyAlignment, useAlignmentHistory, DayScore } from '@/hooks/useAlignmentScore';
 import { LineChart } from '@/components/ui/LineChart';
@@ -841,6 +841,51 @@ function TrendAnalysisCard({ history }: { history: any[] }) {
   );
 }
 
+// ── Since-you-started summary — first-ever entry vs latest, per metric ───────
+function SinceStartSummary({ history }: { history: any[] }) {
+  if (history.length < 2) return null;
+  const first = history[0];
+  const latest = history[history.length - 1];
+
+  const rows = TREND_METRIC_FIELDS
+    .map((f) => {
+      const startVal = first[f.key];
+      const nowVal = latest[f.key];
+      if (startVal == null || nowVal == null) return null;
+      const delta = Number(nowVal) - Number(startVal);
+      if (delta === 0) return null;
+      return { ...f, delta };
+    })
+    .filter(Boolean) as (typeof TREND_METRIC_FIELDS[number] & { delta: number })[];
+
+  if (rows.length === 0) return null;
+  const daysSince = Math.round((new Date(latest.recorded_date).getTime() - new Date(first.recorded_date).getTime()) / 86400000);
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+      <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12 }}>
+        Since you started · {daysSince}d ago
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {rows.map((r) => {
+          // For most body-composition metrics a decrease is the goal; for
+          // strength benchmarks (reps/seconds) an increase is the goal.
+          const isStrength = ['pushup_count', 'plank_seconds', 'squat_reps'].includes(r.key);
+          const isGood = isStrength ? r.delta > 0 : r.delta < 0;
+          return (
+            <View key={r.key} style={{ flexBasis: '47%', backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 10 }}>
+              <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{r.icon} {r.label}</Text>
+              <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: isGood ? (THEME.colors.success ?? '#4CC986') : THEME.colors.amber, marginTop: 3 }}>
+                {r.delta > 0 ? '+' : ''}{Math.round(r.delta * 10) / 10}{r.suffix}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 // ── Weekly Log — full history list, tap to expand each week's full readout ──
 function WeeklyLogSection({ history }: { history: any[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -923,8 +968,11 @@ function MeasurementsTab() {
 
   const { data: thisWeekData, isLoading: loadingThis } = useWeekBodyMetric(selectedWeekStart);
   const { data: prevWeekData } = useWeekBodyMetric(prevWeekStart);
-  const { data: history = [] } = useBodyMetrics(20);
+  // High limit so "since you started" reaches the true first-ever entry, not
+  // just the last 20 weeks — body_metrics is one row/week so this is cheap.
+  const { data: history = [] } = useBodyMetrics(260);
   const saveMetrics = useSaveBodyMetrics();
+  const deleteMetrics = useDeleteBodyMetric();
 
   const loggedWeeks = useMemo(() => new Set(history.map((h) => h.recorded_date)), [history]);
   const recentWeeks = useMemo(() => {
@@ -963,32 +1011,88 @@ function MeasurementsTab() {
   const [notes, setNotes]           = useState('');
   const [saved, setSaved]           = useState(false);
 
+  // Snapshot of what pre-fill just set, so Save can detect "nothing was
+  // edited" and confirm before recording last week's numbers as if they
+  // were freshly measured this week.
+  const [prefillSnapshot, setPrefillSnapshot] = useState<Record<string, string> | null>(null);
+
   // Populate fields whenever the selected week changes or data loads/changes.
   // Must depend on selectedWeekStart AND both data IDs — if user is on week N-1
   // then navigates to current week N (no entry yet), source becomes prevWeekData
   // which has the same .id as before; only selectedWeekStart is different there,
   // but we also need prevWeekData?.id so the pre-fill fires after data loads.
   useEffect(() => {
-    setWeight(String(source?.weight_kg         ?? ''));
-    setBodyFat(String(source?.body_fat_pct     ?? ''));
-    setWaist(String(source?.waist_cm           ?? ''));
-    setHips(String(source?.hips_cm             ?? ''));
-    setChest(String(source?.chest_cm           ?? ''));
-    setLeftArm(String(source?.left_arm_cm      ?? ''));
-    setRightArm(String(source?.right_arm_cm    ?? ''));
-    setLeftThigh(String(source?.left_thigh_cm  ?? ''));
-    setRightThigh(String(source?.right_thigh_cm ?? ''));
-    setPushups(String(source?.pushup_count     ?? ''));
-    setPlank(String(source?.plank_seconds      ?? ''));
-    setSquats(String(source?.squat_reps        ?? ''));
-    setNotes(source?.notes ?? '');
+    const next = {
+      weight:     String(source?.weight_kg         ?? ''),
+      bodyFat:    String(source?.body_fat_pct     ?? ''),
+      waist:      String(source?.waist_cm           ?? ''),
+      hips:       String(source?.hips_cm             ?? ''),
+      chest:      String(source?.chest_cm           ?? ''),
+      leftArm:    String(source?.left_arm_cm      ?? ''),
+      rightArm:   String(source?.right_arm_cm    ?? ''),
+      leftThigh:  String(source?.left_thigh_cm  ?? ''),
+      rightThigh: String(source?.right_thigh_cm ?? ''),
+      pushups:    String(source?.pushup_count     ?? ''),
+      plank:      String(source?.plank_seconds      ?? ''),
+      squats:     String(source?.squat_reps        ?? ''),
+      notes:      source?.notes ?? '',
+    };
+    setWeight(next.weight);
+    setBodyFat(next.bodyFat);
+    setWaist(next.waist);
+    setHips(next.hips);
+    setChest(next.chest);
+    setLeftArm(next.leftArm);
+    setRightArm(next.rightArm);
+    setLeftThigh(next.leftThigh);
+    setRightThigh(next.rightThigh);
+    setPushups(next.pushups);
+    setPlank(next.plank);
+    setSquats(next.squats);
+    setNotes(next.notes);
     setSaved(false);
+    setPrefillSnapshot(isPrefilled ? next : null);
   }, [selectedWeekStart, thisWeekData?.id, prevWeekData?.id]);
 
   const p = (v: string) => parseFloat(v) || undefined;
   const n = (v: string) => parseInt(v)   || undefined;
 
-  const handleSave = async () => {
+  // Body-composition fields only — strength benchmarks (reps/seconds) can
+  // legitimately jump a lot week to week and shouldn't trigger a warning.
+  const OUTLIER_CHECKS: { field: string; label: string; value: string; prev: number | null | undefined; kind: 'abs' | 'pct'; threshold: number }[] = [
+    { field: 'weight_kg',      label: 'Weight',     value: weight,     prev: prevWeekData?.weight_kg,      kind: 'abs', threshold: 8 },
+    { field: 'body_fat_pct',   label: 'Body fat',   value: bodyFat,    prev: prevWeekData?.body_fat_pct,    kind: 'abs', threshold: 8 },
+    { field: 'waist_cm',       label: 'Waist',      value: waist,      prev: prevWeekData?.waist_cm,        kind: 'pct', threshold: 20 },
+    { field: 'hips_cm',        label: 'Hips',       value: hips,       prev: prevWeekData?.hips_cm,         kind: 'pct', threshold: 20 },
+    { field: 'chest_cm',       label: 'Chest',      value: chest,      prev: prevWeekData?.chest_cm,        kind: 'pct', threshold: 20 },
+    { field: 'left_arm_cm',    label: 'Left arm',   value: leftArm,    prev: prevWeekData?.left_arm_cm,     kind: 'pct', threshold: 20 },
+    { field: 'right_arm_cm',   label: 'Right arm',  value: rightArm,   prev: prevWeekData?.right_arm_cm,    kind: 'pct', threshold: 20 },
+    { field: 'left_thigh_cm',  label: 'Left thigh', value: leftThigh,  prev: prevWeekData?.left_thigh_cm,   kind: 'pct', threshold: 20 },
+    { field: 'right_thigh_cm', label: 'Right thigh',value: rightThigh, prev: prevWeekData?.right_thigh_cm,  kind: 'pct', threshold: 20 },
+  ];
+
+  function findOutliers(): string[] {
+    const warnings: string[] = [];
+    for (const c of OUTLIER_CHECKS) {
+      const val = parseFloat(c.value);
+      if (isNaN(val) || c.prev == null) continue;
+      const delta = val - c.prev;
+      const flagged = c.kind === 'abs' ? Math.abs(delta) > c.threshold : Math.abs(delta) / c.prev * 100 > c.threshold;
+      if (flagged) warnings.push(`${c.label}: ${c.prev} → ${val} (${delta > 0 ? '+' : ''}${Math.round(delta * 10) / 10})`);
+    }
+    return warnings;
+  }
+
+  const isUnchangedFromPrefill = !!prefillSnapshot && (
+    prefillSnapshot.weight === weight && prefillSnapshot.bodyFat === bodyFat &&
+    prefillSnapshot.waist === waist && prefillSnapshot.hips === hips && prefillSnapshot.chest === chest &&
+    prefillSnapshot.leftArm === leftArm && prefillSnapshot.rightArm === rightArm &&
+    prefillSnapshot.leftThigh === leftThigh && prefillSnapshot.rightThigh === rightThigh &&
+    prefillSnapshot.pushups === pushups && prefillSnapshot.plank === plank && prefillSnapshot.squats === squats &&
+    prefillSnapshot.notes === notes
+  );
+
+  const doSave = async () => {
     await saveMetrics.mutateAsync({
       recorded_date:  selectedWeekStart,
       weight_kg:      p(weight),
@@ -1007,6 +1111,43 @@ function MeasurementsTab() {
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleSave = () => {
+    if (isUnchangedFromPrefill) {
+      Alert.alert(
+        "Same as last week",
+        "These numbers match last week's entry unchanged — save anyway?",
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Save anyway', onPress: doSave }]
+      );
+      return;
+    }
+    const outliers = findOutliers();
+    if (outliers.length > 0) {
+      Alert.alert(
+        'Big jump vs last week',
+        `${outliers.join('\n')}\n\nDouble-check these aren't typos.`,
+        [{ text: 'Fix it', style: 'cancel' }, { text: 'Save anyway', onPress: doSave }]
+      );
+      return;
+    }
+    doSave();
+  };
+
+  const handleClearWeek = () => {
+    Alert.alert(
+      'Clear this week\'s entry?',
+      'This removes everything logged for this week. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear', style: 'destructive',
+          onPress: async () => {
+            await deleteMetrics.mutateAsync(selectedWeekStart);
+          },
+        },
+      ]
+    );
   };
 
   // Week label: "Jun 16 – Jun 22"
@@ -1057,6 +1198,11 @@ function MeasurementsTab() {
           />
         </View>
 
+        {/* Since-you-started + trend chart — visible right where the numbers
+            are logged, not just on the separate Overview tab */}
+        <SinceStartSummary history={history} />
+        <TrendAnalysisCard history={history} />
+
         {/* Pre-fill notice */}
         {isPrefilled && (
           <View style={{ backgroundColor: `${THEME.colors.amber}15`, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.amber}35`, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1074,6 +1220,9 @@ function MeasurementsTab() {
             <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.teal, flex: 1 }}>
               {isCurrentWeek ? 'This week\'s measurements are logged. Edit and save to update.' : 'Measurements recorded for this week. You can still edit them.'}
             </Text>
+            <TouchableOpacity onPress={handleClearWeek} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>Clear</Text>
+            </TouchableOpacity>
           </View>
         )}
 

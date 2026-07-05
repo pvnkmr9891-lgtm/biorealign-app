@@ -288,6 +288,28 @@ export function useSaveBodyMetrics() {
   });
 }
 
+// ── Delete a logged week's body metrics entirely ────────────────────────────
+export function useDeleteBodyMetric() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (recordedDate: string) => {
+      const { error } = await supabase
+        .from('body_metrics')
+        .delete()
+        .eq('client_id', user!.id)
+        .eq('recorded_date', recordedDate);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: progressKeys.bodyMetrics(user.id) });
+      qc.invalidateQueries({ queryKey: progressKeys.latestMetrics(user.id) });
+    },
+  });
+}
+
 // ── Fetch progress photos ──────────────────────────────────────────────────
 export function useProgressPhotos() {
   const { user } = useAuth();
