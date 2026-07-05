@@ -11,6 +11,7 @@ import { queryClient } from '@/lib/queryClient';
 import { useAuth, useAuthListener } from '@/hooks/useAuth';
 import { initMonitoring, wrapRoot, Sentry, monitoringEnabled } from '@/lib/monitoring';
 import { trackScreen, identifyUser, resetAnalytics } from '@/lib/analytics';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 initMonitoring();
 
@@ -23,6 +24,7 @@ SplashScreen.preventAutoHideAsync();
 function Telemetry() {
   const pathname = usePathname();
   const { user, role } = useAuth();
+  usePushNotifications();
 
   useEffect(() => {
     trackScreen(pathname);
