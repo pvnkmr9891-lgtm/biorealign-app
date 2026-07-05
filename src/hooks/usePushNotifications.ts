@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -13,6 +13,14 @@ export function usePushNotifications() {
 
   useEffect(() => {
     if (!user?.id) return;
+
+    // Expo Go dropped remote-push support in SDK 53 — even importing
+    // expo-notifications there logs a scary error. Real registration only
+    // happens in dev/standalone builds.
+    if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+      console.log('[Push] Skipped — running in Expo Go (use a dev/standalone build for push)');
+      return;
+    }
 
     let subs: { remove: () => void }[] = [];
     let cancelled = false;
