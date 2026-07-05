@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -475,7 +475,15 @@ export default function AdminDashboard() {
   const { startDate, endDate } = todayRangeIso();
   const { data: todaysAppointments = [] } = useAdminRehabCalendar({ startDate, endDate });
   const [tab, setTab] = useState<DashTab>('today');
+  const [menuVisible, setMenuVisible] = useState(false);
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Eshwar';
+
+  const confirmSignOut = () => {
+    Alert.alert('Sign out', 'Sign out of the admin portal?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: signOut },
+    ]);
+  };
 
   const ADMIN_ACTIONS = [
     { emoji: '🧑‍🤝‍🧑', title: 'Clients', subtitle: 'Filter & sort the full client roster', route: '/(admin)/clients', color: THEME.colors.teal },
@@ -504,12 +512,23 @@ export default function AdminDashboard() {
               Welcome, <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.cormorantSemibold }}>{firstName}</Text>
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={signOut}
-            style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: THEME.colors.border, marginTop: 8 }}
-          >
-            <Text style={{ color: THEME.colors.error, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>Sign out</Text>
-          </TouchableOpacity>
+          <View style={{ gap: 10, marginTop: 4, alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={() => setMenuVisible(true)}
+              style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+            >
+              <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>☰</Text>
+              {ADMIN_ACTIONS.some((a) => (a.badge ?? 0) > 0) && (
+                <View style={{ position: 'absolute', top: 7, right: 7, width: 9, height: 9, borderRadius: 5, backgroundColor: '#F87171', borderWidth: 1.5, borderColor: THEME.colors.surface2 }} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={confirmSignOut}
+              style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+            >
+              <Text style={{ color: THEME.colors.error, fontSize: 17 }}>⏻</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Today / Week / Month tabs */}
@@ -543,48 +562,52 @@ export default function AdminDashboard() {
             {tab === 'today' && <TodayTab analytics={analytics} todaysAppointments={todaysAppointments} />}
             {tab === 'week'  && <WeekTab analytics={analytics} />}
             {tab === 'month' && <MonthTab analytics={analytics} />}
-
-            {/* Admin actions */}
-            <View style={{ marginHorizontal: 24, marginTop: 8 }}>
-              <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12 }}>
-                Admin actions
-              </Text>
-              <View style={{ gap: 10 }}>
-                {ADMIN_ACTIONS.map((action) => (
-                  <TouchableOpacity
-                    key={action.route}
-                    onPress={() => router.push(action.route as any)}
-                    activeOpacity={0.8}
-                    style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
-                      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${action.color}15`, borderWidth: 0.5, borderColor: `${action.color}30`, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 18 }}>{action.emoji}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>
-                          {action.title}
-                        </Text>
-                        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 2 }}>
-                          {action.subtitle}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      {action.badge != null && action.badge > 0 && (
-                        <View style={{ backgroundColor: '#F87171', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
-                          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: '#fff' }}>{action.badge}</Text>
-                        </View>
-                      )}
-                      <Text style={{ color: THEME.colors.textMuted, fontSize: 18 }}>›</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
           </>
         )}
       </ScrollView>
+
+      {/* Admin actions — bottom-sheet menu behind the ☰ header button */}
+      <Modal transparent visible={menuVisible} animationType="slide" onRequestClose={() => setMenuVisible(false)} statusBarTranslucent>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' }} onPress={() => setMenuVisible(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '82%', backgroundColor: THEME.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 12, paddingBottom: 36 }}>
+          <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: THEME.colors.border, alignSelf: 'center', marginBottom: 14 }} />
+          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12, marginHorizontal: 24 }}>
+            Admin actions
+          </Text>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, gap: 10 }} showsVerticalScrollIndicator={false}>
+            {ADMIN_ACTIONS.map((action) => (
+              <TouchableOpacity
+                key={action.route}
+                onPress={() => { setMenuVisible(false); router.push(action.route as any); }}
+                activeOpacity={0.8}
+                style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: `${action.color}15`, borderWidth: 0.5, borderColor: `${action.color}30`, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 17 }}>{action.emoji}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>
+                      {action.title}
+                    </Text>
+                    <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 2 }}>
+                      {action.subtitle}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {action.badge != null && action.badge > 0 && (
+                    <View style={{ backgroundColor: '#F87171', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: '#fff' }}>{action.badge}</Text>
+                    </View>
+                  )}
+                  <Text style={{ color: THEME.colors.textMuted, fontSize: 18 }}>›</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
