@@ -1073,3 +1073,143 @@ export function useAdminRehabMonthSnapshot() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Daily pulse — the CEO's morning glance. Everything is "today vs the recent
+// norm" or "who specifically needs attention right now".
+// ---------------------------------------------------------------------------
+export interface RedFlagClient {
+  clientId: string;
+  clientName: string;
+  date: string;
+  painLevel: number | null;
+  energy: number | null;
+}
+
+export interface CoachMessageBacklog {
+  coachId: string;
+  coachName: string;
+  unreadCount: number;
+  oldestSentAt: string;
+}
+
+// daily_checkins.date is a plain date column written from the client's device,
+// so compare against the local calendar date, not the UTC one.
+const localDateStr = (d: Date) => d.toLocaleDateString('en-CA');
+
+export function useAdminDailyPulse() {
+  return useQuery({
+    queryKey: ['admin', 'daily_pulse'],
+    queryFn: async () => {
+      const now = new Date();
+      const todayStr = localDateStr(now);
+      const yesterdayStr = localDateStr(new Date(now.getTime() - 86400000));
+      const eightDaysAgoStr = localDateStr(new Date(now.getTime() - 8 * 86400000));
+      const startOfTodayIso = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+      const sevenDaysAgoIso = new Date(Date.now() - 7 * 86400000).toISOString();
+      const dayAgoIso = new Date(Date.now() - 86400000).toISOString();
+
+      const [
+        { data: clients, error: clientsErr },
+        { data: coaches },
+        { data: checkins },
+        { data: logs7d },
+        { data: staleUnread },
+      ] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, created_at').eq('role', 'client'),
+        supabase.from('profiles').select('id, full_name, last_seen_at').eq('role', 'coach'),
+        supabase.from('daily_checkins').select('client_id, date, energy, pain_level').gte('date', eightDaysAgoStr),
+        supabase.from('manual_workout_logs').select('client_id, completed_at').eq('completed', true).gte('completed_at', sevenDaysAgoIso),
+        supabase.from('messages').select('receiver_id, sent_at').is('read_at', null).lte('sent_at', dayAgoIso).order('sent_at', { ascending: true }).limit(1000),
+      ]);
+      if (clientsErr) throw clientsErr;
+
+      const clientNameMap: Record<string, string> = {};
+      (clients ?? []).forEach((c: any) => { clientNameMap[c.id] = c.full_name; });
+
+      // ── Check-ins: today, yesterday, and the trailing-week daily norm ──
+      const checkinClientsByDate: Record<string, Set<string>> = {};
+      (checkins ?? []).forEach((c: any) => {
+        if (!checkinClientsByDate[c.date]) checkinClientsByDate[c.date] = new Set();
+        checkinClientsByDate[c.date].add(c.client_id);
+      });
+      const checkinsToday = checkinClientsByDate[todayStr]?.size ?? 0;
+      const checkinsYesterday = checkinClientsByDate[yesterdayStr]?.size ?? 0;
+      const priorDays = Object.entries(checkinClientsByDate).filter(([d]) => d !== todayStr);
+      const checkinDailyNorm = priorDays.length
+        ? Math.round(priorDays.reduce((s, [, set]) => s + set.size, 0) / priorDays.length)
+        : 0;
+
+      // ── Red flags: high pain or very low energy, today or yesterday ──
+      // One row per client, keeping the worst report.
+      const flagged: Record<string, RedFlagClient> = {};
+      (checkins ?? []).forEach((c: any) => {
+        if (c.date !== todayStr && c.date !== yesterdayStr) return;
+        const isFlag = (c.pain_level ?? 0) >= 7 || (c.energy != null && c.energy <= 2);
+        if (!isFlag) return;
+        const existing = flagged[c.client_id];
+        if (!existing || (c.pain_level ?? 0) > (existing.painLevel ?? 0)) {
+          flagged[c.client_id] = {
+            clientId: c.client_id,
+            clientName: clientNameMap[c.client_id] ?? 'Unknown',
+            date: c.date,
+            painLevel: c.pain_level ?? null,
+            energy: c.energy ?? null,
+          };
+        }
+      });
+      const redFlags = Object.values(flagged).sort((a, b) => (b.painLevel ?? 0) - (a.painLevel ?? 0));
+
+      // ── Activity: distinct clients logging today vs trailing-week norm ──
+      const logClientsByDate: Record<string, Set<string>> = {};
+      (logs7d ?? []).forEach((l: any) => {
+        const d = localDateStr(new Date(l.completed_at));
+        if (!logClientsByDate[d]) logClientsByDate[d] = new Set();
+        logClientsByDate[d].add(l.client_id);
+      });
+      const activeToday = logClientsByDate[todayStr]?.size ?? 0;
+      const priorLogDays = Object.entries(logClientsByDate).filter(([d]) => d !== todayStr);
+      const activeDailyNorm = priorLogDays.length
+        ? Math.round(priorLogDays.reduce((s, [, set]) => s + set.size, 0) / priorLogDays.length)
+        : 0;
+
+      // ── Signups today ──
+      const signupsToday = (clients ?? []).filter((c: any) => c.created_at >= startOfTodayIso).length;
+
+      // ── Coach message backlog: unread client messages older than 24h ──
+      // read_at is the only reply-adjacent signal we store, so this is
+      // strictly "not even opened", the strongest version of unanswered.
+      const coachMap: Record<string, string> = {};
+      (coaches ?? []).forEach((c: any) => { coachMap[c.id] = c.full_name; });
+      const backlogByCoach: Record<string, CoachMessageBacklog> = {};
+      (staleUnread ?? []).forEach((m: any) => {
+        if (!coachMap[m.receiver_id]) return; // only messages TO coaches
+        if (!backlogByCoach[m.receiver_id]) {
+          backlogByCoach[m.receiver_id] = { coachId: m.receiver_id, coachName: coachMap[m.receiver_id], unreadCount: 0, oldestSentAt: m.sent_at };
+        }
+        backlogByCoach[m.receiver_id].unreadCount++;
+      });
+      const messageBacklog = Object.values(backlogByCoach).sort((a, b) => b.unreadCount - a.unreadCount);
+
+      // ── Coaches who haven't opened the app today ──
+      const coachesInactiveToday = (coaches ?? [])
+        .filter((c: any) => !c.last_seen_at || c.last_seen_at < startOfTodayIso)
+        .map((c: any) => ({ id: c.id, full_name: c.full_name, last_seen_at: c.last_seen_at ?? null }))
+        .sort((a: any, b: any) => (a.last_seen_at ?? '').localeCompare(b.last_seen_at ?? ''));
+
+      return {
+        totalClients: (clients ?? []).length,
+        checkinsToday,
+        checkinsYesterday,
+        checkinDailyNorm,
+        redFlags,
+        activeToday,
+        activeDailyNorm,
+        signupsToday,
+        messageBacklog,
+        coachesInactiveToday,
+      };
+    },
+    staleTime: 1000 * 60 * 2,
+  });
+}
