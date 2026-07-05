@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Image, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuth } from '@/hooks/useAuth';
-import { useMessages, useSendMessage, useMarkMessagesRead } from '@/hooks/useCoach';
+import { useMessages, useSendMessage, useMarkMessagesRead, uploadChatAttachment } from '@/hooks/useCoach';
 import { THEME } from '@/constants/theme';
 
 function formatTime(dateStr: string): string {
@@ -78,6 +80,26 @@ export default function MessagingScreen() {
     setText('');
     await sendMessage({ coachId, clientId, receiverId: clientId, body });
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const [attaching, setAttaching] = useState(false);
+  const handleAttach = async () => {
+    if (attaching || !coachId || !clientId || !user?.id) return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (res.canceled || !res.assets?.[0]) return;
+    setAttaching(true);
+    try {
+      const small = await ImageManipulator.manipulateAsync(res.assets[0].uri, [{ resize: { width: 1280 } }], { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG });
+      const path = await uploadChatAttachment(user.id, small.uri);
+      const caption = text.trim();
+      setText('');
+      await sendMessage({ coachId, clientId, receiverId: clientId, body: caption, attachmentPath: path });
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e: any) {
+      Alert.alert('Could not send photo', e?.message ?? 'Please try again.');
+    } finally {
+      setAttaching(false);
+    }
   };
 
   const isMine = (msg: any) => msg.sender_id === user?.id;
@@ -188,14 +210,21 @@ export default function MessagingScreen() {
                           shadowRadius: 4,
                           elevation: mine ? 2 : 0,
                         }}>
-                          <Text style={{
-                            color: mine ? THEME.colors.background : THEME.colors.textPrimary,
-                            fontFamily: THEME.fonts.sans,
-                            fontSize: 15,
-                            lineHeight: 22,
-                          }}>
-                            {msg.body}
-                          </Text>
+                          {msg.attachmentUrl && (
+                            <TouchableOpacity activeOpacity={0.9} onPress={() => Linking.openURL(msg.attachmentUrl)}>
+                              <Image source={{ uri: msg.attachmentUrl }} style={{ width: 210, height: 210, borderRadius: 12, marginBottom: msg.body ? 8 : 0 }} resizeMode="cover" />
+                            </TouchableOpacity>
+                          )}
+                          {!!msg.body && (
+                            <Text style={{
+                              color: mine ? THEME.colors.background : THEME.colors.textPrimary,
+                              fontFamily: THEME.fonts.sans,
+                              fontSize: 15,
+                              lineHeight: 22,
+                            }}>
+                              {msg.body}
+                            </Text>
+                          )}
                         </View>
 
                         {/* Time + read receipt */}
@@ -220,6 +249,16 @@ export default function MessagingScreen() {
 
         {/* Input bar */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, backgroundColor: THEME.colors.background }}>
+          <TouchableOpacity
+            onPress={handleAttach}
+            disabled={attaching}
+            activeOpacity={0.8}
+            style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+          >
+            {attaching
+              ? <ActivityIndicator color={THEME.colors.teal} size="small" />
+              : <Text style={{ fontSize: 17 }}>📷</Text>}
+          </TouchableOpacity>
           <TextInput
             style={{
               flex: 1,

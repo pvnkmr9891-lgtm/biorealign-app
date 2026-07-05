@@ -268,9 +268,39 @@ export function useMessages(coachId: string, clientId: string) {
         .order('sent_at', { ascending: true });
 
       if (error) throw error;
-      return data ?? [];
+
+      // Sign attachment URLs (1h) so bubbles can render images directly.
+      return Promise.all((data ?? []).map(async (m: any) => {
+        if (!m.attachment_path) return m;
+        const { data: signed } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(m.attachment_path, 3600);
+        return { ...m, attachmentUrl: signed?.signedUrl ?? null };
+      }));
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Upload a chat photo — path starts with the uploader's id (storage RLS
+// grants read to the other side of the assigned coach<->client pair).
+// ---------------------------------------------------------------------------
+export async function uploadChatAttachment(userId: string, uri: string): Promise<string> {
+  const path = `${userId}/${Date.now()}.jpg`;
+  const formData = new FormData();
+  formData.append('file', { uri, name: 'chat.jpg', type: 'image/jpeg' } as any);
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(
+    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/chat-attachments/${path}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session?.access_token}`, 'x-upsert': 'true' },
+      body: formData,
+    }
+  );
+  if (!res.ok) throw new Error(`Attachment upload failed: ${await res.text()}`);
+  return path;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,9 +341,9 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: async ({
-      coachId, clientId, receiverId, body,
+      coachId, clientId, receiverId, body, attachmentPath,
     }: {
-      coachId: string; clientId: string; receiverId: string; body: string;
+      coachId: string; clientId: string; receiverId: string; body: string; attachmentPath?: string;
     }) => {
       const { data, error } = await supabase
         .from('messages')
@@ -323,6 +353,7 @@ export function useSendMessage() {
           sender_id:   user!.id,
           receiver_id: receiverId,
           body:        body.trim(),
+          attachment_path: attachmentPath ?? null,
         })
         .select()
         .single();
