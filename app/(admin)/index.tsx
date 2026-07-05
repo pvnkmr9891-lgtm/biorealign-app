@@ -83,27 +83,128 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
         />
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14 }}>
-        <StatCell value={`+${pulse?.signupsToday ?? 0}`} label="Signups today" color={THEME.colors.amber} />
-        <TouchableOpacity
-          onPress={() => router.push('/(admin)/rehab-queue')}
-          activeOpacity={0.85}
-          style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
-        >
-          <Text style={{ fontSize: 22, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>{todaysAppointments.length}</Text>
-          <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>Recovery sessions →</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push((analytics?.pendingRehabRequests ?? 0) > 0 ? '/(admin)/rehab-queue' : '/(admin)/clients')}
-          activeOpacity={0.85}
-          style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
-        >
-          <Text style={{ fontSize: 22, fontFamily: THEME.fonts.sansMedium, color: (analytics?.pendingItemsCount ?? 0) > 0 ? '#F87171' : THEME.colors.textMuted }}>
-            {analytics?.pendingItemsCount ?? 0}
+      {/* Signups today — names, not just a count */}
+      {(pulse?.signupsTodayList?.length ?? 0) > 0 && (
+        <View style={{ marginHorizontal: 24, backgroundColor: `${THEME.colors.amber}12`, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.amber}30`, marginBottom: 14, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+          <Text style={{ fontSize: 13 }}>✨</Text>
+          <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>
+            New today:{' '}
+            {pulse!.signupsTodayList.map((c: any, i: number) => (
+              <Text key={c.id} onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: c.id, clientName: c.full_name } })} style={{ fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+                {c.full_name}{i < pulse!.signupsTodayList.length - 1 ? ', ' : ''}
+              </Text>
+            ))}
           </Text>
-          <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>Need action →</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
+
+      {/* Today's Recovery agenda */}
+      <PanelCard title={`🩹 Recovery sessions today (${todaysAppointments.length})`}>
+        {todaysAppointments.length === 0 ? (
+          <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Nothing scheduled today.</Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {todaysAppointments.slice(0, 6).map((a: any) => (
+              <TouchableOpacity
+                key={a.id}
+                onPress={() => router.push('/(admin)/rehab-queue')}
+                activeOpacity={0.8}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}
+              >
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{a.client?.full_name ?? 'Unknown'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+                    {new Date(a.scheduled_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}
+                  </Text>
+                  <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: a.status === 'completed' ? '#6EE7B7' : a.status === 'cancelled' || a.status === 'no_show' ? '#F87171' : THEME.colors.textMuted, textTransform: 'capitalize' }}>
+                    {a.status ?? 'scheduled'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </PanelCard>
+
+      {/* Need action — broken down instead of one lump number */}
+      <PanelCard title="📌 Need your action">
+        <View style={{ gap: 10 }}>
+          <TouchableOpacity onPress={() => router.push('/(admin)/rehab-queue')} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>Recovery quotes awaiting your response</Text>
+            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: (pulse?.pendingRehabList?.length ?? 0) > 0 ? '#F87171' : THEME.colors.textMuted }}>{pulse?.pendingRehabList?.length ?? 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(admin)/assessments')} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>Detailed assessments awaiting coach review</Text>
+            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: (pulse?.pendingAssessmentsList?.length ?? 0) > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{pulse?.pendingAssessmentsList?.length ?? 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(admin)/medical-records')} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>Client feedback unread by coach</Text>
+            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: (pulse?.unreadFeedbackList?.length ?? 0) > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{pulse?.unreadFeedbackList?.length ?? 0}</Text>
+          </TouchableOpacity>
+        </View>
+      </PanelCard>
+
+      {/* Waiting on first plan */}
+      {(pulse?.waitingOnFirstPlan?.length ?? 0) > 0 && (
+        <PanelCard title="🚀 Waiting on their first plan">
+          <View style={{ gap: 8 }}>
+            {pulse!.waitingOnFirstPlan.map((w) => {
+              const days = Math.floor((Date.now() - new Date(w.assessedAt).getTime()) / 86400000);
+              return (
+                <TouchableOpacity
+                  key={w.clientId}
+                  onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: w.clientId, clientName: w.clientName } })}
+                  activeOpacity={0.8}
+                  style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
+                >
+                  <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{w.clientName}</Text>
+                  <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: days >= 3 ? '#F87171' : THEME.colors.amber }}>
+                    {days <= 0 ? 'assessed today' : `waiting ${days}d`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </PanelCard>
+      )}
+
+      {/* Wins of the day */}
+      {(pulse?.streakMilestonesToday?.length ?? 0) > 0 && (
+        <PanelCard title="🎉 Wins today">
+          <View style={{ gap: 8 }}>
+            {pulse!.streakMilestonesToday.map((w) => (
+              <TouchableOpacity
+                key={w.clientId}
+                onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: w.clientId, clientName: w.clientName } })}
+                activeOpacity={0.8}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
+              >
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{w.clientName}</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#6EE7B7' }}>🔥 {w.streak}-day streak</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </PanelCard>
+      )}
+
+      {/* Recovery payments pending */}
+      {(pulse?.paymentsPending?.length ?? 0) > 0 && (
+        <PanelCard title="💳 Recovery payments pending">
+          <View style={{ gap: 8 }}>
+            {pulse!.paymentsPending.map((p) => (
+              <TouchableOpacity
+                key={p.requestId}
+                onPress={() => router.push('/(admin)/rehab-queue')}
+                activeOpacity={0.8}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
+              >
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{p.clientName}</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>Awaiting payment</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </PanelCard>
+      )}
 
       {/* Red flags */}
       {(pulse?.redFlags?.length ?? 0) > 0 && (

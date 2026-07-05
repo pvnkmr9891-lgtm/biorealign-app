@@ -1093,6 +1093,26 @@ export interface CoachMessageBacklog {
   oldestSentAt: string;
 }
 
+export interface WaitingOnFirstPlan {
+  clientId: string;
+  clientName: string;
+  assessedAt: string;
+}
+
+export interface StreakMilestone {
+  clientId: string;
+  clientName: string;
+  streak: number;
+}
+
+export interface PendingPayment {
+  clientId: string;
+  clientName: string;
+  requestId: string;
+}
+
+const STREAK_MILESTONES = [3, 7, 14, 21, 30, 60, 90, 180, 365];
+
 // daily_checkins.date is a plain date column written from the client's device,
 // so compare against the local calendar date, not the UTC one.
 const localDateStr = (d: Date) => d.toLocaleDateString('en-CA');
@@ -1115,12 +1135,26 @@ export function useAdminDailyPulse() {
         { data: checkins },
         { data: logs7d },
         { data: staleUnread },
+        { data: pendingRehab },
+        { data: pendingAssessments },
+        { data: unreadFeedbackDocs },
+        { data: assessments },
+        { data: activePlans },
+        { data: streaks },
+        { data: pendingPayments },
       ] = await Promise.all([
         supabase.from('profiles').select('id, full_name, created_at').eq('role', 'client'),
         supabase.from('profiles').select('id, full_name, last_seen_at').eq('role', 'coach'),
         supabase.from('daily_checkins').select('client_id, date, energy, pain_level').gte('date', eightDaysAgoStr),
         supabase.from('manual_workout_logs').select('client_id, completed_at').eq('completed', true).gte('completed_at', sevenDaysAgoIso),
         supabase.from('messages').select('receiver_id, sent_at').is('read_at', null).lte('sent_at', dayAgoIso).order('sent_at', { ascending: true }).limit(1000),
+        supabase.from('rehab_requests').select('id, client_id').eq('status', 'pending'),
+        supabase.from('coach_detailed_assessments').select('id, client_id').eq('status', 'submitted'),
+        supabase.from('medical_documents').select('id, client_id').eq('coach_has_unread_feedback', true),
+        supabase.from('assessments').select('client_id, submitted_at'),
+        supabase.from('plans').select('client_id, status').eq('status', 'active'),
+        supabase.from('client_streaks').select('client_id, current_streak, updated_at'),
+        supabase.from('rehab_requests').select('id, client_id').eq('status', 'accepted').eq('payment_status', 'pending'),
       ]);
       if (clientsErr) throw clientsErr;
 
@@ -1197,6 +1231,43 @@ export function useAdminDailyPulse() {
         .map((c: any) => ({ id: c.id, full_name: c.full_name, last_seen_at: c.last_seen_at ?? null }))
         .sort((a: any, b: any) => (a.last_seen_at ?? '').localeCompare(b.last_seen_at ?? ''));
 
+      // ── Signups today, by name ──
+      const signupsTodayList = (clients ?? [])
+        .filter((c: any) => c.created_at >= startOfTodayIso)
+        .map((c: any) => ({ id: c.id, full_name: c.full_name }));
+
+      // ── "Need action" breakdown — same three counts that used to be summed
+      // blind into pendingItemsCount, now each with the client list behind it.
+      const pendingRehabList = (pendingRehab ?? []).map((r: any) => ({ id: r.client_id, full_name: clientNameMap[r.client_id] ?? 'Unknown' }));
+      const pendingAssessmentsList = (pendingAssessments ?? []).map((a: any) => ({ id: a.client_id, full_name: clientNameMap[a.client_id] ?? 'Unknown' }));
+      const unreadFeedbackList = (unreadFeedbackDocs ?? []).map((d: any) => ({ id: d.client_id, full_name: clientNameMap[d.client_id] ?? 'Unknown' }));
+
+      // ── Waiting on first plan: assessment done, no active plan yet ──
+      // Oldest-first — the longer someone's waited, the more it matters.
+      const firstAssessedAt: Record<string, string> = {};
+      (assessments ?? []).forEach((a: any) => {
+        if (!firstAssessedAt[a.client_id] || a.submitted_at < firstAssessedAt[a.client_id]) {
+          firstAssessedAt[a.client_id] = a.submitted_at;
+        }
+      });
+      const activePlanClientIds = new Set((activePlans ?? []).map((p: any) => p.client_id));
+      const waitingOnFirstPlan: WaitingOnFirstPlan[] = Object.entries(firstAssessedAt)
+        .filter(([clientId]) => !activePlanClientIds.has(clientId))
+        .map(([clientId, assessedAt]) => ({ clientId, clientName: clientNameMap[clientId] ?? 'Unknown', assessedAt }))
+        .sort((a, b) => a.assessedAt.localeCompare(b.assessedAt))
+        .slice(0, 10);
+
+      // ── Wins of the day: streak milestones reached today ──
+      const streakMilestonesToday: StreakMilestone[] = (streaks ?? [])
+        .filter((s: any) => localDateStr(new Date(s.updated_at)) === todayStr && STREAK_MILESTONES.includes(s.current_streak))
+        .map((s: any) => ({ clientId: s.client_id, clientName: clientNameMap[s.client_id] ?? 'Unknown', streak: s.current_streak }))
+        .sort((a, b) => b.streak - a.streak);
+
+      // ── Recovery payments pending: accepted quotes, not yet paid ──
+      const paymentsPending: PendingPayment[] = (pendingPayments ?? []).map((r: any) => ({
+        requestId: r.id, clientId: r.client_id, clientName: clientNameMap[r.client_id] ?? 'Unknown',
+      }));
+
       return {
         totalClients: (clients ?? []).length,
         checkinsToday,
@@ -1206,8 +1277,15 @@ export function useAdminDailyPulse() {
         activeToday,
         activeDailyNorm,
         signupsToday,
+        signupsTodayList,
         messageBacklog,
         coachesInactiveToday,
+        pendingRehabList,
+        pendingAssessmentsList,
+        unreadFeedbackList,
+        waitingOnFirstPlan,
+        streakMilestonesToday,
+        paymentsPending,
       };
     },
     staleTime: 1000 * 60 * 2,
