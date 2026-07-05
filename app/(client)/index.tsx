@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Modal, Pressable } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 const AnimatedArc = Animated.createAnimatedComponent(Circle);
 import { SafeAreaView } from 'react-native-safe-area-context';
