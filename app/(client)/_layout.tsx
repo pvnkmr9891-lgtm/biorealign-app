@@ -33,6 +33,7 @@ export default function ClientLayout() {
         <Stack.Screen name="recovery" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         <Stack.Screen name="recovery-request" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         <Stack.Screen name="fitness-assessment" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
+        <Stack.Screen name="achievements" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         {/* Sub-screens — no bottom padding needed */}
         <Stack.Screen
           name="workout-detail"

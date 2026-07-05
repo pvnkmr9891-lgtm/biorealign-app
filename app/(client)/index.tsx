@@ -20,6 +20,7 @@ import { PROGRAMS_ENABLED } from '@/constants/featureFlags';
 import { useAlignmentForDate, useWeeklyAlignment, computeDay, useAlignmentHistory, scoreToTier, TIER_META } from '@/hooks/useAlignmentScore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRebuildStreak, useStreak } from '@/hooks/useStreakSystem';
+import { useAchievements, useRecordAchievement } from '@/hooks/useAchievements';
 import { getWeekStart } from '@/hooks/useManualLog';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -829,6 +830,36 @@ function CoachMessageBanner() {
   );
 }
 
+// ── Milestones preview — last 3 achievements, tap through for full history ──
+function MilestonesCard() {
+  const router = useRouter();
+  const { data: achievements = [] } = useAchievements();
+  if (achievements.length === 0) return null;
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/(client)/achievements')}
+      activeOpacity={0.85}
+      style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          🏆 Milestones
+        </Text>
+        <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>View all ({achievements.length}) ›</Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {achievements.slice(0, 3).map((a) => (
+          <View key={a.id} style={{ flex: 1, alignItems: 'center', backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 10 }}>
+            <Text style={{ fontSize: 20, marginBottom: 4 }}>{a.icon}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textAlign: 'center' }}>{a.label}</Text>
+          </View>
+        ))}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 // ── Tier badge ────────────────────────────────────────────────────────────────
 function TierBadge({ avg }: { avg: number }) {
   const tier = scoreToTier(avg);
@@ -1152,6 +1183,13 @@ function WeekPerfectCard({ planStartDate }: { planStartDate: string | null }) {
   const perfectCount = weekDays.filter(d => d.score !== null && d.score >= 100).length;
   const isPerfect    = perfectCount === 6;
 
+  // Record the milestone once — upsert with ignoreDuplicates makes repeat
+  // calls (re-renders, revisiting an already-perfect past week) safe no-ops.
+  const { mutate: recordAchievement } = useRecordAchievement();
+  useEffect(() => {
+    if (isPerfect) recordAchievement({ kind: 'perfect_week', label: 'Perfect week', icon: '🏆', achievedOn: weekStart });
+  }, [isPerfect, weekStart]);
+
   // Week label
   const [wsY, wsM, wsD] = weekStart.split('-').map(Number);
   const wStart = new Date(wsY, wsM - 1, wsD);
@@ -1345,13 +1383,18 @@ export default function ClientDashboard() {
   }, [alignHistory]);
   const currentTier = scoreToTier(rolling4wAvg);
   const [celebrateTier, setCelebrateTier] = React.useState<string | null>(null);
+  const { mutate: recordAchievement } = useRecordAchievement();
   useEffect(() => {
     if (!user?.id || alignHistory.length === 0) return;
     const key = `tier_${user.id}`;
     AsyncStorage.getItem(key).then(prev => {
       if (prev && prev !== currentTier) {
         const order = ['foundation', 'momentum', 'locked_in', 'unbreakable'];
-        if (order.indexOf(currentTier) > order.indexOf(prev)) setCelebrateTier(currentTier);
+        if (order.indexOf(currentTier) > order.indexOf(prev)) {
+          setCelebrateTier(currentTier);
+          const meta = TIER_META[currentTier as keyof typeof TIER_META];
+          recordAchievement({ kind: 'tier', label: meta.label, icon: meta.icon });
+        }
       }
       AsyncStorage.setItem(key, currentTier);
     });
@@ -1359,6 +1402,17 @@ export default function ClientDashboard() {
 
   // Rebuild streak from full log history on every home screen mount
   useEffect(() => { rebuildStreak(); }, []);
+
+  // Streak milestone crossing — current_streak passes through each milestone
+  // value exactly once per run, so this is naturally self-limiting (no need
+  // to track "previous" like the tier check above).
+  const STREAK_MILESTONES = [3, 7, 14, 21, 30, 60, 90, 180, 365];
+  useEffect(() => {
+    const n = streak?.current_streak;
+    if (n && STREAK_MILESTONES.includes(n)) {
+      recordAchievement({ kind: 'streak', label: `${n}-day streak`, icon: '🔥' });
+    }
+  }, [streak?.current_streak]);
 
   const queryClient = useQueryClient();
   // Re-invalidate all alignment data every time the home tab comes into focus.
@@ -1481,6 +1535,9 @@ export default function ClientDashboard() {
 
         {/* This week task stats */}
         {user?.id && <WeekStatsCard clientId={user.id} />}
+
+        {/* Milestones preview */}
+        <MilestonesCard />
 
       </ScrollView>
     </SafeAreaView>

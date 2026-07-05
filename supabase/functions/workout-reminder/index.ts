@@ -3,7 +3,10 @@
 //
 // Daily nudge — invoked by pg_cron at 6:00 PM IST (12:30 UTC). Pushes a
 // reminder to every client with a push token who hasn't completed a single
-// checklist item today (IST calendar day).
+// checklist item today (IST calendar day). Clients with an active streak
+// (client_streaks.current_streak > 0) get loss-aversion copy naming the
+// exact streak at risk instead of the generic message — one push per
+// client, never both, to avoid notification pile-up.
 //
 // Requires secrets: CRON_SECRET, SUPABASE_SERVICE_ROLE_KEY.
 
@@ -48,19 +51,34 @@ Deno.serve(async (req) => {
 
     const todayStartIso = startOfTodayIstIso();
 
-    const [{ data: clients }, { data: logsToday }] = await Promise.all([
+    const [{ data: clients }, { data: logsToday }, { data: streaks }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, push_token').eq('role', 'client').not('push_token', 'is', null),
       supabase.from('manual_workout_logs').select('client_id').eq('completed', true).gte('completed_at', todayStartIso),
+      supabase.from('client_streaks').select('client_id, current_streak').gt('current_streak', 0),
     ]);
 
     const loggedToday = new Set((logsToday ?? []).map((l: any) => l.client_id));
     const targets = (clients ?? []).filter((c: any) => !loggedToday.has(c.id));
 
-    const messages = targets.map((c: any) => ({
-      to: c.push_token,
-      title: 'Your plan is waiting 💪',
-      body: `${(c.full_name ?? '').split(' ')[0] || 'Hey'}, nothing logged yet today — even one exercise keeps the streak alive.`,
-    }));
+    const streakByClient: Record<string, number> = {};
+    (streaks ?? []).forEach((s: any) => { streakByClient[s.client_id] = s.current_streak; });
+
+    const messages = targets.map((c: any) => {
+      const firstName = (c.full_name ?? '').split(' ')[0] || 'Hey';
+      const streak = streakByClient[c.id];
+      if (streak) {
+        return {
+          to: c.push_token,
+          title: `🔥 ${streak}-day streak at risk`,
+          body: `${firstName}, you haven't logged today — don't lose your ${streak}-day streak now.`,
+        };
+      }
+      return {
+        to: c.push_token,
+        title: 'Your plan is waiting 💪',
+        body: `${firstName}, nothing logged yet today — even one exercise keeps you moving.`,
+      };
+    });
 
     const sent = await sendPushes(messages);
 
