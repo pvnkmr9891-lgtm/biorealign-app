@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { useAdminAnalytics, useAdminRehabCalendar, useAdminRehabMonthSnapshot, useAdminDailyPulse, useAdminWeekly } from '@/hooks/useAdmin';
+import { useAdminAnalytics, useAdminRehabCalendar, useAdminDailyPulse, useAdminWeekly, useAdminMonthly } from '@/hooks/useAdmin';
 import { THEME } from '@/constants/theme';
 
 type DashTab = 'today' | 'week' | 'month';
@@ -166,13 +166,13 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
 }
 
 // ── WEEK tab ─────────────────────────────────────────────────────────────────
-function DeltaBadge({ now, prev }: { now: number; prev: number }) {
+function DeltaBadge({ now, prev, suffix = 'pts vs last wk' }: { now: number; prev: number; suffix?: string }) {
   const delta = now - prev;
   const color = delta > 0 ? '#6EE7B7' : delta < 0 ? '#F87171' : THEME.colors.textMuted;
   const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
   return (
     <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color }}>
-      {arrow} {Math.abs(delta)}pts vs last wk
+      {arrow} {Math.abs(delta)}{suffix}
     </Text>
   );
 }
@@ -357,20 +357,65 @@ function WeekTab({ analytics }: { analytics: any }) {
   );
 }
 
-// ── MONTH tab (existing monthly content; upgraded in Phase 3) ────────────────
+// ── MONTH tab ────────────────────────────────────────────────────────────────
 function MonthTab({ analytics }: { analytics: any }) {
-  const { data: monthSnapshot } = useAdminRehabMonthSnapshot();
+  const { data: monthly, isLoading } = useAdminMonthly();
+
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
+
+  const scoreColorFor = (label: string) =>
+    label === 'Fitness' ? THEME.scoreColors.fitness : label === 'Recovery' ? THEME.scoreColors.recovery : THEME.scoreColors.longevity;
 
   return (
     <View>
-      <PanelCard title="Recovery business snapshot (30d)">
+      {/* Growth */}
+      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 6 }}>
+        <StatCell
+          value={`+${monthly?.signupsThis30 ?? 0}`}
+          label="Signups (30d)"
+          color={THEME.colors.amber}
+        />
+        <StatCell
+          value={monthly?.activationRate != null ? `${monthly.activationRate}%` : '—'}
+          label="Activation"
+          sub="new signups who got active"
+          color="#6EE7B7"
+        />
+        <StatCell
+          value={monthly?.retention30 != null ? `${monthly.retention30}%` : '—'}
+          label="30d retention"
+          sub="prior cohort still active"
+          color={THEME.colors.teal}
+        />
+      </View>
+      <View style={{ marginHorizontal: 24, marginBottom: 14, alignItems: 'center' }}>
+        <DeltaBadge now={monthly?.signupsThis30 ?? 0} prev={monthly?.signupsPrev30 ?? 0} suffix=" vs prior 30d" />
+      </View>
+
+      {/* Outcomes */}
+      <PanelCard title="Outcome scores — avg, this 30d vs prior">
+        <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingTop: 6 }}>
+          {(monthly?.outcomes ?? []).map((o) => (
+            <View key={o.key} style={{ alignItems: 'center' }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 3, borderColor: scoreColorFor(o.label), alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+                <Text style={{ color: scoreColorFor(o.label), fontFamily: THEME.fonts.sansMedium, fontSize: 20 }}>{o.current}</Text>
+              </View>
+              <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11, marginBottom: 3 }}>{o.label}</Text>
+              <DeltaBadge now={o.current} prev={o.previous} suffix="" />
+            </View>
+          ))}
+        </View>
+      </PanelCard>
+
+      {/* Recovery business */}
+      <PanelCard title="Recovery business (30d)">
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           {[
-            { label: 'Received',  value: monthSnapshot?.requestsReceived ?? 0,      color: '#93C5FD' },
-            { label: 'Accepted',  value: monthSnapshot?.requestsAccepted ?? 0,      color: '#6EE7B7' },
-            { label: 'Declined',  value: monthSnapshot?.requestsDeclined ?? 0,      color: '#F87171' },
-            { label: 'Completed', value: monthSnapshot?.appointmentsCompleted ?? 0, color: THEME.colors.teal },
-            { label: 'No-show',   value: monthSnapshot?.appointmentsNoShow ?? 0,    color: THEME.colors.amber },
+            { label: 'Received',  value: monthly?.rehab.received ?? 0,  color: '#93C5FD' },
+            { label: 'Accepted',  value: monthly?.rehab.accepted ?? 0,  color: '#6EE7B7' },
+            { label: 'Declined',  value: monthly?.rehab.declined ?? 0,  color: '#F87171' },
+            { label: 'Completed', value: monthly?.rehab.completed ?? 0, color: THEME.colors.teal },
+            { label: 'No-show',   value: monthly?.rehab.noShow ?? 0,    color: THEME.colors.amber },
           ].map((s) => (
             <View key={s.label} style={{ width: '30%', alignItems: 'center', paddingVertical: 6 }}>
               <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansMedium, color: s.color }}>{s.value}</Text>
@@ -378,18 +423,37 @@ function MonthTab({ analytics }: { analytics: any }) {
             </View>
           ))}
         </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 10, paddingTop: 10, borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
+          <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary }}>
+            Accept rate <Text style={{ color: '#6EE7B7', fontFamily: THEME.fonts.sansMedium }}>{monthly?.rehab.acceptRate != null ? `${monthly.rehab.acceptRate}%` : '—'}</Text>
+          </Text>
+          <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary }}>
+            No-show rate <Text style={{ color: THEME.colors.amber, fontFamily: THEME.fonts.sansMedium }}>{monthly?.rehab.noShowRate != null ? `${monthly.rehab.noShowRate}%` : '—'}</Text>
+          </Text>
+          <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary }}>
+            Requests <Text style={{ color: '#93C5FD', fontFamily: THEME.fonts.sansMedium }}>{(monthly?.rehab.received ?? 0) >= (monthly?.rehab.receivedPrev ?? 0) ? '▲' : '▼'} {Math.abs((monthly?.rehab.received ?? 0) - (monthly?.rehab.receivedPrev ?? 0))}</Text>
+          </Text>
+        </View>
       </PanelCard>
 
-      {analytics?.featureUsageBreakdown && analytics.featureUsageBreakdown.length > 0 && (
+      {/* Feature usage with deltas */}
+      {(monthly?.featureUsage?.length ?? 0) > 0 && (
         <PanelCard title="Feature usage (30d, distinct clients)">
           <View style={{ gap: 12, paddingTop: 4 }}>
-            {analytics.featureUsageBreakdown.map((f: any) => {
-              const maxUsage = analytics.featureUsageBreakdown[0]?.clientCount ?? 1;
+            {monthly!.featureUsage.map((f) => {
+              const maxUsage = monthly!.featureUsage[0]?.clientCount ?? 1;
+              const delta = f.clientCount - f.prevCount;
               return (
                 <View key={f.item_type}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                     <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, flex: 1, textTransform: 'capitalize' }}>{f.item_type}</Text>
-                    <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>{f.clientCount}</Text>
+                    <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>
+                      {f.clientCount}
+                      {'  '}
+                      <Text style={{ fontSize: 10.5, color: delta > 0 ? '#6EE7B7' : delta < 0 ? '#F87171' : THEME.colors.textMuted }}>
+                        {delta > 0 ? `▲${delta}` : delta < 0 ? `▼${Math.abs(delta)}` : '—'}
+                      </Text>
+                    </Text>
                   </View>
                   <View style={{ height: 6, backgroundColor: THEME.colors.surface3, borderRadius: 3, overflow: 'hidden', borderWidth: 0.5, borderColor: THEME.colors.border }}>
                     <View style={{ height: '100%', width: `${(f.clientCount / maxUsage) * 100}%`, backgroundColor: THEME.colors.teal, borderRadius: 3 }} />

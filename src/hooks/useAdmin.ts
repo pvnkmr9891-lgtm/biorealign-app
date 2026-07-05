@@ -1394,3 +1394,100 @@ export function useAdminWeekly() {
     staleTime: 1000 * 60 * 5,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Monthly business view — rolling 30-day windows (this 30d vs previous 30d):
+// growth (signups, activation, retention), outcome score trends, recovery
+// business with rates, feature usage with deltas.
+// ---------------------------------------------------------------------------
+export function useAdminMonthly() {
+  return useQuery({
+    queryKey: ['admin', 'monthly'],
+    queryFn: async () => {
+      const now = Date.now();
+      const thirtyDaysAgoIso = new Date(now - 30 * 86400000).toISOString();
+      const sixtyDaysAgoIso = new Date(now - 60 * 86400000).toISOString();
+
+      const [
+        { data: clients, error: clientsErr },
+        { data: logs60d },
+        { data: metrics60d },
+        { data: requests60d },
+        { data: appointments60d },
+      ] = await Promise.all([
+        supabase.from('profiles').select('id, created_at').eq('role', 'client'),
+        supabase.from('manual_workout_logs').select('client_id, item_type, completed_at').eq('completed', true).gte('completed_at', sixtyDaysAgoIso).limit(5000),
+        supabase.from('progress_metrics').select('fitness_score, recovery_score, longevity_score, recorded_at').gte('recorded_at', sixtyDaysAgoIso).limit(5000),
+        supabase.from('rehab_requests').select('status, created_at').gte('created_at', sixtyDaysAgoIso),
+        supabase.from('rehab_appointments').select('status, scheduled_at').gte('scheduled_at', sixtyDaysAgoIso),
+      ]);
+      if (clientsErr) throw clientsErr;
+
+      const inThis30 = (iso: string) => iso >= thirtyDaysAgoIso;
+
+      // ── Growth ──
+      const signupsThis30 = (clients ?? []).filter((c: any) => inThis30(c.created_at)).length;
+      const signupsPrev30 = (clients ?? []).filter((c: any) => c.created_at >= sixtyDaysAgoIso && !inThis30(c.created_at)).length;
+
+      const activeThis30 = new Set((logs60d ?? []).filter((l: any) => inThis30(l.completed_at)).map((l: any) => l.client_id));
+      const newThis30 = (clients ?? []).filter((c: any) => inThis30(c.created_at));
+      const activatedNew = newThis30.filter((c: any) => activeThis30.has(c.id)).length;
+      const activationRate = newThis30.length > 0 ? Math.round((activatedNew / newThis30.length) * 100) : null;
+
+      const cohortPrev30 = (clients ?? []).filter((c: any) => c.created_at >= sixtyDaysAgoIso && !inThis30(c.created_at));
+      const retainedPrevCohort = cohortPrev30.filter((c: any) => activeThis30.has(c.id)).length;
+      const retention30 = cohortPrev30.length > 0 ? Math.round((retainedPrevCohort / cohortPrev30.length) * 100) : null;
+
+      // ── Outcome scores: avg of records in each window ──
+      const scoreAvg = (rows: any[], key: string) => {
+        const vals = rows.map((m: any) => m[key]).filter((v: any) => v != null);
+        return vals.length ? Math.round(vals.reduce((s: number, v: number) => s + v, 0) / vals.length) : 0;
+      };
+      const metricsThis30 = (metrics60d ?? []).filter((m: any) => inThis30(m.recorded_at));
+      const metricsPrev30 = (metrics60d ?? []).filter((m: any) => !inThis30(m.recorded_at));
+      const outcomes = (['fitness_score', 'recovery_score', 'longevity_score'] as const).map((key) => ({
+        key,
+        label: key === 'fitness_score' ? 'Fitness' : key === 'recovery_score' ? 'Recovery' : 'Longevity',
+        current: scoreAvg(metricsThis30, key),
+        previous: scoreAvg(metricsPrev30, key),
+      }));
+
+      // ── Recovery business with rates ──
+      const reqThis30 = (requests60d ?? []).filter((r: any) => inThis30(r.created_at));
+      const reqPrev30 = (requests60d ?? []).filter((r: any) => !inThis30(r.created_at));
+      const apptThis30 = (appointments60d ?? []).filter((a: any) => inThis30(a.scheduled_at));
+      const count = (rows: any[], status: string) => rows.filter((r: any) => r.status === status).length;
+      const completed = count(apptThis30, 'completed');
+      const noShow = count(apptThis30, 'no_show');
+      const rehab = {
+        received: reqThis30.length,
+        receivedPrev: reqPrev30.length,
+        accepted: count(reqThis30, 'accepted'),
+        declined: count(reqThis30, 'declined'),
+        completed,
+        noShow,
+        acceptRate: reqThis30.length > 0 ? Math.round((count(reqThis30, 'accepted') / reqThis30.length) * 100) : null,
+        noShowRate: completed + noShow > 0 ? Math.round((noShow / (completed + noShow)) * 100) : null,
+      };
+
+      // ── Feature usage with deltas (distinct clients per item_type) ──
+      const usage: Record<string, { now: Set<string>; prev: Set<string> }> = {};
+      (logs60d ?? []).forEach((l: any) => {
+        usage[l.item_type] ??= { now: new Set(), prev: new Set() };
+        (inThis30(l.completed_at) ? usage[l.item_type].now : usage[l.item_type].prev).add(l.client_id);
+      });
+      const featureUsage = Object.entries(usage)
+        .map(([item_type, sets]) => ({ item_type, clientCount: sets.now.size, prevCount: sets.prev.size }))
+        .sort((a, b) => b.clientCount - a.clientCount);
+
+      return {
+        signupsThis30, signupsPrev30,
+        activationRate, retention30,
+        outcomes,
+        rehab,
+        featureUsage,
+      };
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+}
