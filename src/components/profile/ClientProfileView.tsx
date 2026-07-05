@@ -1630,7 +1630,9 @@ function MedicalRecordsTab({ clientId }: { clientId: string }) {
     return (
       <Card>
         <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center' }}>
-          This client hasn't uploaded any medical documents yet.
+          {isCoach
+            ? "Nothing shared yet. Clients choose which medical documents and summaries are visible to you — ask them to share from their Medical Records screen."
+            : "This client hasn't uploaded any medical documents yet."}
         </Text>
       </Card>
     );

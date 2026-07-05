@@ -27,6 +27,7 @@ export interface MedicalDocument {
   client_has_unread_feedback: boolean;
   coach_has_unread_feedback: boolean;
   has_feedback: boolean;
+  shared_with_coach: boolean;
 }
 
 export interface DocumentFeedback {
@@ -81,6 +82,24 @@ export function useMedicalDocuments() {
         .order('uploaded_at', { ascending: false });
       if (error) throw error;
       return (data ?? []) as MedicalDocument[];
+    },
+  });
+}
+
+// ── Toggle whether the assigned coach can see a document (RLS-enforced) ──
+export function useSetDocumentSharing() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, shared }: { id: string; shared: boolean }) => {
+      const { error } = await supabase
+        .from('medical_documents')
+        .update({ shared_with_coach: shared })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (user?.id) qc.invalidateQueries({ queryKey: medicalDocsKeys.list(user.id) });
     },
   });
 }
@@ -276,6 +295,20 @@ export function useSendAnalysisToCoach() {
         .eq('id', analysisId);
       if (updateErr) throw updateErr;
 
+      // Sending the summary is consent for the underlying documents too —
+      // otherwise the coach gets a report referencing files they can't open.
+      const { data: analysisRow } = await supabase
+        .from('medical_analyses')
+        .select('document_ids')
+        .eq('id', analysisId)
+        .single();
+      if (analysisRow?.document_ids?.length) {
+        await supabase
+          .from('medical_documents')
+          .update({ shared_with_coach: true })
+          .in('id', analysisRow.document_ids);
+      }
+
       const { error: notifErr } = await supabase.from('notifications').insert({
         user_id: coachId,
         title: 'Medical records shared',
@@ -286,7 +319,10 @@ export function useSendAnalysisToCoach() {
       if (notifErr) throw notifErr;
     },
     onSuccess: () => {
-      if (user?.id) qc.invalidateQueries({ queryKey: medicalDocsKeys.analyses(user.id) });
+      if (user?.id) {
+        qc.invalidateQueries({ queryKey: medicalDocsKeys.analyses(user.id) });
+        qc.invalidateQueries({ queryKey: medicalDocsKeys.list(user.id) });
+      }
     },
   });
 }

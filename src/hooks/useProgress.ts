@@ -43,6 +43,7 @@ export interface ProgressPhoto {
   phase: number;
   coach_reviewed: boolean;
   notes: string | null;
+  visible_to_coach: boolean;
   // Runtime only — signed URL
   url?: string;
 }
@@ -397,6 +398,26 @@ export function useUploadProgressPhoto() {
   if (dbError) throw dbError;
   return data as ProgressPhoto;
 },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: progressKeys.photos(user.id) });
+    },
+  });
+}
+
+// ── Toggle whether the assigned coach can see a photo (RLS-enforced) ────────
+export function useSetPhotoVisibility() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
+      const { error } = await supabase
+        .from('progress_photos')
+        .update({ visible_to_coach: visible })
+        .eq('id', id);
+      if (error) throw error;
+    },
     onSuccess: () => {
       if (!user?.id) return;
       qc.invalidateQueries({ queryKey: progressKeys.photos(user.id) });

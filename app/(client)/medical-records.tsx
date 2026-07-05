@@ -8,7 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyCoachStatus, useCoachProfile } from '@/hooks/useCoachDirectory';
 import {
-  useMedicalDocuments, useUploadMedicalDocument, useRecategorizeMedicalDocument, useDeleteMedicalDocument,
+  useMedicalDocuments, useUploadMedicalDocument, useRecategorizeMedicalDocument, useDeleteMedicalDocument, useSetDocumentSharing,
   useAcknowledgeDisclaimer, useRunMedicalAnalysis, useLatestMedicalAnalysis, useSendAnalysisToCoach, useSendAnalysisToExpert,
   validateMedicalFile, DocumentCategory, MedicalDocument, AnalysisDocResult,
 } from '@/hooks/useMedicalDocuments';
@@ -81,10 +81,11 @@ function RecategorizeSheet({ visible, onClose, onPick }: { visible: boolean; onC
 
 // ── A single document row ─────────────────────────────────────────────────
 function DocumentRow({
-  doc, analysisDoc, onView, onSummary, onFeedback, onRecategorize, onDelete,
+  doc, analysisDoc, onView, onSummary, onFeedback, onRecategorize, onDelete, onToggleShare,
 }: {
   doc: MedicalDocument; analysisDoc?: AnalysisDocResult;
   onView: () => void; onSummary: () => void; onFeedback: () => void; onRecategorize: () => void; onDelete: () => void;
+  onToggleShare: () => void;
 }) {
   return (
     <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 8 }}>
@@ -119,6 +120,12 @@ function DocumentRow({
             {doc.client_has_unread_feedback && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: THEME.colors.amber }} />}
           </TouchableOpacity>
         )}
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={onToggleShare} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: doc.shared_with_coach ? THEME.colors.teal : THEME.colors.textMuted }}>
+            {doc.shared_with_coach ? '👁 Coach can see' : '🔒 Private'}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -186,6 +193,7 @@ export default function MedicalRecordsScreen() {
   const { mutateAsync: runAnalysis, isPending: analyzing } = useRunMedicalAnalysis();
   const { mutateAsync: sendToCoach, isPending: sendingToCoach } = useSendAnalysisToCoach();
   const { mutateAsync: sendToExpert, isPending: sendingToExpert } = useSendAnalysisToExpert();
+  const { mutate: setSharing } = useSetDocumentSharing();
 
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [recategorizeTarget, setRecategorizeTarget] = useState<MedicalDocument | null>(null);
@@ -372,6 +380,7 @@ export default function MedicalRecordsScreen() {
                     onFeedback={() => setFeedbackDoc(doc)}
                     onRecategorize={() => setRecategorizeTarget(doc)}
                     onDelete={() => onDeletePress(doc)}
+                    onToggleShare={() => setSharing({ id: doc.id, shared: !doc.shared_with_coach })}
                   />
                 ))
               )}

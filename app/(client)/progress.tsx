@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useActiveEnrollment, useProgressHistory } from '@/hooks/useClient';
 import { useAuth } from '@/hooks/useAuth';
-import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
+import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useSetPhotoVisibility, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
 import { useMyTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { useWeeklyAlignment, useAlignmentHistory, DayScore } from '@/hooks/useAlignmentScore';
 import { LineChart } from '@/components/ui/LineChart';
@@ -1317,6 +1317,7 @@ function PhotoViewer({ photos, initialIndex, visible, onClose }: {
 }) {
   const [index, setIndex] = useState(initialIndex);
   const deletePhoto = useDeleteProgressPhoto();
+  const setVisibility = useSetPhotoVisibility();
   useEffect(() => { if (visible) setIndex(initialIndex); }, [visible, initialIndex]);
 
   const photo = photos[index];
@@ -1365,9 +1366,18 @@ function PhotoViewer({ photos, initialIndex, visible, onClose }: {
           </TouchableOpacity>
         </View>
 
-        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 44, paddingHorizontal: 20, alignItems: 'center' }}>
+        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 44, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => setVisibility.mutate({ id: photo.id, visible: !photo.visible_to_coach })}
+            disabled={setVisibility.isPending}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 }}
+          >
+            <Text style={{ color: photo.visible_to_coach ? THEME.colors.teal : 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>
+              {photo.visible_to_coach ? '👁  Coach can see' : '🙈  Hidden from coach'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleDelete} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 }}>
-            <Text style={{ color: '#F87171', fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>🗑  Delete photo</Text>
+            <Text style={{ color: '#F87171', fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>🗑  Delete</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1541,7 +1551,7 @@ function PhotosTab() {
       <View style={{ backgroundColor: `${THEME.colors.teal}10`, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.teal}25`, marginBottom: 18, flexDirection: 'row', gap: 10 }}>
         <Text style={{ fontSize: 14 }}>🔒</Text>
         <Text style={{ flex: 1, fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 18 }}>
-          Photos are private and only visible to you and your assigned coach.
+          Photos are visible to you and your assigned coach. Open any photo to hide it from your coach — hidden photos show 🙈.
         </Text>
       </View>
 
@@ -1624,6 +1634,11 @@ function PhotosTab() {
                       <View style={{ position: 'absolute', bottom: 6, left: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
                         <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: '#fff', textTransform: 'capitalize' }}>{photo.photo_type}</Text>
                       </View>
+                      {!photo.visible_to_coach && (
+                        <View style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+                          <Text style={{ fontSize: 10 }}>🙈</Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1667,6 +1682,11 @@ function PhotosTab() {
                       {photo.photo_type}
                     </Text>
                   </View>
+                  {!photo.visible_to_coach && (
+                    <View style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 10 }}>🙈</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
