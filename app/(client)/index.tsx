@@ -10,6 +10,7 @@ import {
   useActiveEnrollment,
   useTodayCheckin,
 } from '@/hooks/useClient';
+import { useClientUnreadCount, useClientCoachInfo } from '@/hooks/useCoach';
 import { ScoreRing } from '@/components/ui/ScoreRing';
 import { AlignmentRing } from '@/components/ui/AlignmentRing';
 import { THEME } from '@/constants/theme';
@@ -18,7 +19,7 @@ import { PROGRAMS } from '@/constants/programs';
 import { PROGRAMS_ENABLED } from '@/constants/featureFlags';
 import { useAlignmentForDate, useWeeklyAlignment, computeDay, useAlignmentHistory, scoreToTier, TIER_META } from '@/hooks/useAlignmentScore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRebuildStreak } from '@/hooks/useStreakSystem';
+import { useRebuildStreak, useStreak } from '@/hooks/useStreakSystem';
 import { getWeekStart } from '@/hooks/useManualLog';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -230,6 +231,16 @@ function WeekStatsCard({ clientId }: { clientId: string }) {
   const total = data?.total ?? 0;
   const pct   = data?.pct   ?? 0;
 
+  const prevWeekStart = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (weekOffset - 1) * 7);
+    return getWeekStart(d);
+  })();
+  const { data: prevData } = useWeekStats(clientId, prevWeekStart);
+  const prevPct = prevData?.pct ?? 0;
+  const showDelta = total > 0 && (prevData?.total ?? 0) > 0;
+  const delta = pct - prevPct;
+
   // Week label
   const [wsY, wsM, wsD] = weekStart.split('-').map(Number);
   const wStart = new Date(wsY, wsM - 1, wsD);
@@ -316,6 +327,11 @@ function WeekStatsCard({ clientId }: { clientId: string }) {
           {total > 0 && !isPerfect && (
             <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginTop: 3 }}>
               {pct}% complete
+            </Text>
+          )}
+          {showDelta && delta !== 0 && (
+            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: delta > 0 ? '#6EE7B7' : '#F87171', marginTop: 2 }}>
+              {delta > 0 ? '▲' : '▼'} {Math.abs(delta)}pts vs prior week
             </Text>
           )}
         </View>
@@ -714,6 +730,105 @@ function VitalityTracker({ energyPct, recovery, longevity }: { energyPct: number
 }
 
 
+// ── Streak hero pill + detail modal ───────────────────────────────────────────
+function StreakDetailModal({ visible, onClose, streak }: { visible: boolean; onClose: () => void; streak: import('@/hooks/useStreakSystem').StreakData | null | undefined }) {
+  const current = streak?.current_streak ?? 0;
+  const longest = streak?.longest_streak ?? 0;
+  const freezeBanked = streak?.freeze_banked ?? false;
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' }} onPress={onClose}>
+        <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '84%', backgroundColor: THEME.colors.surface2, borderRadius: 24, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,140,0,0.35)' }}>
+          <Text style={{ fontSize: 52, marginBottom: 6 }}>🔥</Text>
+          <Text style={{ color: '#FF8C00', fontFamily: THEME.fonts.sansMedium, fontSize: 36 }}>{current}</Text>
+          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 13, marginTop: 2, marginBottom: 20 }}>
+            day streak {current === 0 ? '— log a strong day to start one' : ''}
+          </Text>
+
+          <View style={{ width: '100%', gap: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: THEME.colors.surface3, borderRadius: 12, padding: 14 }}>
+              <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 13 }}>🏆 Longest streak</Text>
+              <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 15 }}>{longest} {longest === 1 ? 'day' : 'days'}</Text>
+            </View>
+            <View style={{ backgroundColor: THEME.colors.surface3, borderRadius: 12, padding: 14 }}>
+              <Text style={{ color: freezeBanked ? '#60A5FA' : THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12.5, lineHeight: 18 }}>
+                {freezeBanked
+                  ? '❄️ Freeze banked — one missed day won\'t break your streak.'
+                  : 'Score a perfect day (100%) to bank a freeze that protects your streak through one off day.'}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity onPress={onClose} style={{ marginTop: 20, paddingVertical: 10, paddingHorizontal: 24 }}>
+            <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>Got it</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function StreakPill({ streak, onPress }: { streak: import('@/hooks/useStreakSystem').StreakData | null | undefined; onPress: () => void }) {
+  const current = streak?.current_streak ?? 0;
+  if (current === 0) return null;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,140,0,0.15)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: 'rgba(255,140,0,0.4)' }}
+    >
+      <Text style={{ fontSize: 15 }}>🔥</Text>
+      <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#FF8C00' }}>
+        {current}-day streak
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── Check-in nudge — shown only when today's check-in hasn't been done ───────
+function CheckInNudge() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/(client)/checkin')}
+      activeOpacity={0.85}
+      style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: `${THEME.colors.teal}15`, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: `${THEME.colors.teal}40`, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+    >
+      <Text style={{ fontSize: 24 }}>📝</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>Complete today's check-in</Text>
+        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12, marginTop: 2 }}>Takes 30 seconds — mood, energy, sleep, pain</Text>
+      </View>
+      <Text style={{ color: THEME.colors.teal, fontSize: 20 }}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── Coach message banner — shown when the assigned coach has an unread reply ─
+function CoachMessageBanner() {
+  const router = useRouter();
+  const { data: coachInfo } = useClientCoachInfo();
+  const { data: unreadCount = 0 } = useClientUnreadCount();
+  if (!coachInfo || unreadCount === 0) return null;
+  const coachName = (coachInfo as any)?.coach?.full_name ?? 'Your coach';
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/(client)/messages')}
+      activeOpacity={0.85}
+      style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: `${THEME.colors.amber}15`, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: `${THEME.colors.amber}40`, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+    >
+      <Text style={{ fontSize: 20 }}>💬</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13.5 }}>
+          {unreadCount > 1 ? `${unreadCount} new messages from ${coachName}` : `New message from ${coachName}`}
+        </Text>
+      </View>
+      <Text style={{ color: THEME.colors.amber, fontSize: 18 }}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
 // ── Tier badge ────────────────────────────────────────────────────────────────
 function TierBadge({ avg }: { avg: number }) {
   const tier = scoreToTier(avg);
@@ -869,6 +984,15 @@ function WeeklyActivityCard({ clientId }: { clientId: string }) {
   const checkinDays = activity?.checkinCount ?? 0;
   const MAX = 6;
 
+  const prevWeekStart = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (weekOffset - 1) * 7);
+    return getWeekStart(d);
+  })();
+  const { data: prevActivity } = useWeekActivity(clientId, prevWeekStart);
+  const activeDaysDelta  = activeDays  - (prevActivity?.activeDays ?? 0);
+  const checkinDaysDelta = checkinDays - (prevActivity?.checkinCount ?? 0);
+
   const [wsY, wsM, wsD] = weekStart.split('-').map(Number);
   const wStartDate = new Date(wsY, wsM - 1, wsD);
   const wEndDate   = new Date(wsY, wsM - 1, wsD + 5);
@@ -932,6 +1056,11 @@ function WeeklyActivityCard({ clientId }: { clientId: string }) {
               {activeDays}
               <Text style={{ fontSize: 13, color: THEME.colors.textMuted }}> / {MAX}</Text>
             </Text>
+            {activeDaysDelta !== 0 && (
+              <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: activeDaysDelta > 0 ? '#6EE7B7' : '#F87171', marginLeft: 15, marginTop: 1 }}>
+                {activeDaysDelta > 0 ? '▲' : '▼'} {Math.abs(activeDaysDelta)} vs last wk
+              </Text>
+            )}
           </View>
 
           {/* Daily Pulse */}
@@ -944,6 +1073,11 @@ function WeeklyActivityCard({ clientId }: { clientId: string }) {
               {checkinDays}
               <Text style={{ fontSize: 13, color: THEME.colors.textMuted }}> / {MAX}</Text>
             </Text>
+            {checkinDaysDelta !== 0 && (
+              <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: checkinDaysDelta > 0 ? '#6EE7B7' : '#F87171', marginLeft: 15, marginTop: 1 }}>
+                {checkinDaysDelta > 0 ? '▲' : '▼'} {Math.abs(checkinDaysDelta)} vs last wk
+              </Text>
+            )}
           </View>
         </View>
 
@@ -1194,6 +1328,8 @@ export default function ClientDashboard() {
   const { data: enrollment }   = useActiveEnrollment();
   const { data: todayCheckin } = useTodayCheckin();
   const { mutate: rebuildStreak } = useRebuildStreak();
+  const { data: streak } = useStreak();
+  const [streakModalVisible, setStreakModalVisible] = useState(false);
 
   // Plan start date from enrollment
   const planStartDate: string | null = (enrollment as any)?.started_at?.split('T')[0] ?? null;
@@ -1253,6 +1389,7 @@ export default function ClientDashboard() {
       {celebrateTier && (
         <TierCelebration tier={celebrateTier} onDone={() => setCelebrateTier(null)} />
       )}
+      <StreakDetailModal visible={streakModalVisible} onClose={() => setStreakModalVisible(false)} streak={streak} />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} showsVerticalScrollIndicator={false}>
 
         {/* Header */}
@@ -1325,9 +1462,13 @@ export default function ClientDashboard() {
                 </Text>
               </View>
             )}
+            <StreakPill streak={streak} onPress={() => setStreakModalVisible(true)} />
             {rolling4wAvg > 0 && <TierBadge avg={rolling4wAvg} />}
           </View>
         </View>
+
+        {!checkinDone && <CheckInNudge />}
+        <CoachMessageBanner />
 
         {/* Daily tracker: alignment + vitality */}
         <DailyTrackerCard planStartDate={planStartDate} />
