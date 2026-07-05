@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { useAdminAnalytics, useAdminRehabCalendar, useAdminRehabMonthSnapshot, useAdminDailyPulse } from '@/hooks/useAdmin';
+import { useAdminAnalytics, useAdminRehabCalendar, useAdminRehabMonthSnapshot, useAdminDailyPulse, useAdminWeekly } from '@/hooks/useAdmin';
 import { THEME } from '@/constants/theme';
 
 type DashTab = 'today' | 'week' | 'month';
@@ -165,9 +165,21 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
   );
 }
 
-// ── WEEK tab (existing weekly content; upgraded in Phase 2) ──────────────────
+// ── WEEK tab ─────────────────────────────────────────────────────────────────
+function DeltaBadge({ now, prev }: { now: number; prev: number }) {
+  const delta = now - prev;
+  const color = delta > 0 ? '#6EE7B7' : delta < 0 ? '#F87171' : THEME.colors.textMuted;
+  const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+  return (
+    <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color }}>
+      {arrow} {Math.abs(delta)}pts vs last wk
+    </Text>
+  );
+}
+
 function WeekTab({ analytics }: { analytics: any }) {
   const router = useRouter();
+  const { data: weekly, isLoading } = useAdminWeekly();
 
   const PLAN_STATS = analytics ? [
     { label: 'Active plans', value: analytics.activePlans,              color: THEME.colors.teal },
@@ -181,18 +193,122 @@ function WeekTab({ analytics }: { analytics: any }) {
     { label: 'Avg Longevity', value: analytics.avgLongevity, color: THEME.scoreColors.longevity },
   ] : [];
 
+  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
+
+  const FUNNEL_STAGES = weekly ? [
+    { label: 'No assessment yet',        value: weekly.funnel.noAssessment,    route: '/(admin)/clients' },
+    { label: 'Assessed, no coach',       value: weekly.funnel.assessedNoCoach, route: '/(admin)/coach-assignment' },
+    { label: 'Coach, no active plan',    value: weekly.funnel.coachNoPlan,     route: '/(admin)/coach-assignment' },
+    { label: 'Plan, inactive this week', value: weekly.funnel.planButInactive, route: '/(admin)/clients' },
+  ] : [];
+
   return (
     <View>
+      {/* WoW deltas */}
       <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14 }}>
-        <StatCell value={`${analytics?.clientEngagementRate ?? 0}%`} label="Client engagement" color="#6EE7B7" />
-        <StatCell value={`${analytics?.avgWorkoutAdherence ?? 0}%`} label="Avg adherence" color={THEME.colors.teal} />
-        <StatCell value={analytics?.sessionsThisWeek ?? 0} label="Sessions" color="#93C5FD" />
+        <StatCell value={`${weekly?.engagementThisWeek ?? 0}%`} label="Engagement" color="#6EE7B7" />
+        <StatCell value={`${weekly?.adherenceThisWeek ?? 0}%`} label="Adherence" color={THEME.colors.teal} />
+        <StatCell value={`${weekly?.checkinRateThisWeek ?? 0}%`} label="Check-in rate" color="#93C5FD" />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14, marginTop: -8 }}>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <DeltaBadge now={weekly?.engagementThisWeek ?? 0} prev={weekly?.engagementPrevWeek ?? 0} />
+        </View>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <DeltaBadge now={weekly?.adherenceThisWeek ?? 0} prev={weekly?.adherencePrevWeek ?? 0} />
+        </View>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <DeltaBadge now={weekly?.checkinRateThisWeek ?? 0} prev={weekly?.checkinRatePrevWeek ?? 0} />
+        </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14 }}>
-        <StatCell value={analytics?.totalClients ?? 0} label="Total clients" color={THEME.colors.teal} />
-        <StatCell value={`+${analytics?.newSignupsThisWeek ?? 0}`} label="New signups (7d)" color={THEME.colors.amber} />
-      </View>
+      {/* Coach leaderboard */}
+      {(weekly?.leaderboard?.length ?? 0) > 0 && (
+        <PanelCard title="🧑‍🏫 Coach leaderboard (7d)">
+          <View style={{ gap: 12 }}>
+            {weekly!.leaderboard.map((c) => (
+              <TouchableOpacity
+                key={c.coachId}
+                onPress={() => router.push({ pathname: '/(admin)/coach-profile', params: { coachId: c.coachId, coachName: c.coachName } })}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{c.coachName}</Text>
+                  <Text style={{ fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: c.avgAdherence != null ? THEME.colors.teal : THEME.colors.textMuted }}>
+                    {c.avgAdherence != null ? `${c.avgAdherence}%` : '—'}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+                  {c.clientCount} clients
+                  {c.disengagedCount > 0 && <Text style={{ color: '#F87171' }}>  · {c.disengagedCount} disengaged</Text>}
+                  {c.unreadOver24h > 0 && <Text style={{ color: THEME.colors.amber }}>  · {c.unreadOver24h} unread &gt;24h</Text>}
+                  {c.avgReadHours != null && `  · reads in ${c.avgReadHours}h`}
+                  {`  · ${c.digests7d} digests`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </PanelCard>
+      )}
+
+      {/* Client movers */}
+      {((weekly?.topGainers?.length ?? 0) > 0 || (weekly?.topDecliners?.length ?? 0) > 0) && (
+        <PanelCard title="📈 Client movers — composite score (14d)">
+          <View style={{ gap: 6 }}>
+            {weekly!.topGainers.map((m) => (
+              <TouchableOpacity key={m.clientId} activeOpacity={0.8}
+                onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: m.clientId, clientName: m.clientName } })}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{m.clientName}</Text>
+                <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: '#6EE7B7' }}>▲ {m.delta} → {m.current}</Text>
+              </TouchableOpacity>
+            ))}
+            {weekly!.topDecliners.map((m) => (
+              <TouchableOpacity key={m.clientId} activeOpacity={0.8}
+                onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: m.clientId, clientName: m.clientName } })}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{m.clientName}</Text>
+                <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>▼ {Math.abs(m.delta)} → {m.current}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </PanelCard>
+      )}
+
+      {/* Churn risk */}
+      {(weekly?.churnRisk?.length ?? 0) > 0 && (
+        <PanelCard title="⚠️ Churn risk — active last week, silent this week">
+          <View style={{ gap: 8 }}>
+            {weekly!.churnRisk.slice(0, 8).map((c) => (
+              <TouchableOpacity key={c.clientId} activeOpacity={0.8}
+                onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: c.clientId, clientName: c.clientName } })}
+                style={{ paddingVertical: 3 }}>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{c.clientName}</Text>
+              </TouchableOpacity>
+            ))}
+            {weekly!.churnRisk.length > 8 && (
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+                +{weekly!.churnRisk.length - 8} more
+              </Text>
+            )}
+          </View>
+        </PanelCard>
+      )}
+
+      {/* Onboarding funnel */}
+      {weekly && (
+        <PanelCard title={`🧭 Where clients are stuck (${weekly.funnel.healthy}/${weekly.funnel.totalClients} healthy)`}>
+          <View style={{ gap: 8 }}>
+            {FUNNEL_STAGES.map((s) => (
+              <TouchableOpacity key={s.label} activeOpacity={0.8} onPress={() => router.push(s.route as any)}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 }}>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{s.label}</Text>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: s.value > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{s.value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </PanelCard>
+      )}
 
       {analytics?.disengagedClients && analytics.disengagedClients.length > 0 && (
         <PanelCard title="Disengaged clients (no activity in 14d)">

@@ -1213,3 +1213,184 @@ export function useAdminDailyPulse() {
     staleTime: 1000 * 60 * 2,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Weekly review — week-over-week deltas, coach leaderboard, client movers,
+// churn risk, onboarding funnel. All windows are rolling 7-day periods
+// (this week = last 7 days, prev week = 7-14 days ago).
+// ---------------------------------------------------------------------------
+export interface CoachLeaderboardRow {
+  coachId: string;
+  coachName: string;
+  clientCount: number;
+  avgAdherence: number | null;   // 7d, % across their clients
+  disengagedCount: number;       // their clients with no completed activity in 14d
+  unreadOver24h: number;         // client messages to them unread for >24h
+  avgReadHours: number | null;   // how long messages sat before being read (7d)
+  digests7d: number;             // AI weekly digests generated
+}
+
+export interface ClientMover {
+  clientId: string;
+  clientName: string;
+  delta: number;                 // composite score change over the window
+  current: number;
+}
+
+export function useAdminWeekly() {
+  return useQuery({
+    queryKey: ['admin', 'weekly'],
+    queryFn: async () => {
+      const now = Date.now();
+      const sevenDaysAgoIso = new Date(now - 7 * 86400000).toISOString();
+      const fourteenDaysAgoIso = new Date(now - 14 * 86400000).toISOString();
+      const fourteenDaysAgoDateStr = localDateStr(new Date(now - 14 * 86400000));
+      const sevenDaysAgoDateStr = localDateStr(new Date(now - 7 * 86400000));
+      const dayAgoIso = new Date(now - 86400000).toISOString();
+
+      const [
+        { data: clients, error: clientsErr },
+        { data: coaches },
+        { data: logs14d },
+        { data: checkins14d },
+        { data: messages7d },
+        { data: staleUnread },
+        { data: digests },
+        { data: metrics },
+        { data: assessments },
+        { data: plans },
+      ] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, assigned_coach_id').eq('role', 'client'),
+        supabase.from('profiles').select('id, full_name').eq('role', 'coach'),
+        supabase.from('manual_workout_logs').select('client_id, completed, completed_at').gte('completed_at', fourteenDaysAgoIso),
+        supabase.from('daily_checkins').select('client_id, date').gte('date', fourteenDaysAgoDateStr),
+        supabase.from('messages').select('receiver_id, sent_at, read_at').gte('sent_at', sevenDaysAgoIso).limit(2000),
+        supabase.from('messages').select('receiver_id, sent_at').is('read_at', null).lte('sent_at', dayAgoIso).limit(1000),
+        supabase.from('coach_client_digests').select('coach_id').gte('created_at', sevenDaysAgoIso),
+        supabase.from('progress_metrics').select('client_id, fitness_score, recovery_score, longevity_score, recorded_at').gte('recorded_at', fourteenDaysAgoIso).order('recorded_at', { ascending: true }).limit(2000),
+        supabase.from('assessments').select('client_id'),
+        supabase.from('plans').select('client_id, status'),
+      ]);
+      if (clientsErr) throw clientsErr;
+
+      const totalClients = (clients ?? []).length;
+      const clientNameMap: Record<string, string> = {};
+      (clients ?? []).forEach((c: any) => { clientNameMap[c.id] = c.full_name; });
+
+      // ── Split activity logs into this week / previous week ──
+      const thisWeekLogs = (logs14d ?? []).filter((l: any) => l.completed_at >= sevenDaysAgoIso);
+      const prevWeekLogs = (logs14d ?? []).filter((l: any) => l.completed_at < sevenDaysAgoIso);
+
+      const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 100) : 0);
+      const distinctCompleted = (logs: any[]) => new Set(logs.filter((l) => l.completed).map((l) => l.client_id)).size;
+
+      const engagementThisWeek = pct(distinctCompleted(thisWeekLogs), totalClients);
+      const engagementPrevWeek = pct(distinctCompleted(prevWeekLogs), totalClients);
+      const adherenceThisWeek = pct(thisWeekLogs.filter((l: any) => l.completed).length, thisWeekLogs.length);
+      const adherencePrevWeek = pct(prevWeekLogs.filter((l: any) => l.completed).length, prevWeekLogs.length);
+
+      const thisWeekCheckins = (checkins14d ?? []).filter((c: any) => c.date >= sevenDaysAgoDateStr).length;
+      const prevWeekCheckins = (checkins14d ?? []).filter((c: any) => c.date < sevenDaysAgoDateStr).length;
+      const checkinRateThisWeek = pct(thisWeekCheckins, totalClients * 7);
+      const checkinRatePrevWeek = pct(prevWeekCheckins, totalClients * 7);
+
+      // ── Churn risk: active last week, silent this week ──
+      const activeThisWeek = new Set(thisWeekLogs.filter((l: any) => l.completed).map((l: any) => l.client_id));
+      const activePrevWeek = new Set(prevWeekLogs.filter((l: any) => l.completed).map((l: any) => l.client_id));
+      const churnRisk = [...activePrevWeek]
+        .filter((id) => !activeThisWeek.has(id))
+        .map((id) => ({ clientId: id, clientName: clientNameMap[id] ?? 'Unknown' }))
+        .sort((a, b) => a.clientName.localeCompare(b.clientName));
+
+      // ── Client movers: composite score change across the 14d window ──
+      const metricsByClient: Record<string, { first: any; last: any; count: number }> = {};
+      (metrics ?? []).forEach((m: any) => {
+        if (!metricsByClient[m.client_id]) metricsByClient[m.client_id] = { first: m, last: m, count: 0 };
+        metricsByClient[m.client_id].last = m; // rows arrive ordered ascending
+        metricsByClient[m.client_id].count++;
+      });
+      const composite = (m: any) => Math.round(((m.fitness_score ?? 0) + (m.recovery_score ?? 0) + (m.longevity_score ?? 0)) / 3);
+      const movers: ClientMover[] = Object.entries(metricsByClient)
+        .filter(([, v]) => v.count >= 2)
+        .map(([clientId, v]) => ({
+          clientId,
+          clientName: clientNameMap[clientId] ?? 'Unknown',
+          delta: composite(v.last) - composite(v.first),
+          current: composite(v.last),
+        }))
+        .filter((m) => m.delta !== 0);
+      const topGainers = [...movers].sort((a, b) => b.delta - a.delta).slice(0, 5).filter((m) => m.delta > 0);
+      const topDecliners = [...movers].sort((a, b) => a.delta - b.delta).slice(0, 5).filter((m) => m.delta < 0);
+
+      // ── Coach leaderboard ──
+      const clientsByCoach: Record<string, string[]> = {};
+      (clients ?? []).forEach((c: any) => {
+        if (!c.assigned_coach_id) return;
+        (clientsByCoach[c.assigned_coach_id] ??= []).push(c.id);
+      });
+      const adherenceByClient: Record<string, { total: number; done: number }> = {};
+      thisWeekLogs.forEach((l: any) => {
+        adherenceByClient[l.client_id] ??= { total: 0, done: 0 };
+        adherenceByClient[l.client_id].total++;
+        if (l.completed) adherenceByClient[l.client_id].done++;
+      });
+      const active14d = new Set((logs14d ?? []).filter((l: any) => l.completed).map((l: any) => l.client_id));
+      const coachIds = new Set((coaches ?? []).map((c: any) => c.id));
+      const unreadByCoach: Record<string, number> = {};
+      (staleUnread ?? []).forEach((m: any) => {
+        if (!coachIds.has(m.receiver_id)) return;
+        unreadByCoach[m.receiver_id] = (unreadByCoach[m.receiver_id] ?? 0) + 1;
+      });
+      const readTimesByCoach: Record<string, number[]> = {};
+      (messages7d ?? []).forEach((m: any) => {
+        if (!coachIds.has(m.receiver_id) || !m.read_at) return;
+        const hours = (new Date(m.read_at).getTime() - new Date(m.sent_at).getTime()) / 3600000;
+        (readTimesByCoach[m.receiver_id] ??= []).push(hours);
+      });
+      const digestsByCoach: Record<string, number> = {};
+      (digests ?? []).forEach((d: any) => { digestsByCoach[d.coach_id] = (digestsByCoach[d.coach_id] ?? 0) + 1; });
+
+      const leaderboard: CoachLeaderboardRow[] = (coaches ?? []).map((coach: any) => {
+        const ids = clientsByCoach[coach.id] ?? [];
+        const adhPcts = ids
+          .map((cid) => adherenceByClient[cid])
+          .filter((a) => a && a.total > 0)
+          .map((a) => (a!.done / a!.total) * 100);
+        const readTimes = readTimesByCoach[coach.id] ?? [];
+        return {
+          coachId: coach.id,
+          coachName: coach.full_name,
+          clientCount: ids.length,
+          avgAdherence: adhPcts.length ? Math.round(adhPcts.reduce((s, p) => s + p, 0) / adhPcts.length) : null,
+          disengagedCount: ids.filter((cid) => !active14d.has(cid)).length,
+          unreadOver24h: unreadByCoach[coach.id] ?? 0,
+          avgReadHours: readTimes.length ? Math.round((readTimes.reduce((s, h) => s + h, 0) / readTimes.length) * 10) / 10 : null,
+          digests7d: digestsByCoach[coach.id] ?? 0,
+        };
+      }).sort((a, b) => (b.avgAdherence ?? -1) - (a.avgAdherence ?? -1));
+
+      // ── Onboarding funnel: where are clients stuck? ──
+      const assessedIds = new Set((assessments ?? []).map((a: any) => a.client_id));
+      const activePlanIds = new Set((plans ?? []).filter((p: any) => p.status === 'active').map((p: any) => p.client_id));
+      let noAssessment = 0, assessedNoCoach = 0, coachNoPlan = 0, planButInactive = 0, healthy = 0;
+      (clients ?? []).forEach((c: any) => {
+        if (!assessedIds.has(c.id)) noAssessment++;
+        else if (!c.assigned_coach_id) assessedNoCoach++;
+        else if (!activePlanIds.has(c.id)) coachNoPlan++;
+        else if (!activeThisWeek.has(c.id)) planButInactive++;
+        else healthy++;
+      });
+
+      return {
+        engagementThisWeek, engagementPrevWeek,
+        adherenceThisWeek, adherencePrevWeek,
+        checkinRateThisWeek, checkinRatePrevWeek,
+        churnRisk,
+        topGainers, topDecliners,
+        leaderboard,
+        funnel: { totalClients, noAssessment, assessedNoCoach, coachNoPlan, planButInactive, healthy },
+      };
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
