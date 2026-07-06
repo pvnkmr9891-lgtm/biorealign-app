@@ -600,7 +600,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="admin-home-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 48 }}>
 
         {/* Header */}

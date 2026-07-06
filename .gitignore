@@ -43,3 +43,6 @@ yarn-error.*
 .claude/worktrees/
 supabase/.temp/
 _patch_*.py
+
+# Maestro E2E test credentials — never commit real account passwords
+.maestro/.env.local

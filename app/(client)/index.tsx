@@ -1439,7 +1439,7 @@ export default function ClientDashboard() {
   })();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="client-home-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       {celebrateTier && (
         <TierCelebration tier={celebrateTier} onDone={() => setCelebrateTier(null)} />
       )}

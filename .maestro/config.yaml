@@ -1,0 +1,4 @@
+# Maestro workspace config — applies to every flow run from this directory.
+# https://docs.maestro.dev/getting-started/project-configuration
+flows:
+  - "flows/**"

@@ -1,0 +1,23 @@
+# Reusable subflow — logs in with the given credentials and waits for the
+# app to settle. Does NOT assert which screen you land on: the caller
+# (a golden flow) asserts the role-specific home screen, since AuthGuard's
+# redirect timing/target depends on role and onboarding state.
+#
+# Required env vars when included via runFlow: EMAIL, PASSWORD
+appId: com.biorealign.app
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "login-email-input"
+- inputText: "${EMAIL}"
+- tapOn:
+    id: "login-password-input"
+- inputText: "${PASSWORD}"
+- hideKeyboard
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    notVisible:
+      id: "login-submit-button"
+    timeout: 15000

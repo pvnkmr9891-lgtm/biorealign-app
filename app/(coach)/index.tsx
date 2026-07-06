@@ -68,7 +68,7 @@ export default function CoachDashboard() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="coach-home-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
 
         {/* Header */}

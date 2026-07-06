@@ -1,0 +1,12 @@
+# Golden flow: coach logs in and lands on the coach home screen.
+# Required env vars: TEST_COACH_EMAIL, TEST_COACH_PASSWORD
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_COACH_EMAIL}"
+      PASSWORD: "${TEST_COACH_PASSWORD}"
+- assertVisible:
+    id: "coach-home-screen"
+    timeout: 10000

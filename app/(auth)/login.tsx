@@ -38,7 +38,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView testID="login-screen" className="flex-1 bg-background">
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -70,6 +70,7 @@ export default function LoginScreen() {
                   Email
                 </Text>
                 <TextInput
+                  testID="login-email-input"
                   className="bg-surface-2 text-text-primary font-sans text-base rounded-lg px-4 py-4 border border-border"
                   placeholder="you@example.com"
                   placeholderTextColor="#6B6965"
@@ -86,6 +87,7 @@ export default function LoginScreen() {
                   Password
                 </Text>
                 <TextInput
+                  testID="login-password-input"
                   className="bg-surface-2 text-text-primary font-sans text-base rounded-lg px-4 py-4 border border-border"
                   placeholder="••••••••"
                   placeholderTextColor="#6B6965"
@@ -97,6 +99,7 @@ export default function LoginScreen() {
               </View>
 
               <TouchableOpacity
+                testID="login-submit-button"
                 className="bg-teal rounded-lg py-4 items-center mt-2"
                 onPress={handleLogin}
                 disabled={loading}
