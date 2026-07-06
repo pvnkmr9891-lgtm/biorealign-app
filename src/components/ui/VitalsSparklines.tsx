@@ -2,6 +2,9 @@ import { View, Text } from 'react-native';
 import Svg, { Polyline, Circle } from 'react-native-svg';
 import { THEME } from '@/constants/theme';
 import type { CheckinVitalRow } from '@/hooks/useCoachClientOverview';
+import { daysAgo, hasSustainedHighPain } from '@/lib/checkinFlags';
+
+export { hasSustainedHighPain };
 
 // 30-day sparkline row per check-in vital (pain, sleep, mood, energy) with a
 // 7-day-vs-prior trend arrow. Trend direction is colored by whether the move
@@ -19,27 +22,6 @@ const VITALS: { key: VitalKey; label: string; icon: string; max: number; unit: s
 const W = 110;
 const H = 26;
 const PAD = 2;
-
-function daysAgo(dateStr: string): number {
-  return Math.floor((Date.now() - new Date(dateStr + 'T00:00:00').getTime()) / 86400000);
-}
-
-// Pain ≥7 on 3+ consecutive check-in days (calendar-consecutive) — the
-// simplest defensible red flag; surfaced as a chip on the card header.
-export function hasSustainedHighPain(rows: CheckinVitalRow[]): boolean {
-  let run = 0;
-  let prevDate: string | null = null;
-  for (const r of rows) {
-    const high = (r.pain_level ?? 0) >= 7;
-    const consecutive =
-      prevDate != null &&
-      new Date(r.date + 'T00:00:00').getTime() - new Date(prevDate + 'T00:00:00').getTime() === 86400000;
-    run = high ? (consecutive ? run + 1 : 1) : 0;
-    if (run >= 3) return true;
-    prevDate = r.date;
-  }
-  return false;
-}
 
 function SparkRow({ rows, vital }: { rows: CheckinVitalRow[]; vital: (typeof VITALS)[number] }) {
   const points = rows

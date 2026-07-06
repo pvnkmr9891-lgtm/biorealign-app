@@ -8,7 +8,11 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
+    "test": "jest",
     "test:rls": "psql \"$SUPABASE_DB_URL\" -v ON_ERROR_STOP=1 -f supabase/tests/rls_tests.sql"
+  },
+  "overrides": {
+    "jest-mock": "30.4.1"
   },
   "expo": {
     "install": {
@@ -65,11 +69,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
+    "jest": "^30.4.2",
     "tailwindcss": "^3.4.15",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.3.3"
   }
 }

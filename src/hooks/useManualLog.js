@@ -57,42 +57,11 @@ export const DEFAULT_TEMPLATE = [1, 2, 3, 4, 5, 6].map((dayNum) => ({
 }));
 
 // ── Utils ─────────────────────────────────────────────────────────────
-function toLocalDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function getWeekStart(fromDate = new Date()) {
-  const d   = new Date(fromDate);
-  const dow = d.getDay();
-  d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
-  d.setHours(0, 0, 0, 0);
-  return toLocalDateStr(d);
-}
-
-export function getDayDate(weekStart, dayNumber) {
-  const [y, m, day] = weekStart.split('-').map(Number);
-  const d = new Date(y, m - 1, day);
-  d.setDate(d.getDate() + (dayNumber - 1));
-  return d;
-}
-
-export function isToday(weekStart, dayNumber) {
-  const d = getDayDate(weekStart, dayNumber);
-  const t = new Date();
-  return d.getDate()     === t.getDate()     &&
-         d.getMonth()    === t.getMonth()    &&
-         d.getFullYear() === t.getFullYear();
-}
-
-export function isPast(weekStart, dayNumber) {
-  const d = getDayDate(weekStart, dayNumber);
-  d.setHours(0, 0, 0, 0);
-  const t = new Date(); t.setHours(0, 0, 0, 0);
-  return d < t;
-}
+// Pure date/grouping helpers live in src/lib/dateHelpers.ts (unit tested
+// there) and are re-exported here so existing `@/hooks/useManualLog`
+// imports keep working unchanged.
+export { getWeekStart, getDayDate, isToday, isPast } from '../lib/dateHelpers';
+import { groupLogs as _groupLogs, dayProgress as _dayProgress } from '../lib/dateHelpers';
 
 function buildDefaultRows(userId, weekStart) {
   const rows = [];
@@ -128,30 +97,8 @@ function getFBRNutritionOffset(weekStart, programStartDate) {
   return (weeksSince % 3) * 6;
 }
 
-export function groupLogs(logs = []) {
-  const grouped = {};
-  logs.forEach((log) => {
-    if (!grouped[log.day_number]) grouped[log.day_number] = {};
-    if (!grouped[log.day_number][log.item_type]) grouped[log.day_number][log.item_type] = [];
-    grouped[log.day_number][log.item_type].push(log);
-  });
-  Object.values(grouped).forEach((day) => {
-    Object.values(day).forEach((items) => {
-      items.sort((a, b) => a.item_order - b.item_order);
-    });
-  });
-  return grouped;
-}
-
-export function dayProgress(grouped, dayNumber) {
-  const day = grouped[dayNumber] || {};
-  let total = 0; let done = 0;
-  Object.values(day).forEach((items) => {
-    total += items.length;
-    done  += items.filter((i) => i.completed).length;
-  });
-  return { total, done, percent: total ? Math.round((done / total) * 100) : 0 };
-}
+export const groupLogs = _groupLogs;
+export const dayProgress = _dayProgress;
 
 const logKey = (userId, weekStart) => ['manual_logs', userId, weekStart];
 

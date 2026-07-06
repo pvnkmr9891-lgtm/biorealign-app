@@ -2,6 +2,9 @@ import { View, Text } from 'react-native';
 import Svg, { Polygon, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { THEME } from '@/constants/theme';
 import type { FitnessDomain } from '@/hooks/useFitnessAssessment';
+import { scoreBand } from '@/lib/fitnessScoring';
+
+export { scoreBand };
 
 // Radar (spider) chart of the 4 fitness domain scores, optionally overlaying
 // a baseline assessment against the latest one. Scores are 0–100 normalized
@@ -21,13 +24,6 @@ const DOMAIN_META: Record<FitnessDomain, { label: string; color: string }> = {
   endurance:   { label: 'Endurance',   color: '#60A5FA' },
   agility:     { label: 'Agility',     color: '#34D399' },
 };
-
-export function scoreBand(score: number): { label: string; color: string } {
-  if (score >= 80) return { label: 'Excellent', color: '#34D399' };
-  if (score >= 60) return { label: 'Good',      color: THEME.colors.teal };
-  if (score >= 40) return { label: 'Fair',      color: THEME.colors.amber };
-  return { label: 'Needs work', color: THEME.colors.error };
-}
 
 const SIZE = 260;
 const CX = SIZE / 2;
