@@ -267,6 +267,7 @@ function BottomBar({
           return (
             <TouchableOpacity
               key={tab.name}
+              testID={`bottom-tab-${tab.name}`}
               style={barStyles.tabItem}
               onPress={() => router.push(tab.route as any)}
               activeOpacity={0.75}

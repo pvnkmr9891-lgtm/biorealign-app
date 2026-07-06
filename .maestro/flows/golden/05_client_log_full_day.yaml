@@ -1,0 +1,43 @@
+# Golden flow: client logs in, marks every item for today complete via the
+# day-level "select all" checkbox (workout/warmup/cooldown/water/food/
+# supplement — handleToggleAll in workout-plan.tsx touches all of them at
+# once), saves, and confirms the save succeeded.
+#
+# Does NOT assert the streak number incremented on the home screen — that
+# needs Maestro's text-extraction/scripting to compare a before/after
+# numeric value, which this session had no way to verify against a live
+# app. Treat that as a manual check the first time this flow runs for
+# real, and a good follow-up once the numeric-diff approach is confirmed
+# to work as expected.
+#
+# Required env vars: TEST_CLIENT_EMAIL, TEST_CLIENT_PASSWORD
+# Prerequisite: the test client account should have an UNCOMPLETED day
+# for "today" — if today is already fully logged, the select-all checkbox
+# starts checked and this flow's tap would instead UNCHECK everything.
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_CLIENT_EMAIL}"
+      PASSWORD: "${TEST_CLIENT_PASSWORD}"
+- assertVisible:
+    id: "client-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "bottom-tab-workout-plan"
+- assertVisible:
+    id: "workout-plan-screen"
+    timeout: 10000
+- tapOn:
+    id: "day-select-all-checkbox"
+- tapOn:
+    id: "save-progress-button"
+- assertVisible:
+    text: "All Saved"
+    timeout: 15000
+- tapOn:
+    id: "bottom-tab-index"
+- assertVisible:
+    id: "client-home-screen"
+    timeout: 10000

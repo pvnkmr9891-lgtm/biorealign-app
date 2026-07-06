@@ -56,8 +56,8 @@ const FOOD_SLOTS = [
 const SUPPLEMENT_SLOTS = FOOD_SLOTS.map(s => ({ ...s, key: `supp_${s.key}`, mealSlot: s.key, color: '#A78BFA' }));
 
 // ── Checkbox ──────────────────────────────────────────────────────────
-function Checkbox({ checked, onPress, color = THEME.colors.teal, locked = false }: {
-  checked: boolean; onPress: () => void; color?: string; locked?: boolean;
+function Checkbox({ checked, onPress, color = THEME.colors.teal, locked = false, testID }: {
+  checked: boolean; onPress: () => void; color?: string; locked?: boolean; testID?: string;
 }) {
   const scale = useRef(new Animated.Value(checked ? 1 : 0)).current;
   const bump  = useRef(new Animated.Value(1)).current;
@@ -89,6 +89,7 @@ function Checkbox({ checked, onPress, color = THEME.colors.teal, locked = false 
 
   return (
     <TouchableOpacity
+      testID={testID}
       onPress={handlePress}
       activeOpacity={0.7}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -2545,6 +2546,7 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
           </Text>
           {total > 0 && !isDayFuture && (
             <Checkbox
+              testID="day-select-all-checkbox"
               checked={allDone}
               onPress={() => onToggleAll(dayNumber, !allDone)}
               color={allDone ? '#4CC986' : isTodayDay ? THEME.colors.teal : THEME.colors.amber}
@@ -2740,6 +2742,7 @@ function SaveButton({ isDirty, isSaving, onSave }: {
   return (
     <View style={saveStyles.container}>
       <TouchableOpacity
+        testID="save-progress-button"
         style={[
           saveStyles.button,
           !isDirty && !isSaving && saveStyles.buttonClean,
@@ -3300,7 +3303,7 @@ export default function WorkoutPlanScreen() {
   const userId = session?.user?.id ?? null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="workout-plan-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       {userId
         ? <ManualLogView userId={userId} />
         : <ActivityIndicator color={THEME.colors.teal} style={{ flex: 1 }} />

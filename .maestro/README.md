@@ -44,15 +44,25 @@ maestro test .maestro/flows/golden --env-file .maestro/.env.local
 | `golden/02_coach_login.yaml` | Coach logs in → lands on coach home |
 | `golden/03_admin_login.yaml` | Admin logs in → lands on admin home |
 | `golden/04_login_wrong_password_shows_error.yaml` | Wrong password → error alert, stays on login |
+| `golden/05_client_log_full_day.yaml` | Client logs in → Workout tab → marks the whole day complete via the day-level select-all checkbox → saves → confirms → back to home |
 
-This is flow **1 of the 6 golden flows** in `docs/TESTING.md` §2 (login
-itself, all three roles, plus the negative path). The other five — register
-→ OTP → onboarding, full-day logging, medical doc → AI → expert, coach
+This covers **2 of the 6 golden flows** in `docs/TESTING.md` §2 — login
+(all three roles + the negative path) and daily logging. The remaining
+four — register → OTP → onboarding, medical doc → AI → expert, coach
 triage → message, and Razorpay booking — are natural next additions, each
 building on `auth/login.yaml` the same way. They need more `testID`
-coverage on their respective screens (onboarding steps, workout-plan
-checklist items, medical upload button, etc.) before they can be written
+coverage on their respective screens (onboarding steps, medical upload
+button, coach messaging, Razorpay checkout) before they can be written
 with the same precision as the flows here.
+
+Note on `05_client_log_full_day.yaml`: it uses the single day-level
+"select all" checkbox (`handleToggleAll` in `workout-plan.tsx`, which
+marks every item across all categories — workout, water, food,
+supplement — in one tap) rather than tapping ~15-20 individual items.
+That checkbox toggles based on current state, so the flow assumes
+today's log isn't already fully complete when it starts; if the test
+account's day is already done, the first tap would uncheck everything
+instead.
 
 ## Why `testID`, not visible text
 
