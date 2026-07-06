@@ -70,26 +70,12 @@ system outside the app's own UI (real SMS delivery for OTP; a
 third-party payment SDK overlay for Razorpay), a different, harder
 category of flow than "add testID, script the tap" — see below.
 
-## ⚠️ 12/13 need two `testID`-only edits that are staged but NOT committed
-
-`fitness-assessment-new.tsx` and `ClientProfileView.tsx` were under
-active edit by a parallel session (adding field validation) while this
-was written. The `testID` props these two flows need are in the working
-tree, but on the **same lines** as that session's validation changes in
-several spots (e.g. `NumberInput`'s prop list, the Chair Stand/Arm Curl
-fields) — not just the same file, the same line. Git can't split a
-commit at that granularity, so committing either file whole would mean
-publishing the other session's in-progress, not-yet-reviewed work under
-this commit's message. That call belongs to whoever's running both
-sessions, not to either session unilaterally — so flows 12/13 will fail
-against a fresh checkout until one of:
-- the other session's validation work gets committed (by that session,
-  or explicitly requested here), at which point these `testID`s can be
-  committed alongside or after it, or
-- someone explicitly says to just commit the files whole now.
-
-Until then, these two flows only work against the *current uncommitted
-working tree*, not against `origin/master`.
+**Resolved:** flows 12/13 originally needed `testID`s that landed on the
+same lines as a parallel session's field-validation work in
+`fitness-assessment-new.tsx` and `ClientProfileView.tsx`. That work is
+now confirmed complete and committed (`feat(validation): ...`), so both
+files — validation logic and `testID`s together — are committed and on
+`origin/master`. All 13 flows now work against a fresh checkout.
 
 Note on `10`/`11` (coach request/approval): these need **two distinct
 client fixtures** — `TEST_CLIENT_NO_COACH_*` (no coach assigned or

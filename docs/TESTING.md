@@ -14,7 +14,7 @@ are the manual pass to run before every release build (OTA or binary).
 | Component | React Native Testing Library | form validation, conditional rendering | ❌ later |
 | DB security | `supabase/tests/rls_tests.sql` | cross-tenant leaks, role escalation | ✅ live (20 checks) |
 | API / Edge functions | Deno test | Razorpay signature verification, currency math | ✅ live (19 tests, `supabase/functions/_shared/`) |
-| E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 items 3, 4 & 6 scaffolded, item 2 partial, **unverified — needs a device run**; 12/13 also blocked on a pending commit, see `.maestro/README.md` |
+| E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 items 3, 4 & 6 scaffolded (all 13 flows committed), item 2 partial, **unverified — needs a device run** |
 | Manual | this document's checklists | UX, visual, exploratory, device quirks | ✅ process below |
 | Production | Sentry + PostHog | everything the above missed | ⏳ waiting on account keys |
 
@@ -28,16 +28,12 @@ automation is for *never rediscovering* them.
 
 These are the flows where a failure costs a user or a rupee. If only six
 things are ever automated end-to-end, it's these. See `.maestro/README.md`
-for setup and current status — items 3, 4, and 6 are fully scaffolded,
-item 2 is scaffolded except streak verification, and bare login (all 3
-roles + the wrong-password path) is done as shared infrastructure. Items
-1 and 5 aren't started — both need testing infrastructure this session
-couldn't set up (real SMS delivery, a payment SDK overlay).
-**Heads up:** item 6's flows 12/13 need `testID`s that are staged in the
-working tree but not committed — they landed on the same lines as a
-parallel session's in-progress field-validation work, so committing
-either file whole would publish that session's work without its
-sign-off. See `.maestro/README.md` for the exact resolution needed.
+for setup and current status — items 3, 4, and 6 are fully scaffolded and
+committed, item 2 is scaffolded except streak verification, and bare
+login (all 3 roles + the wrong-password path) is done as shared
+infrastructure. Items 1 and 5 aren't started — both need testing
+infrastructure this session couldn't set up (real SMS delivery, a
+payment SDK overlay).
 
 1. **Register → OTP → onboarding → first workout log** (the activation path)
 2. **Login → log a full day** (workout ✓, meal ✓, water ✓, supplement ✓) → streak updates
