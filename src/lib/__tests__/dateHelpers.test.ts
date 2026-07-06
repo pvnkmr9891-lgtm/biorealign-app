@@ -1,4 +1,4 @@
-import { getWeekStart, getDayDate, isToday, isPast, groupLogs, dayProgress } from '../dateHelpers';
+import { getWeekStart, getDayDate, isToday, isPast, groupLogs, dayProgress, addDaysToDateStr } from '../dateHelpers';
 
 describe('getWeekStart', () => {
   it('returns the same Monday when given a Monday', () => {
@@ -78,6 +78,31 @@ describe('isToday / isPast', () => {
     expect(isPast('2026-07-06', 1)).toBe(true);  // Monday already happened
     expect(isPast('2026-07-06', 3)).toBe(false); // today itself is not "past"
     expect(isPast('2026-07-06', 5)).toBe(false); // Friday hasn't happened yet
+  });
+});
+
+describe('addDaysToDateStr', () => {
+  it('subtracts a day within a month', () => {
+    expect(addDaysToDateStr('2026-07-06', -1)).toBe('2026-07-05');
+  });
+
+  it('adds a day within a month', () => {
+    expect(addDaysToDateStr('2026-07-05', 1)).toBe('2026-07-06');
+  });
+
+  it('rolls backward across a month boundary', () => {
+    expect(addDaysToDateStr('2026-07-01', -1)).toBe('2026-06-30');
+  });
+
+  it('rolls backward across a year boundary', () => {
+    expect(addDaysToDateStr('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
+  it('never round-trips through UTC, so it is stable regardless of TZ', () => {
+    // This is the exact bug class: .toISOString().split('T')[0] would shift
+    // this result back an extra day in any positive-UTC-offset timezone.
+    // jest.setup.js pins TZ=Asia/Calcutta, so this catches the regression.
+    expect(addDaysToDateStr('2026-07-06', -1)).toBe('2026-07-05');
   });
 });
 
