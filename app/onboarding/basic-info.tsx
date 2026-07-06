@@ -118,13 +118,18 @@ function NumberSlider({
                 activeOpacity={0.65}
                 disabled={val === null}
               >
-                <Text style={{
-                  fontSize:   isCenter ? 22 : dist === 1 ? 16 : dist === 2 ? 13 : 10,
-                  fontFamily: isCenter ? THEME.fonts.sansSemibold : THEME.fonts.sans,
-                  color:      isCenter ? THEME.colors.teal : THEME.colors.textMuted,
-                  opacity:    isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.28 : 0.13,
-                  letterSpacing: isCenter ? 0.3 : 0,
-                }}>
+                <Text
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                  style={{
+                    fontSize:   isCenter ? 22 : dist === 1 ? 16 : dist === 2 ? 13 : 10,
+                    lineHeight: isCenter ? 26 : dist === 1 ? 19 : dist === 2 ? 16 : 13,
+                    fontFamily: isCenter ? THEME.fonts.sansSemibold : THEME.fonts.sans,
+                    color:      isCenter ? THEME.colors.teal : THEME.colors.textMuted,
+                    opacity:    isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.28 : 0.13,
+                    letterSpacing: isCenter ? 0.3 : 0,
+                    includeFontPadding: false,
+                  }}>
                   {display}
                 </Text>
                 {isCenter && (
@@ -249,7 +254,8 @@ export default function BasicInfoScreen() {
   const [conditionDraft, setConditionDraft] = useState('');
 
   // Other fields
-  const [medications,     setMedications]     = useState('');
+  const [medications,      setMedications]     = useState<string[]>([]);
+  const [medicationDraft,  setMedicationDraft]  = useState('');
   const [supplements,     setSupplements]     = useState<string[]>([]);
   const [supplementDraft, setSupplementDraft] = useState('');
   const [occupation, setOccupation] = useState('');
@@ -307,9 +313,7 @@ export default function BasicInfoScreen() {
       weight_kg:   Number(WEIGHTS[weightIdx]),
       health_goals: goals,
       conditions,
-      medications:  medications.trim()
-        ? medications.split(',').map(s => s.trim()).filter(Boolean)
-        : [],
+      medications,
       supplements: supplements.filter(s => s !== 'None'),
       occupation:  occupation.trim()  || null,
       location:    location.trim()    || null,
@@ -501,14 +505,31 @@ export default function BasicInfoScreen() {
             {/* ─ Medications ─ */}
             <Card>
               <FieldLabel icon="💊" optional>Medications</FieldLabel>
-              <TextInput
-                value={medications}
-                onChangeText={setMedications}
-                placeholder="e.g. Metformin 500mg, Vitamin D"
-                placeholderTextColor={THEME.colors.textMuted}
-                maxLength={MAX_LENGTHS.description}
-                style={inputStyle}
-              />
+              {medications.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {medications.map(m => (
+                    <Chip key={m} label={m} selected
+                      onPress={() => setMedications(prev => prev.filter(p => p !== m))} />
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  value={medicationDraft}
+                  onChangeText={setMedicationDraft}
+                  placeholder="e.g. Metformin 500mg"
+                  placeholderTextColor={THEME.colors.textMuted}
+                  onSubmitEditing={() => addCustom(medicationDraft, setMedicationDraft, medications, setMedications)}
+                  maxLength={MAX_LENGTHS.customListItem}
+                  style={[inputStyle, { flex: 1 }]}
+                />
+                <TouchableOpacity
+                  onPress={() => addCustom(medicationDraft, setMedicationDraft, medications, setMedications)}
+                  style={addBtnStyle}
+                >
+                  <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>+ Add</Text>
+                </TouchableOpacity>
+              </View>
             </Card>
 
             {/* ─ Supplements ─ */}
