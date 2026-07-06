@@ -60,8 +60,8 @@ export const DEFAULT_TEMPLATE = [1, 2, 3, 4, 5, 6].map((dayNum) => ({
 // Pure date/grouping helpers live in src/lib/dateHelpers.ts (unit tested
 // there) and are re-exported here so existing `@/hooks/useManualLog`
 // imports keep working unchanged.
-export { getWeekStart, getDayDate, isToday, isPast } from '../lib/dateHelpers';
-import { groupLogs as _groupLogs, dayProgress as _dayProgress } from '../lib/dateHelpers';
+import { getWeekStart, getDayDate, isToday, isPast, groupLogs as _groupLogs, dayProgress as _dayProgress } from '../lib/dateHelpers';
+export { getWeekStart, getDayDate, isToday, isPast };
 
 function buildDefaultRows(userId, weekStart) {
   const rows = [];
