@@ -1,0 +1,26 @@
+# Golden flow: client sees the message their coach sent. Run
+# 08_coach_triage_send_message.yaml first (or have equivalent data in
+# place) — this flow only verifies, it doesn't send anything itself.
+#
+# Required env vars: TEST_CLIENT_EMAIL, TEST_CLIENT_PASSWORD (the same
+# client flagged in flow 08's no_log attention item)
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_CLIENT_EMAIL}"
+      PASSWORD: "${TEST_CLIENT_PASSWORD}"
+- assertVisible:
+    id: "client-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "bottom-tab-menu"
+- tapOn:
+    id: "drawer-item-messages"
+- assertVisible:
+    id: "client-messages-screen"
+    timeout: 10000
+- assertVisible:
+    text: "Maestro E2E test - coach triage flow"
+    timeout: 10000

@@ -112,7 +112,7 @@ export default function MessagingScreen() {
     .join('');
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="coach-messaging-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -260,6 +260,7 @@ export default function MessagingScreen() {
               : <Text style={{ fontSize: 17 }}>📷</Text>}
           </TouchableOpacity>
           <TextInput
+            testID="message-input"
             style={{
               flex: 1,
               backgroundColor: THEME.colors.surface2,
@@ -283,6 +284,7 @@ export default function MessagingScreen() {
             onSubmitEditing={handleSend}
           />
           <TouchableOpacity
+            testID="message-send-button"
             onPress={handleSend}
             disabled={isPending || !text.trim()}
             activeOpacity={0.8}

@@ -47,15 +47,25 @@ maestro test .maestro/flows/golden --env-file .maestro/.env.local
 | `golden/05_client_log_full_day.yaml` | Client logs in → Workout tab → marks the whole day complete via the day-level select-all checkbox → saves → confirms → back to home |
 | `golden/06_client_analyze_and_send_to_coach.yaml` | Client → Medical Records → AI analysis → send to assigned coach → confirmation |
 | `golden/07_coach_sees_medical_analysis.yaml` | Coach → Medical Opinion Requests → opens the client → sees the shared document + AI summary |
+| `golden/08_coach_triage_send_message.yaml` | Coach → dashboard "no log" attention item → messages that client |
+| `golden/09_client_receives_coach_message.yaml` | Client → Messages → sees the coach's message |
 
-This covers **3 of the 6 golden flows** in `docs/TESTING.md` §2 — login
-(all three roles + the negative path), daily logging, and the medical
-analysis → coach handoff. The remaining three — register → OTP →
-onboarding, coach triage → message, and Razorpay booking — are natural
-next additions, each building on `auth/login.yaml` the same way. They
-need more `testID` coverage on their respective screens (onboarding
-steps, coach messaging, Razorpay checkout) before they can be written
-with the same precision as the flows here.
+Against the numbered list in `docs/TESTING.md` §2: **items 3 and 4 are
+fully covered** (medical analysis → coach handoff; coach triage →
+message). **Item 2** (login → log a full day → streak updates) is
+covered except the streak-number verification, called out as a manual
+follow-up in `05_client_log_full_day.yaml`. **Items 1, 5, and 6**
+(register → OTP → onboarding; Razorpay booking; coach-request approval →
+fitness assessment entry) aren't started. Bare login (used as
+infrastructure by every flow above, but not itself one of the 6 numbered
+items) is fully covered across all three roles plus the negative path.
+
+Items 1 and 5 are intentionally last, not next: both involve automating a
+system outside the app's own UI (real SMS delivery for OTP; a
+third-party payment SDK overlay for Razorpay), a different, harder
+category of flow than "add testID, script the tap" — see below. Item 6
+is a more ordinary next flow (same recipe as the others), just not yet
+built.
 
 Note on `05_client_log_full_day.yaml`: it uses the single day-level
 "select all" checkbox (`handleToggleAll` in `workout-plan.tsx`, which
@@ -80,6 +90,33 @@ picker automation. Manual upload testing across file types (pdf/jpg/png/
 heic/docx) stays a `docs/TESTING.md` checklist item, not an E2E flow —
 that's the right split: E2E proves the app's business logic once a file
 exists, the checklist covers the picker/format variety by hand.
+
+## Why registration/OTP and Razorpay aren't scaffolded yet
+
+Both remaining golden flows leave the app's own UI partway through:
+
+- **Register → OTP → onboarding.** OTP delivery is real SMS via Twilio —
+  a Maestro flow can't read an SMS that arrived on a real phone number.
+  The app does have a `000000` dev-bypass code (see `project_biorealign`
+  memory / the security-fix TODOs), but that bypass is scheduled for
+  *removal* once Twilio moves to a paid plan — building a golden flow
+  that depends on a security hole slated for deletion is the wrong
+  foundation. The real fix is test-environment infrastructure (a
+  dedicated test phone number with programmatic SMS retrieval, e.g. via
+  Twilio's own test credentials/webhooks), which is a setup decision for
+  whoever owns the Twilio account, not something to script around blind.
+- **Razorpay booking.** Checkout renders as a native SDK overlay
+  (`react-native-razorpay`) outside React Native's own view tree —
+  Maestro can technically drive any on-screen UI, but scripting through
+  a payment gateway's own screens (card entry, OTP-for-payment, success
+  redirect) reliably needs to be verified against what that SDK actually
+  renders on a device, which this session had no way to do. Razorpay
+  does provide test-mode card numbers for exactly this purpose — this is
+  worth building once there's a device to iterate against, not worth
+  guessing at now.
+
+Both are better done as a follow-up session with real device access, so
+each tap can be verified as it's written rather than authored blind.
 
 ## Why `testID`, not visible text
 

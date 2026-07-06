@@ -1,0 +1,34 @@
+# Golden flow: coach opens a "no log in 7+ days" attention item from the
+# dashboard and messages that client directly.
+#
+# Required env vars: TEST_COACH_EMAIL, TEST_COACH_PASSWORD
+# Prerequisite: the test coach needs at least one assigned client flagged
+# with a no_log attention item (no completed workout log in 7+ days) — see
+# docs/TESTING.md §5 for the staging recipe (backdate/delete recent logs
+# for a test client).
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_COACH_EMAIL}"
+      PASSWORD: "${TEST_COACH_PASSWORD}"
+- assertVisible:
+    id: "coach-home-screen"
+    timeout: 10000
+- assertVisible:
+    id: "attention-item-no_log"
+    timeout: 10000
+- tapOn:
+    id: "attention-item-no_log"
+- assertVisible:
+    id: "coach-messaging-screen"
+    timeout: 10000
+- tapOn:
+    id: "message-input"
+- inputText: "Maestro E2E test - coach triage flow"
+- tapOn:
+    id: "message-send-button"
+- assertVisible:
+    text: "Maestro E2E test - coach triage flow"
+    timeout: 10000

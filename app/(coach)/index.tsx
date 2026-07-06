@@ -105,6 +105,7 @@ export default function CoachDashboard() {
                 return (
                   <TouchableOpacity
                     key={item.id}
+                    testID={`attention-item-${item.type}`}
                     activeOpacity={0.8}
                     onPress={() => openAttentionItem(item)}
                     style={{

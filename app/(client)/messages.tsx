@@ -122,7 +122,7 @@ export default function ClientMessagingScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="client-messages-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -248,6 +248,7 @@ export default function ClientMessagingScreen() {
               : <Text style={{ fontSize: 17 }}>📷</Text>}
           </TouchableOpacity>
           <TextInput
+            testID="message-input"
             style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 24, paddingHorizontal: 18, paddingVertical: 12, borderWidth: 0.5, borderColor: text.trim() ? `${THEME.colors.teal}60` : THEME.colors.border, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 15, maxHeight: 100 }}
             placeholder="Message your coach..."
             placeholderTextColor={THEME.colors.textMuted}
@@ -259,6 +260,7 @@ export default function ClientMessagingScreen() {
             onSubmitEditing={handleSend}
           />
           <TouchableOpacity
+            testID="message-send-button"
             onPress={handleSend}
             disabled={isPending || !text.trim()}
             activeOpacity={0.8}
