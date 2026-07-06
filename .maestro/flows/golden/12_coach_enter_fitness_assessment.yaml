@@ -1,0 +1,56 @@
+# Golden flow: coach enters a fitness assessment (strength domain only,
+# to keep the flow short) for an already-assigned client.
+#
+# Required env vars: TEST_COACH_EMAIL, TEST_COACH_PASSWORD, TEST_CLIENT_NAME
+# (the same assigned client used by flows 06/08/09 — full_name as displayed
+# in "My Clients").
+#
+# Age is deliberately 65, not a small/young value: the SFT norm reference
+# tables this scoring is built on only cover ages 60+ (see
+# docs/TESTING.md §3's boundary cases) — an out-of-range age would still
+# save, but domain_score would come back null/"age_out_of_range", and flow
+# 13's assertion (client sees a real number) would have nothing to find.
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_COACH_EMAIL}"
+      PASSWORD: "${TEST_COACH_PASSWORD}"
+- assertVisible:
+    id: "coach-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "quick-action-my-clients"
+- assertVisible:
+    id: "lite-clients-screen"
+    timeout: 10000
+- tapOn:
+    text: "${TEST_CLIENT_NAME}"
+- assertVisible:
+    id: "coach-client-overview-screen"
+    timeout: 10000
+- tapOn:
+    id: "client-profile-tab-fitness"
+- tapOn:
+    id: "new-fitness-assessment-button"
+- assertVisible:
+    id: "fitness-assessment-new-screen"
+    timeout: 10000
+- tapOn:
+    id: "assessment-gender-female"
+- tapOn:
+    id: "assessment-age-input"
+- inputText: "65"
+- tapOn:
+    id: "assessment-chair-stand-input"
+- inputText: "14"
+- tapOn:
+    id: "assessment-arm-curl-input"
+- inputText: "16"
+- tapOn:
+    id: "save-assessment-button"
+- assertVisible:
+    text: "Saved"
+    timeout: 15000
+- tapOn: "OK"

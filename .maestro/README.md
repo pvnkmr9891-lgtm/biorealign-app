@@ -51,17 +51,15 @@ maestro test .maestro/flows/golden --env-file .maestro/.env.local
 | `golden/09_client_receives_coach_message.yaml` | Client → Messages → sees the coach's message |
 | `golden/10_client_request_coach.yaml` | Client (no coach yet) → picks a coach from the directory → sends a request |
 | `golden/11_coach_approve_request_and_client_appears.yaml` | Coach → approves the request → client shows up in "My Clients" |
+| `golden/12_coach_enter_fitness_assessment.yaml` | Coach → My Clients → Fitness tab → enters a strength-domain assessment → saves |
+| `golden/13_client_sees_fitness_scores.yaml` | Client → Fitness Assessment → sees the entered scores |
 
-Against the numbered list in `docs/TESTING.md` §2: **items 3 and 4 are
-fully covered** (medical analysis → coach handoff; coach triage →
-message). **Item 2** (login → log a full day → streak updates) is
-covered except the streak-number verification, called out as a manual
-follow-up in `05_client_log_full_day.yaml`. **Item 6**'s first half
-(coach request → approve → client appears in coach list) is covered by
-flows 10/11; its second half (coach enters a fitness assessment → client
-sees scores) is deferred — `fitness-assessment-new.tsx` was under active
-edit by a parallel session when this was written, so it was left alone
-rather than risk clashing with in-progress work. **Items 1 and 5**
+Against the numbered list in `docs/TESTING.md` §2: **items 3, 4, and 6
+are fully covered** (medical analysis → coach handoff; coach triage →
+message; coach request → approve → client appears → assessment entered →
+client sees scores). **Item 2** (login → log a full day → streak
+updates) is covered except the streak-number verification, called out as
+a manual follow-up in `05_client_log_full_day.yaml`. **Items 1 and 5**
 (register → OTP → onboarding; Razorpay booking) aren't started. Bare
 login (used as infrastructure by every flow above, but not itself one of
 the 6 numbered items) is fully covered across all three roles plus the
@@ -70,9 +68,28 @@ negative path.
 Items 1 and 5 are intentionally last, not next: both involve automating a
 system outside the app's own UI (real SMS delivery for OTP; a
 third-party payment SDK overlay for Razorpay), a different, harder
-category of flow than "add testID, script the tap" — see below. Item 6's
-remaining half is a more ordinary next flow (same recipe as the others),
-just blocked on the parallel edit clearing up.
+category of flow than "add testID, script the tap" — see below.
+
+## ⚠️ 12/13 need two `testID`-only edits that are staged but NOT committed
+
+`fitness-assessment-new.tsx` and `ClientProfileView.tsx` were under
+active edit by a parallel session (adding field validation) while this
+was written. The `testID` props these two flows need are in the working
+tree, but on the **same lines** as that session's validation changes in
+several spots (e.g. `NumberInput`'s prop list, the Chair Stand/Arm Curl
+fields) — not just the same file, the same line. Git can't split a
+commit at that granularity, so committing either file whole would mean
+publishing the other session's in-progress, not-yet-reviewed work under
+this commit's message. That call belongs to whoever's running both
+sessions, not to either session unilaterally — so flows 12/13 will fail
+against a fresh checkout until one of:
+- the other session's validation work gets committed (by that session,
+  or explicitly requested here), at which point these `testID`s can be
+  committed alongside or after it, or
+- someone explicitly says to just commit the files whole now.
+
+Until then, these two flows only work against the *current uncommitted
+working tree*, not against `origin/master`.
 
 Note on `10`/`11` (coach request/approval): these need **two distinct
 client fixtures** — `TEST_CLIENT_NO_COACH_*` (no coach assigned or

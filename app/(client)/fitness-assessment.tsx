@@ -50,7 +50,7 @@ export default function ClientFitnessAssessmentScreen() {
 
   if (assessments.length === 0) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+      <SafeAreaView testID="fitness-assessment-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE }}>
           <Text style={{ fontSize: 26, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginTop: 20, marginBottom: 16 }}>Fitness Assessment</Text>
           <EmptyState />
@@ -77,7 +77,7 @@ export default function ClientFitnessAssessmentScreen() {
   const latestResultFor = (domain: FitnessDomain) => latest.results.find((r) => r.domain === domain);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="fitness-assessment-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: TAB_BAR_CLEARANCE }} showsVerticalScrollIndicator={false}>
         <Text style={{ fontSize: 26, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginTop: 20, marginBottom: 4 }}>Fitness Assessment</Text>
         <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 18 }}>
