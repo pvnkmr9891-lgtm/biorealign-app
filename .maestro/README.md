@@ -45,14 +45,16 @@ maestro test .maestro/flows/golden --env-file .maestro/.env.local
 | `golden/03_admin_login.yaml` | Admin logs in → lands on admin home |
 | `golden/04_login_wrong_password_shows_error.yaml` | Wrong password → error alert, stays on login |
 | `golden/05_client_log_full_day.yaml` | Client logs in → Workout tab → marks the whole day complete via the day-level select-all checkbox → saves → confirms → back to home |
+| `golden/06_client_analyze_and_send_to_coach.yaml` | Client → Medical Records → AI analysis → send to assigned coach → confirmation |
+| `golden/07_coach_sees_medical_analysis.yaml` | Coach → Medical Opinion Requests → opens the client → sees the shared document + AI summary |
 
-This covers **2 of the 6 golden flows** in `docs/TESTING.md` §2 — login
-(all three roles + the negative path) and daily logging. The remaining
-four — register → OTP → onboarding, medical doc → AI → expert, coach
-triage → message, and Razorpay booking — are natural next additions, each
-building on `auth/login.yaml` the same way. They need more `testID`
-coverage on their respective screens (onboarding steps, medical upload
-button, coach messaging, Razorpay checkout) before they can be written
+This covers **3 of the 6 golden flows** in `docs/TESTING.md` §2 — login
+(all three roles + the negative path), daily logging, and the medical
+analysis → coach handoff. The remaining three — register → OTP →
+onboarding, coach triage → message, and Razorpay booking — are natural
+next additions, each building on `auth/login.yaml` the same way. They
+need more `testID` coverage on their respective screens (onboarding
+steps, coach messaging, Razorpay checkout) before they can be written
 with the same precision as the flows here.
 
 Note on `05_client_log_full_day.yaml`: it uses the single day-level
@@ -63,6 +65,21 @@ That checkbox toggles based on current state, so the flow assumes
 today's log isn't already fully complete when it starts; if the test
 account's day is already done, the first tap would uncheck everything
 instead.
+
+Note on `06`/`07` (medical analysis): these deliberately don't automate
+the document **upload** step. Uploading opens a native OS picker (camera,
+photo library, or file browser) outside the app — scripting through that
+reliably needs either Maestro's `addMedia` command plus tapping through
+whatever the device's native gallery/file-picker UI looks like (varies by
+OS version and manufacturer), or a real file already sitting in a known
+location on the test device. Neither was verifiable without a device in
+this session, so flow 06 assumes a document is pre-seeded directly via
+Supabase (insert a `medical_documents` row + matching object in the
+`medical-documents` storage bucket) rather than guessing at OS-level
+picker automation. Manual upload testing across file types (pdf/jpg/png/
+heic/docx) stays a `docs/TESTING.md` checklist item, not an E2E flow —
+that's the right split: E2E proves the app's business logic once a file
+exists, the checklist covers the picker/format variety by hand.
 
 ## Why `testID`, not visible text
 

@@ -227,13 +227,14 @@ export default function CoachDashboard() {
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {[
-              { icon: '🙋', label: 'My Clients', onPress: () => router.push('/(coach)/lite-clients'), badge: 0 },
-              { icon: '💬', label: 'Messages', onPress: () => router.push('/(coach)/inbox'), badge: unreadCount },
-              { icon: '🧑‍🏫', label: 'Coach Requests', onPress: () => router.push('/(coach)/coach-requests'), badge: coachRequests.length },
-              { icon: '🩺', label: 'Medical Opinion Requests', onPress: () => router.push('/(coach)/medical-opinion-requests'), badge: unviewedAnalysisCount },
+              { id: 'my-clients', icon: '🙋', label: 'My Clients', onPress: () => router.push('/(coach)/lite-clients'), badge: 0 },
+              { id: 'messages', icon: '💬', label: 'Messages', onPress: () => router.push('/(coach)/inbox'), badge: unreadCount },
+              { id: 'coach-requests', icon: '🧑‍🏫', label: 'Coach Requests', onPress: () => router.push('/(coach)/coach-requests'), badge: coachRequests.length },
+              { id: 'medical-opinion-requests', icon: '🩺', label: 'Medical Opinion Requests', onPress: () => router.push('/(coach)/medical-opinion-requests'), badge: unviewedAnalysisCount },
             ].map((action) => (
               <TouchableOpacity
                 key={action.label}
+                testID={`quick-action-${action.id}`}
                 onPress={action.onPress}
                 activeOpacity={0.8}
                 style={{ width: '47%', backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 8 }}

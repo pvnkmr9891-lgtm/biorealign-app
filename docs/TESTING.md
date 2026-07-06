@@ -14,7 +14,7 @@ are the manual pass to run before every release build (OTA or binary).
 | Component | React Native Testing Library | form validation, conditional rendering | ❌ later |
 | DB security | `supabase/tests/rls_tests.sql` | cross-tenant leaks, role escalation | ✅ live (20 checks) |
 | API / Edge functions | Deno test + staged invokes | AI digest, payments, OTP flows | ❌ to build |
-| E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 2 of 6 flows scaffolded, **unverified — needs a device run** |
+| E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 3 of 6 flows scaffolded, **unverified — needs a device run** |
 | Manual | this document's checklists | UX, visual, exploratory, device quirks | ✅ process below |
 | Production | Sentry + PostHog | everything the above missed | ⏳ waiting on account keys |
 
@@ -29,12 +29,12 @@ automation is for *never rediscovering* them.
 These are the flows where a failure costs a user or a rupee. If only six
 things are ever automated end-to-end, it's these. See `.maestro/README.md`
 for setup and current status — login (all 3 roles + the wrong-password
-path) and daily logging are scaffolded; the remaining four need `testID`
-added to their screens first.
+path), daily logging, and medical analysis → coach handoff are
+scaffolded; the remaining three need `testID` added to their screens first.
 
 1. **Register → OTP → onboarding → first workout log** (the activation path)
 2. **Login → log a full day** (workout ✓, meal ✓, water ✓, supplement ✓) → streak updates
-3. **Client uploads medical doc → AI analysis → send to expert → coach sees it**
+3. **Client uploads medical doc → AI analysis → send to coach → coach sees it** (the "send to expert" path is a separate branch, shown only to clients with no assigned coach — it opens WhatsApp/email to BioRealign's team, not an in-app coach view)
 4. **Coach: dashboard → attention item tap-through → client drill-down → send message → client receives**
 5. **Recovery booking → slot pick → Razorpay (test mode) → confirmation → admin sees booking**
 6. **Coach request → approve → client appears in coach list → coach enters fitness assessment → client sees scores**

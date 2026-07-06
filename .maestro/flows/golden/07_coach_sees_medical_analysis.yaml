@@ -1,0 +1,35 @@
+# Golden flow: coach opens Medical Opinion Requests and sees the analysis a
+# client sent (run 06_client_analyze_and_send_to_coach.yaml first, or have
+# equivalent data already in place — this flow doesn't send anything itself).
+#
+# Required env vars: TEST_COACH_EMAIL, TEST_COACH_PASSWORD, TEST_CLIENT_NAME
+# (the client's exact full_name as it will display in the request list row)
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_COACH_EMAIL}"
+      PASSWORD: "${TEST_COACH_PASSWORD}"
+- assertVisible:
+    id: "coach-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "quick-action-medical-opinion-requests"
+- assertVisible:
+    id: "medical-opinion-requests-screen"
+    timeout: 10000
+- tapOn:
+    text: "${TEST_CLIENT_NAME}"
+- assertVisible:
+    id: "coach-client-overview-screen"
+    timeout: 10000
+# Opening the tab auto-marks the analysis viewed (useEffect in
+# MedicalRecordsTab) — these two assertions confirm the coach can actually
+# see the shared document and that the AI analysis matched it (the
+# "Summary" link only renders when an analysisDoc is found for that file).
+- assertVisible:
+    text: "Medical Documents"
+    timeout: 10000
+- assertVisible:
+    text: "Summary"

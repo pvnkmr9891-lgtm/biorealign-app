@@ -8,7 +8,7 @@ export default function ClientOverviewScreen() {
   const { clientId, clientName, tab } = useLocalSearchParams<{ clientId: string; clientName: string; tab?: string }>();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="coach-client-overview-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <ClientProfileView clientId={clientId} clientName={clientName} ownerLabel="Your client" onBack={() => router.back()} showPlanTab initialTab={tab as any} />
     </SafeAreaView>
   );

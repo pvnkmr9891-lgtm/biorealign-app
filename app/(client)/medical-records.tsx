@@ -324,7 +324,7 @@ export default function MedicalRecordsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="medical-records-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity onPress={() => router.back()} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}>
           <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>←</Text>
@@ -390,6 +390,7 @@ export default function MedicalRecordsScreen() {
 
         {docs.length > 0 && (
           <TouchableOpacity
+            testID="analyze-records-button"
             onPress={onPerformAnalysisPress}
             disabled={analyzing}
             activeOpacity={0.85}
@@ -409,11 +410,11 @@ export default function MedicalRecordsScreen() {
           <View style={{ marginBottom: 24 }}>
             {assignedCoachId ? (
               analysis.sent_to_coach_at || coachSentConfirmation ? (
-                <View style={{ backgroundColor: `${SUCCESS}15`, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: `${SUCCESS}30` }}>
+                <View testID="sent-to-coach-confirmation" style={{ backgroundColor: `${SUCCESS}15`, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: `${SUCCESS}30` }}>
                   <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>✓ Sent to {coach?.full_name ?? 'your coach'}</Text>
                 </View>
               ) : (
-                <TouchableOpacity onPress={onSendToCoach} disabled={sendingToCoach} activeOpacity={0.85} style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}>
+                <TouchableOpacity testID="send-to-coach-button" onPress={onSendToCoach} disabled={sendingToCoach} activeOpacity={0.85} style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}>
                   {sendingToCoach ? <ActivityIndicator color={THEME.colors.background} /> : <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Send to Coach</Text>}
                 </TouchableOpacity>
               )

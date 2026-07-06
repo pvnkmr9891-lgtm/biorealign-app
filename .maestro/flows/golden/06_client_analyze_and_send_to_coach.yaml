@@ -1,0 +1,42 @@
+# Golden flow: client analyzes their uploaded medical documents with AI and
+# sends the summary to their assigned coach.
+#
+# Deliberately does NOT automate the upload step (camera / photo library /
+# file picker) — that opens a native OS picker outside the app, which this
+# session had no device to script reliably against. See .maestro/README.md
+# for the reasoning. Pre-seed at least one document for the test client
+# directly via Supabase (storage + medical_documents row) before running.
+#
+# Required env vars: TEST_CLIENT_EMAIL, TEST_CLIENT_PASSWORD
+# Prerequisites: test client has >=1 medical document already uploaded, AND
+# has an assigned coach (so "Send to Coach" appears, not "Need Expert
+# Opinion?" — those are mutually exclusive branches on assignedCoachId).
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_CLIENT_EMAIL}"
+      PASSWORD: "${TEST_CLIENT_PASSWORD}"
+- assertVisible:
+    id: "client-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "bottom-tab-menu"
+- tapOn:
+    id: "drawer-item-medical-records"
+- assertVisible:
+    id: "medical-records-screen"
+    timeout: 10000
+- tapOn:
+    id: "analyze-records-button"
+# AI analysis round trip (calls Claude on however many documents exist) —
+# generous timeout, this is the slowest step in the whole flow.
+- assertVisible:
+    id: "send-to-coach-button"
+    timeout: 30000
+- tapOn:
+    id: "send-to-coach-button"
+- assertVisible:
+    id: "sent-to-coach-confirmation"
+    timeout: 15000

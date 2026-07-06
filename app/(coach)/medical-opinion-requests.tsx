@@ -21,7 +21,7 @@ export default function MedicalOpinionRequestsScreen() {
   const unreadCount = requests.filter((r) => !r.viewed).length;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="medical-opinion-requests-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity
           onPress={() => router.back()}

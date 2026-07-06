@@ -194,6 +194,7 @@ function DrawerMenu({
             return (
               <TouchableOpacity
                 key={item.name}
+                testID={`drawer-item-${item.name}`}
                 style={[drawerStyles.item, active && drawerStyles.itemActive]}
                 onPress={() => navigate(item.route)}
                 activeOpacity={0.75}
@@ -295,6 +296,7 @@ function BottomBar({
 
         {/* Hamburger menu button */}
         <TouchableOpacity
+          testID="bottom-tab-menu"
           style={barStyles.tabItem}
           onPress={onMenuToggle}
           activeOpacity={0.75}
