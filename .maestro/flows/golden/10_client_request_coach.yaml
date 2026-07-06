@@ -1,0 +1,36 @@
+# Golden flow: client (with no coach yet) requests a coach.
+#
+# Required env vars: TEST_CLIENT_NO_COACH_EMAIL, TEST_CLIENT_NO_COACH_PASSWORD,
+# TEST_COACH_NAME (the coach's full_name as displayed in the directory).
+# Prerequisite: this must be a DIFFERENT test client fixture than
+# TEST_CLIENT_EMAIL used elsewhere — that one already has an assigned
+# coach (required by flows 06/08/09), which would hide the "Request This
+# Coach" button behind the "already assigned"/"pending" branches here.
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_CLIENT_NO_COACH_EMAIL}"
+      PASSWORD: "${TEST_CLIENT_NO_COACH_PASSWORD}"
+- assertVisible:
+    id: "client-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "bottom-tab-menu"
+- tapOn:
+    id: "drawer-item-coach-list"
+- assertVisible:
+    id: "coach-list-screen"
+    timeout: 10000
+- tapOn:
+    text: "${TEST_COACH_NAME}"
+- assertVisible:
+    id: "coach-detail-screen"
+    timeout: 10000
+- tapOn:
+    id: "request-coach-button"
+- assertVisible:
+    text: "Request sent"
+    timeout: 10000
+- tapOn: "OK"

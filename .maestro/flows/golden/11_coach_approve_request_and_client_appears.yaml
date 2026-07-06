@@ -1,0 +1,41 @@
+# Golden flow: coach approves a pending coach request, then confirms the
+# client now appears in "My Clients". Run 10_client_request_coach.yaml
+# first (or have an equivalent pending request already in place).
+#
+# Required env vars: TEST_COACH_EMAIL, TEST_COACH_PASSWORD,
+# TEST_CLIENT_NO_COACH_NAME (full_name of the requesting client from flow 10)
+# Prerequisite: assumes exactly one pending request — approve-request-button
+# has no per-row testID, since the app is only ever expected to have a
+# handful of pending requests for a single coach at a time. If the test
+# coach has multiple pending requests, this taps whichever renders first.
+appId: com.biorealign.app
+---
+- runFlow:
+    file: ../auth/login.yaml
+    env:
+      EMAIL: "${TEST_COACH_EMAIL}"
+      PASSWORD: "${TEST_COACH_PASSWORD}"
+- assertVisible:
+    id: "coach-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "quick-action-coach-requests"
+- assertVisible:
+    id: "coach-requests-screen"
+    timeout: 10000
+- tapOn:
+    id: "approve-request-button"
+- tapOn: "Approve"
+- tapOn:
+    id: "back-button"
+- assertVisible:
+    id: "coach-home-screen"
+    timeout: 10000
+- tapOn:
+    id: "quick-action-my-clients"
+- assertVisible:
+    id: "lite-clients-screen"
+    timeout: 10000
+- assertVisible:
+    text: "${TEST_CLIENT_NO_COACH_NAME}"
+    timeout: 10000

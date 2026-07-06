@@ -34,9 +34,10 @@ export default function CoachRequestsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="coach-requests-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity
+          testID="back-button"
           onPress={() => router.back()}
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
         >
@@ -84,6 +85,7 @@ export default function CoachRequestsScreen() {
 
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity
+                  testID="approve-request-button"
                   onPress={() => onApprove(req)}
                   disabled={isPending}
                   style={{ flex: 1, backgroundColor: THEME.colors.teal, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}

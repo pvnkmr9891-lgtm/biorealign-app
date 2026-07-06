@@ -11,9 +11,10 @@ export default function CoachListScreen() {
   const { data: status } = useMyCoachStatus();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="coach-list-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity
+          testID="back-button"
           onPress={() => router.back()}
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
         >

@@ -49,23 +49,37 @@ maestro test .maestro/flows/golden --env-file .maestro/.env.local
 | `golden/07_coach_sees_medical_analysis.yaml` | Coach → Medical Opinion Requests → opens the client → sees the shared document + AI summary |
 | `golden/08_coach_triage_send_message.yaml` | Coach → dashboard "no log" attention item → messages that client |
 | `golden/09_client_receives_coach_message.yaml` | Client → Messages → sees the coach's message |
+| `golden/10_client_request_coach.yaml` | Client (no coach yet) → picks a coach from the directory → sends a request |
+| `golden/11_coach_approve_request_and_client_appears.yaml` | Coach → approves the request → client shows up in "My Clients" |
 
 Against the numbered list in `docs/TESTING.md` §2: **items 3 and 4 are
 fully covered** (medical analysis → coach handoff; coach triage →
 message). **Item 2** (login → log a full day → streak updates) is
 covered except the streak-number verification, called out as a manual
-follow-up in `05_client_log_full_day.yaml`. **Items 1, 5, and 6**
-(register → OTP → onboarding; Razorpay booking; coach-request approval →
-fitness assessment entry) aren't started. Bare login (used as
-infrastructure by every flow above, but not itself one of the 6 numbered
-items) is fully covered across all three roles plus the negative path.
+follow-up in `05_client_log_full_day.yaml`. **Item 6**'s first half
+(coach request → approve → client appears in coach list) is covered by
+flows 10/11; its second half (coach enters a fitness assessment → client
+sees scores) is deferred — `fitness-assessment-new.tsx` was under active
+edit by a parallel session when this was written, so it was left alone
+rather than risk clashing with in-progress work. **Items 1 and 5**
+(register → OTP → onboarding; Razorpay booking) aren't started. Bare
+login (used as infrastructure by every flow above, but not itself one of
+the 6 numbered items) is fully covered across all three roles plus the
+negative path.
 
 Items 1 and 5 are intentionally last, not next: both involve automating a
 system outside the app's own UI (real SMS delivery for OTP; a
 third-party payment SDK overlay for Razorpay), a different, harder
-category of flow than "add testID, script the tap" — see below. Item 6
-is a more ordinary next flow (same recipe as the others), just not yet
-built.
+category of flow than "add testID, script the tap" — see below. Item 6's
+remaining half is a more ordinary next flow (same recipe as the others),
+just blocked on the parallel edit clearing up.
+
+Note on `10`/`11` (coach request/approval): these need **two distinct
+client fixtures** — `TEST_CLIENT_NO_COACH_*` (no coach assigned or
+pending, used here) and the plain `TEST_CLIENT_*` used by flows 05/06/08/09
+(already has an assigned coach). Don't reuse one client across both sets;
+the button flow 10 needs to tap only renders when there's no existing
+coach relationship.
 
 Note on `05_client_log_full_day.yaml`: it uses the single day-level
 "select all" checkbox (`handleToggleAll` in `workout-plan.tsx`, which

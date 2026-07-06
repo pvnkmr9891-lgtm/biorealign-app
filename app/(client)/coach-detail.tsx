@@ -43,7 +43,7 @@ export default function CoachDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="coach-detail-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -100,6 +100,7 @@ export default function CoachDetailScreen() {
               style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 14, minHeight: 70, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border, textAlignVertical: 'top' }}
             />
             <TouchableOpacity
+              testID="request-coach-button"
               onPress={onRequest}
               disabled={isRequesting}
               activeOpacity={0.85}

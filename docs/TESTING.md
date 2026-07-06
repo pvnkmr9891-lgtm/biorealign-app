@@ -14,7 +14,7 @@ are the manual pass to run before every release build (OTA or binary).
 | Component | React Native Testing Library | form validation, conditional rendering | ❌ later |
 | DB security | `supabase/tests/rls_tests.sql` | cross-tenant leaks, role escalation | ✅ live (20 checks) |
 | API / Edge functions | Deno test + staged invokes | AI digest, payments, OTP flows | ❌ to build |
-| E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 items 3 & 4 scaffolded, item 2 partial, **unverified — needs a device run** |
+| E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 items 3, 4 & first half of 6 scaffolded, item 2 partial, **unverified — needs a device run** |
 | Manual | this document's checklists | UX, visual, exploratory, device quirks | ✅ process below |
 | Production | Sentry + PostHog | everything the above missed | ⏳ waiting on account keys |
 
@@ -29,11 +29,13 @@ automation is for *never rediscovering* them.
 These are the flows where a failure costs a user or a rupee. If only six
 things are ever automated end-to-end, it's these. See `.maestro/README.md`
 for setup and current status — items 3 and 4 are fully scaffolded, item 2
-is scaffolded except streak verification, and bare login (all 3 roles +
-the wrong-password path) is done as shared infrastructure. Items 1, 5,
-and 6 aren't started — 1 and 5 need testing infrastructure this session
-couldn't set up (real SMS delivery, a payment SDK overlay); 6 is an
-ordinary next flow, just not yet built.
+is scaffolded except streak verification, item 6's first half (request →
+approve → appears in list) is scaffolded, and bare login (all 3 roles +
+the wrong-password path) is done as shared infrastructure. Item 6's
+second half (fitness assessment entry) is blocked on a parallel session's
+in-progress edits to that screen. Items 1 and 5 aren't started — both
+need testing infrastructure this session couldn't set up (real SMS
+delivery, a payment SDK overlay).
 
 1. **Register → OTP → onboarding → first workout log** (the activation path)
 2. **Login → log a full day** (workout ✓, meal ✓, water ✓, supplement ✓) → streak updates
