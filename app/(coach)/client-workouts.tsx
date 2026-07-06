@@ -13,6 +13,7 @@ import { MORNING_DRINK_ITEMS, BREAKFAST_ITEMS, LUNCH_ITEMS, EVENING_SNACK_ITEMS,
 import { SUPPLEMENT_ITEMS, SupplementItemDefault, getSupplementInteractionWarning } from '@/constants/supplementItems';
 import { useClientProfile } from '@/hooks/useCoachClientOverview';
 import { THEME } from '@/constants/theme';
+import { sanitizeInteger, NUMERIC_RANGES, clampToRange } from '@/utils/validation';
 
 const SUCCESS = THEME.colors.success ?? '#4CC986';
 
@@ -115,7 +116,15 @@ function AddExerciseModal({
 
   const submit = () => {
     if (!name.trim()) { Alert.alert('Name required', 'Please enter an exercise name.'); return; }
-    onAdd({ itemName: name.trim(), sets: sets ? Number(sets) : null, reps: reps ? Number(reps) : null, side, holdSecs: hold ? Number(hold) : null, restSecs: rest ? Number(rest) : 0, applyToWeek });
+    onAdd({
+      itemName: name.trim(),
+      sets: sets ? clampToRange(Number(sets), NUMERIC_RANGES.sets) : null,
+      reps: reps ? clampToRange(Number(reps), NUMERIC_RANGES.reps) : null,
+      side,
+      holdSecs: hold ? clampToRange(Number(hold), NUMERIC_RANGES.holdSeconds) : null,
+      restSecs: rest ? clampToRange(Number(rest), NUMERIC_RANGES.restSeconds) : 0,
+      applyToWeek,
+    });
     close();
   };
 
@@ -169,11 +178,11 @@ function AddExerciseModal({
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Sets</Text>
-                <TextInput value={sets} onChangeText={setSets} keyboardType="numeric" placeholder="3" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={sets} onChangeText={(t) => setSets(sanitizeInteger(t))} keyboardType="numeric" maxLength={3} placeholder="3" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Reps</Text>
-                <TextInput value={reps} onChangeText={setReps} keyboardType="numeric" placeholder="12" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={reps} onChangeText={(t) => setReps(sanitizeInteger(t))} keyboardType="numeric" maxLength={3} placeholder="12" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
             </View>
             <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 8 }}>Side</Text>
@@ -187,11 +196,11 @@ function AddExerciseModal({
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Hold (secs)</Text>
-                <TextInput value={hold} onChangeText={setHold} keyboardType="numeric" placeholder="—" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={hold} onChangeText={(t) => setHold(sanitizeInteger(t))} keyboardType="numeric" maxLength={4} placeholder="—" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Rest (secs)</Text>
-                <TextInput value={rest} onChangeText={setRest} keyboardType="numeric" placeholder="30" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={rest} onChangeText={(t) => setRest(sanitizeInteger(t))} keyboardType="numeric" maxLength={4} placeholder="30" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
             </View>
 
@@ -249,7 +258,14 @@ function AddMealModal({
 
   const submit = () => {
     if (!name.trim()) { Alert.alert('Name required', 'Please enter a food item name.'); return; }
-    onAdd({ itemName: name.trim(), quantity: quantity.trim(), calories: calories ? Number(calories) : null, proteinG: protein ? Number(protein) : null, carbsG: carbs ? Number(carbs) : null, fatG: fat ? Number(fat) : null, applyToWeek });
+    onAdd({
+      itemName: name.trim(), quantity: quantity.trim(),
+      calories: calories ? clampToRange(Number(calories), NUMERIC_RANGES.calories) : null,
+      proteinG: protein ? clampToRange(Number(protein), NUMERIC_RANGES.macroGrams) : null,
+      carbsG: carbs ? clampToRange(Number(carbs), NUMERIC_RANGES.macroGrams) : null,
+      fatG: fat ? clampToRange(Number(fat), NUMERIC_RANGES.macroGrams) : null,
+      applyToWeek,
+    });
     close();
   };
 
@@ -299,28 +315,28 @@ function AddMealModal({
 
         {step === 'manual' && (
           <ScrollView keyboardShouldPersistTaps="handled">
-            <TextInput value={name} onChangeText={setName} placeholder="Dish name" placeholderTextColor={THEME.colors.textMuted}
+            <TextInput value={name} onChangeText={setName} placeholder="Dish name" placeholderTextColor={THEME.colors.textMuted} maxLength={80}
               style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, marginBottom: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
-            <TextInput value={quantity} onChangeText={setQuantity} placeholder="Quantity (e.g. 1 bowl, 200ml)" placeholderTextColor={THEME.colors.textMuted}
+            <TextInput value={quantity} onChangeText={setQuantity} placeholder="Quantity (e.g. 1 bowl, 200ml)" placeholderTextColor={THEME.colors.textMuted} maxLength={40}
               style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, marginBottom: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Calories</Text>
-                <TextInput value={calories} onChangeText={setCalories} keyboardType="numeric" placeholder="kcal" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={calories} onChangeText={(t) => setCalories(sanitizeInteger(t))} keyboardType="numeric" maxLength={5} placeholder="kcal" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Protein (g)</Text>
-                <TextInput value={protein} onChangeText={setProtein} keyboardType="numeric" placeholder="g" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={protein} onChangeText={(t) => setProtein(sanitizeInteger(t))} keyboardType="numeric" maxLength={4} placeholder="g" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
             </View>
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Carbs (g)</Text>
-                <TextInput value={carbs} onChangeText={setCarbs} keyboardType="numeric" placeholder="g" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={carbs} onChangeText={(t) => setCarbs(sanitizeInteger(t))} keyboardType="numeric" maxLength={4} placeholder="g" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>Fat (g)</Text>
-                <TextInput value={fat} onChangeText={setFat} keyboardType="numeric" placeholder="g" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
+                <TextInput value={fat} onChangeText={(t) => setFat(sanitizeInteger(t))} keyboardType="numeric" maxLength={4} placeholder="g" placeholderTextColor={THEME.colors.textMuted} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }} />
               </View>
             </View>
 

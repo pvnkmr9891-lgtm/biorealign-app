@@ -31,6 +31,8 @@ import { DomainRadarChart, scoreBand } from '@/components/ui/DomainRadarChart';
 import { SupplementCalendarTracker } from '@/components/supplements/SupplementCalendarTracker';
 import { supabase } from '@/lib/supabase';
 import { THEME } from '@/constants/theme';
+import { DateField } from '@/components/ui/DateField';
+import { MAX_LENGTHS, NUMERIC_RANGES, sanitizeDecimal, sanitizePhone, isValidPhone, clampToRange } from '@/utils/validation';
 
 const SUCCESS = THEME.colors.success ?? '#4CC986';
 
@@ -400,7 +402,7 @@ export function EditList({ value, onChange, color }: { value: string[]; onChange
   const [draft, setDraft] = useState('');
   const add = () => {
     const v = draft.trim();
-    if (!v) return;
+    if (!v || value.includes(v)) return;
     onChange([...value, v]);
     setDraft('');
   };
@@ -422,6 +424,7 @@ export function EditList({ value, onChange, color }: { value: string[]; onChange
           onChangeText={setDraft}
           placeholder="Add an item"
           placeholderTextColor={THEME.colors.textMuted}
+          maxLength={MAX_LENGTHS.customListItem}
           style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
           onSubmitEditing={add}
         />
@@ -478,6 +481,7 @@ export function ChipsAndAddList({ options, value, onChange, color }: { options: 
           onChangeText={setDraft}
           placeholder="Add another"
           placeholderTextColor={THEME.colors.textMuted}
+          maxLength={MAX_LENGTHS.customListItem}
           style={{ flex: 1, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
           onSubmitEditing={add}
         />
@@ -525,6 +529,10 @@ export function ProfileOverviewCard({ clientId, profile, color = THEME.colors.te
   };
 
   const handleSave = async () => {
+    if (draft.phone.trim() && !isValidPhone(draft.phone)) {
+      Alert.alert('Invalid phone', 'Enter a valid phone number (7-15 digits).');
+      return;
+    }
     try {
       await updateProfile({
         targetUserId: clientId,
@@ -533,8 +541,8 @@ export function ProfileOverviewCard({ clientId, profile, color = THEME.colors.te
           gender: draft.gender || null,
           dob: draft.dob.trim() || null,
           phone: draft.phone.trim() || null,
-          height_cm: draft.height_cm ? Number(draft.height_cm) : null,
-          weight_kg: draft.weight_kg ? Number(draft.weight_kg) : null,
+          height_cm: draft.height_cm ? clampToRange(Number(draft.height_cm), NUMERIC_RANGES.heightCm) : null,
+          weight_kg: draft.weight_kg ? clampToRange(Number(draft.weight_kg), NUMERIC_RANGES.weightKg) : null,
           health_goals: draft.health_goals,
           conditions: draft.conditions,
           medications: draft.medications,
@@ -565,7 +573,7 @@ export function ProfileOverviewCard({ clientId, profile, color = THEME.colors.te
         <View style={{ gap: 12 }}>
           <View>
             <EditFieldLabel label="Name" />
-            <TextInput value={draft.full_name} onChangeText={(t) => setDraft((d) => ({ ...d, full_name: t }))} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <TextInput value={draft.full_name} onChangeText={(t) => setDraft((d) => ({ ...d, full_name: t }))} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} maxLength={MAX_LENGTHS.personName} />
           </View>
           <View>
             <EditFieldLabel label="Gender" />
@@ -573,19 +581,19 @@ export function ProfileOverviewCard({ clientId, profile, color = THEME.colors.te
           </View>
           <View>
             <EditFieldLabel label="Date of birth" />
-            <TextInput value={draft.dob} onChangeText={(t) => setDraft((d) => ({ ...d, dob: t }))} placeholder="YYYY-MM-DD" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <DateField value={draft.dob || undefined} onChange={(v) => setDraft((d) => ({ ...d, dob: v }))} placeholder="Select date of birth" accentColor={color} />
           </View>
           <View>
             <EditFieldLabel label="Contact" />
-            <TextInput value={draft.phone} onChangeText={(t) => setDraft((d) => ({ ...d, phone: t }))} keyboardType="phone-pad" placeholder="+91 98765 43210" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <TextInput value={draft.phone} onChangeText={(t) => setDraft((d) => ({ ...d, phone: sanitizePhone(t) }))} keyboardType="phone-pad" placeholder="+91 98765 43210" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} maxLength={20} />
           </View>
           <View>
             <EditFieldLabel label="Height (cm)" />
-            <TextInput value={draft.height_cm} onChangeText={(t) => setDraft((d) => ({ ...d, height_cm: t.replace(/[^0-9.]/g, '') }))} keyboardType="numeric" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <TextInput value={draft.height_cm} onChangeText={(t) => setDraft((d) => ({ ...d, height_cm: sanitizeDecimal(t) }))} keyboardType="numeric" maxLength={5} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
           </View>
           <View>
             <EditFieldLabel label="Weight (kg)" />
-            <TextInput value={draft.weight_kg} onChangeText={(t) => setDraft((d) => ({ ...d, weight_kg: t.replace(/[^0-9.]/g, '') }))} keyboardType="numeric" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <TextInput value={draft.weight_kg} onChangeText={(t) => setDraft((d) => ({ ...d, weight_kg: sanitizeDecimal(t) }))} keyboardType="numeric" maxLength={5} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
           </View>
           <View>
             <EditFieldLabel label="Health goals" />
@@ -605,11 +613,11 @@ export function ProfileOverviewCard({ clientId, profile, color = THEME.colors.te
           </View>
           <View>
             <EditFieldLabel label="Occupation" />
-            <TextInput value={draft.occupation} onChangeText={(t) => setDraft((d) => ({ ...d, occupation: t }))} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <TextInput value={draft.occupation} onChangeText={(t) => setDraft((d) => ({ ...d, occupation: t }))} placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} maxLength={MAX_LENGTHS.occupation} />
           </View>
           <View>
             <EditFieldLabel label="Location" />
-            <TextInput value={draft.location} onChangeText={(t) => setDraft((d) => ({ ...d, location: t }))} placeholder="City, State" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} />
+            <TextInput value={draft.location} onChangeText={(t) => setDraft((d) => ({ ...d, location: t }))} placeholder="City, State" placeholderTextColor={THEME.colors.textMuted} style={OVERVIEW_INPUT_STYLE} maxLength={MAX_LENGTHS.location} />
           </View>
           <View>
             <EditFieldLabel label="Diet" />
@@ -716,6 +724,7 @@ export function DetailedFieldEditor({ field, value, onChange, color, allStageDat
         placeholder={field.placeholder}
         placeholderTextColor={THEME.colors.textMuted}
         multiline
+        maxLength={MAX_LENGTHS.longNote}
         style={{ minHeight: 70, backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border, textAlignVertical: 'top' }}
       />
     );
@@ -1973,6 +1982,7 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
 
   const newAssessmentButton = (
     <TouchableOpacity
+      testID="new-fitness-assessment-button"
       onPress={() => router.push({ pathname: isAdminContext ? '/(admin)/fitness-assessment-new' : '/(coach)/fitness-assessment-new', params: { clientId, clientName } })}
       activeOpacity={0.85}
       style={{ backgroundColor: '#34D399', borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16 }}
@@ -2118,6 +2128,7 @@ export function ClientProfileView({
               return (
                 <TouchableOpacity
                   key={t.key}
+                  testID={`client-profile-tab-${t.key}`}
                   onPress={() => setTab(t.key)}
                   activeOpacity={0.8}
                   style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: active ? t.color : 'transparent', gap: 2 }}

@@ -197,6 +197,7 @@ export default function RehabQueueScreen() {
                     placeholder="e.g. 6000"
                     placeholderTextColor={THEME.colors.textMuted}
                     keyboardType="numeric"
+                    maxLength={7}
                     style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}
                   />
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>

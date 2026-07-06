@@ -11,6 +11,8 @@ import {
   useEndSupplementSchedule,
   SupplementSchedule,
 } from '@/hooks/useSupplementSchedule';
+import { DateField } from '@/components/ui/DateField';
+import { MAX_LENGTHS, NUMERIC_RANGES, sanitizeDecimal, clampToRange } from '@/utils/validation';
 
 const DOW_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const DOSE_UNITS: DoseUnit[] = ['grams', 'scoops', 'pills', 'capsules', 'mg', 'ml', 'tbsp'];
@@ -62,13 +64,17 @@ export function SupplementScheduleForm({
       Alert.alert('No days selected', 'Pick at least one weekday.');
       return;
     }
+    if (endDate && startDate && endDate < startDate) {
+      Alert.alert('Invalid dates', 'End date must be on or after the start date.');
+      return;
+    }
     try {
       await create.mutateAsync({
         clientId,
         supplement_name: name.trim(),
         schedule_type: scheduleType,
         weekdays: scheduleType === 'weekdays' ? weekdays : [],
-        dose_amount: doseAmount ? Number(doseAmount) : null,
+        dose_amount: doseAmount ? clampToRange(Number(doseAmount), NUMERIC_RANGES.doseAmount) : null,
         dose_unit: doseAmount ? doseUnit : null,
         start_date: startDate || todayStr(),
         end_date: endDate || null,
@@ -179,6 +185,7 @@ export function SupplementScheduleForm({
             onChangeText={setName}
             placeholder="e.g. Whey Protein, Vitamin D3"
             placeholderTextColor={THEME.colors.textMuted}
+            maxLength={MAX_LENGTHS.supplementName}
             style={{ ...inputStyle, marginBottom: 18 }}
           />
 
@@ -228,10 +235,11 @@ export function SupplementScheduleForm({
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
             <TextInput
               value={doseAmount}
-              onChangeText={setDoseAmount}
+              onChangeText={(t) => setDoseAmount(sanitizeDecimal(t))}
               placeholder="Amount"
               placeholderTextColor={THEME.colors.textMuted}
               keyboardType="numeric"
+              maxLength={7}
               style={{ ...inputStyle, flex: 1 }}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 2 }}>
@@ -257,25 +265,24 @@ export function SupplementScheduleForm({
 
           {/* Start date */}
           <Text style={{ ...s(12, 'sansMedium', THEME.colors.textSecondary), marginBottom: 6 }}>Start date *</Text>
-          <TextInput
-            value={startDate}
-            onChangeText={setStartDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={THEME.colors.textMuted}
-            style={{ ...inputStyle, marginBottom: 18 }}
-          />
+          <View style={{ marginBottom: 18 }}>
+            <DateField value={startDate} onChange={setStartDate} placeholder="Select start date" allowFuture accentColor={THEME.colors.teal} />
+          </View>
 
           {/* End date */}
           <Text style={{ ...s(12, 'sansMedium', THEME.colors.textSecondary), marginBottom: 6 }}>
             End date <Text style={{ color: THEME.colors.textMuted }}>(optional â€” leave blank for ongoing)</Text>
           </Text>
-          <TextInput
-            value={endDate}
-            onChangeText={setEndDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={THEME.colors.textMuted}
-            style={{ ...inputStyle, marginBottom: 28 }}
-          />
+          <View style={{ marginBottom: 28, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <DateField value={endDate} onChange={setEndDate} placeholder="No end date" allowFuture accentColor={THEME.colors.teal} />
+            </View>
+            {!!endDate && (
+              <TouchableOpacity onPress={() => setEndDate('')} style={{ padding: 8 }}>
+                <Text style={{ color: THEME.colors.textMuted, fontSize: 13 }}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Create */}
           <TouchableOpacity

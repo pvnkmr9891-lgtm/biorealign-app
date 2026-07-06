@@ -10,6 +10,7 @@ import { THEME } from '@/constants/theme';
 import { PasswordField, isPasswordValid } from '@/components/auth/PasswordField';
 import { OtpInput } from '@/components/auth/OtpInput';
 import { usePhoneOtp, resetPasswordWithPhone } from '@/hooks/usePhoneOtp';
+import { isValidEmail, isValidPhone } from '@/utils/validation';
 
 type Method = 'email' | 'phone';
 type Step = 'identify' | 'otp' | 'newPassword' | 'done';
@@ -30,6 +31,14 @@ export default function ForgotPasswordScreen() {
   async function handleSendCode() {
     if (!identifier.trim()) {
       Alert.alert('Required', method === 'email' ? 'Please enter your email.' : 'Please enter your phone number.');
+      return;
+    }
+    if (method === 'email' && !isValidEmail(identifier)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    if (method === 'phone' && !isValidPhone(identifier)) {
+      Alert.alert('Invalid phone', 'Please enter a valid phone number.');
       return;
     }
     setLoading(true);

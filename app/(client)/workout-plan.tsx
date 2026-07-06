@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { THEME } from '@/constants/theme';
 import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
+import { sanitizeInteger, sanitizeDecimal, NUMERIC_RANGES, clampToRange, MAX_LENGTHS } from '@/utils/validation';
 import { PROGRAMS_ENABLED, ADVANCED_TRACKING_ENABLED } from '@/constants/featureFlags';
 import { WARMUP_EXERCISES, type ExerciseSide, type WarmupExerciseDefault } from '@/constants/warmupExercises';
 import { WORKOUT_EXERCISES } from '@/constants/workoutExercises';
@@ -827,9 +828,9 @@ function FoodGuideModal({ visible, onClose }: { visible: boolean; onClose: () =>
 }
 
 // Labeled numeric text input used in the food macro detail step
-function NumberField({ label, value, onChange, placeholder, decimal = false }: {
+function NumberField({ label, value, onChange, placeholder, decimal = false, range }: {
   label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; decimal?: boolean;
+  placeholder?: string; decimal?: boolean; range?: { min: number; max: number };
 }) {
   return (
     <View style={{ flex: 1 }}>
@@ -838,10 +839,12 @@ function NumberField({ label, value, onChange, placeholder, decimal = false }: {
       </Text>
       <TextInput
         value={value}
-        onChangeText={onChange}
+        onChangeText={(v) => onChange(decimal ? sanitizeDecimal(v) : sanitizeInteger(v))}
+        onBlur={() => { if (range && value) onChange(String(clampToRange(Number(value), range))); }}
         placeholder={placeholder}
         placeholderTextColor="rgba(255,255,255,0.3)"
         keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
+        maxLength={7}
         style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 1, borderColor: THEME.colors.border }}
       />
     </View>
@@ -1658,26 +1661,27 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                         style={aem.fieldInput}
                         placeholderTextColor="rgba(255,255,255,0.3)"
                         placeholder="e.g. 1 bowl"
+                        maxLength={40}
                       />
                     </View>
                     <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={aem.fieldLabel}>Calories</Text>
-                        <TextInput value={item.calories} onChangeText={v => updateReviewItem(idx, 'calories', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="kcal" keyboardType="numeric" />
+                        <TextInput value={item.calories} onChangeText={v => updateReviewItem(idx, 'calories', sanitizeInteger(v))} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="kcal" keyboardType="numeric" maxLength={6} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={aem.fieldLabel}>Protein (g)</Text>
-                        <TextInput value={item.protein} onChangeText={v => updateReviewItem(idx, 'protein', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" />
+                        <TextInput value={item.protein} onChangeText={v => updateReviewItem(idx, 'protein', sanitizeDecimal(v))} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" maxLength={6} />
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={aem.fieldLabel}>Carbs (g)</Text>
-                        <TextInput value={item.carbs} onChangeText={v => updateReviewItem(idx, 'carbs', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" />
+                        <TextInput value={item.carbs} onChangeText={v => updateReviewItem(idx, 'carbs', sanitizeDecimal(v))} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" maxLength={6} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={aem.fieldLabel}>Fat (g)</Text>
-                        <TextInput value={item.fat} onChangeText={v => updateReviewItem(idx, 'fat', v)} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" />
+                        <TextInput value={item.fat} onChangeText={v => updateReviewItem(idx, 'fat', sanitizeDecimal(v))} style={aem.fieldInput} placeholderTextColor="rgba(255,255,255,0.3)" placeholder="g" keyboardType="decimal-pad" maxLength={6} />
                       </View>
                     </View>
                   </View>
@@ -1818,6 +1822,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   placeholder={noun === 'food' ? 'e.g. Idli with sambar' : noun === 'supplement' ? 'e.g. Whey Protein Isolate' : 'e.g. Arm circles'}
                   placeholderTextColor="rgba(255,255,255,0.3)"
                   style={aem.fieldInput}
+                  maxLength={MAX_LENGTHS.shortTitle}
                 />
               </View>
 
@@ -1869,12 +1874,12 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
                   {/* Macros — auto-calculated from qty; user can still tweak */}
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
-                    <NumberField label="Calories (kcal)" value={calories} onChange={setCalories} placeholder="e.g. 350" />
-                    <NumberField label="Protein (g)" value={protein} onChange={setProtein} placeholder="e.g. 12" decimal />
+                    <NumberField label="Calories (kcal)" value={calories} onChange={setCalories} placeholder="e.g. 350" range={NUMERIC_RANGES.calories} />
+                    <NumberField label="Protein (g)" value={protein} onChange={setProtein} placeholder="e.g. 12" decimal range={NUMERIC_RANGES.macroGrams} />
                   </View>
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
-                    <NumberField label="Carbs (g)" value={carbs} onChange={setCarbs} placeholder="e.g. 45" decimal />
-                    <NumberField label="Fat (g)" value={fat} onChange={setFat} placeholder="e.g. 8" decimal />
+                    <NumberField label="Carbs (g)" value={carbs} onChange={setCarbs} placeholder="e.g. 45" decimal range={NUMERIC_RANGES.macroGrams} />
+                    <NumberField label="Fat (g)" value={fat} onChange={setFat} placeholder="e.g. 8" decimal range={NUMERIC_RANGES.macroGrams} />
                   </View>
                 </>
               ) : kind === 'supplement' ? (

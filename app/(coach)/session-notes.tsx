@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useSaveSessionNotes } from '@/hooks/useCoach';
 import { THEME } from '@/constants/theme';
+import { MAX_LENGTHS } from '@/utils/validation';
 
 const STATUS_OPTIONS = ['scheduled', 'completed', 'cancelled', 'no_show'];
 
@@ -124,6 +125,7 @@ export default function SessionNotesScreen() {
             value={notesPre}
             onChangeText={setNotesPre}
             multiline
+            maxLength={MAX_LENGTHS.longNote}
           />
         </View>
 
@@ -139,6 +141,7 @@ export default function SessionNotesScreen() {
             value={notesPost}
             onChangeText={setNotesPost}
             multiline
+            maxLength={MAX_LENGTHS.longNote}
           />
         </View>
 

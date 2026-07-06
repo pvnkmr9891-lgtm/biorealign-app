@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { THEME } from '@/constants/theme';
+import { MAX_LENGTHS } from '@/utils/validation';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
@@ -381,6 +382,7 @@ export default function BasicInfoScreen() {
                 placeholder="Your full name"
                 placeholderTextColor={THEME.colors.textMuted}
                 autoCapitalize="words"
+                maxLength={MAX_LENGTHS.personName}
                 style={inputStyle}
               />
 
@@ -451,6 +453,7 @@ export default function BasicInfoScreen() {
                   placeholder="Add your own goal"
                   placeholderTextColor={THEME.colors.textMuted}
                   onSubmitEditing={() => addCustom(goalDraft, setGoalDraft, goals, setGoals)}
+                  maxLength={MAX_LENGTHS.customListItem}
                   style={[inputStyle, { flex: 1 }]}
                 />
                 <TouchableOpacity
@@ -483,6 +486,7 @@ export default function BasicInfoScreen() {
                   placeholder="Add a condition"
                   placeholderTextColor={THEME.colors.textMuted}
                   onSubmitEditing={() => addCustom(conditionDraft, setConditionDraft, conditions, setConditions)}
+                  maxLength={MAX_LENGTHS.customListItem}
                   style={[inputStyle, { flex: 1 }]}
                 />
                 <TouchableOpacity
@@ -502,6 +506,7 @@ export default function BasicInfoScreen() {
                 onChangeText={setMedications}
                 placeholder="e.g. Metformin 500mg, Vitamin D"
                 placeholderTextColor={THEME.colors.textMuted}
+                maxLength={MAX_LENGTHS.description}
                 style={inputStyle}
               />
             </Card>
@@ -527,6 +532,7 @@ export default function BasicInfoScreen() {
                   placeholder="Add another"
                   placeholderTextColor={THEME.colors.textMuted}
                   onSubmitEditing={() => addCustom(supplementDraft, setSupplementDraft, supplements, setSupplements)}
+                  maxLength={MAX_LENGTHS.customListItem}
                   style={[inputStyle, { flex: 1 }]}
                 />
                 <TouchableOpacity
@@ -546,6 +552,7 @@ export default function BasicInfoScreen() {
                 onChangeText={setOccupation}
                 placeholder="e.g. Software Engineer"
                 placeholderTextColor={THEME.colors.textMuted}
+                maxLength={MAX_LENGTHS.occupation}
                 style={inputStyle}
               />
               <View style={{ height: 18 }} />
@@ -555,6 +562,7 @@ export default function BasicInfoScreen() {
                 onChangeText={setLocation}
                 placeholder="e.g. Bengaluru, Karnataka"
                 placeholderTextColor={THEME.colors.textMuted}
+                maxLength={MAX_LENGTHS.location}
                 style={inputStyle}
               />
             </Card>

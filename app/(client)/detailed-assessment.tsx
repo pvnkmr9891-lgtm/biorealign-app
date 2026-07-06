@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 import { useMyDetailedAssessment, useSaveAssessmentStage, useSubmitDetailedAssessment, useSetAthleteFlag } from '@/hooks/useDetailedAssessment';
 import { DETAILED_ASSESSMENT_STAGES, AssessmentField } from '@/constants/detailedAssessmentQuestions';
 import { THEME } from '@/constants/theme';
+import { DateField } from '@/components/ui/DateField';
+import { MAX_LENGTHS, sanitizeDecimal } from '@/utils/validation';
 
 function ScaleField({ field, value, onChange }: { field: AssessmentField; value: any; onChange: (v: any) => void }) {
   const max = field.max ?? 10;
@@ -107,6 +109,7 @@ function ListField({ field, value, onChange }: { field: AssessmentField; value: 
           placeholder={field.placeholder ?? 'Add your own...'}
           placeholderTextColor={THEME.colors.textMuted}
           onSubmitEditing={addCustom}
+          maxLength={MAX_LENGTHS.customListItem}
           style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
         />
         <TouchableOpacity onPress={addCustom} style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: THEME.colors.teal, alignItems: 'center', justifyContent: 'center' }}>
@@ -175,10 +178,11 @@ function NumberUnitField({ field, value, onChange }: { field: AssessmentField; v
       </View>
       <TextInput
         value={current.value ?? ''}
-        onChangeText={(v) => onChange({ ...current, value: v })}
-        placeholder={field.placeholder}
+        onChangeText={(v) => onChange({ ...current, value: current.unit === 'ft-in' ? v.replace(/[^0-9'" -]/g, '') : sanitizeDecimal(v) })}
+        placeholder={current.unit === 'ft-in' ? (field.placeholder ?? "e.g. 5'10\"") : field.placeholder}
         placeholderTextColor={THEME.colors.textMuted}
         keyboardType={current.unit === 'ft-in' ? 'default' : 'numeric'}
+        maxLength={10}
         style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 14, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}
       />
     </View>
@@ -243,17 +247,28 @@ function Field({ field, value, onChange, allValues }: { field: AssessmentField; 
     return <PainPerItemField field={field} items={items} value={value} onChange={onChange} />;
   }
 
+  if (field.type === 'date') {
+    return (
+      <View style={{ marginBottom: 18 }}>
+        <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary, marginBottom: 8 }}>{field.label}</Text>
+        {field.helperText && <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 8 }}>{field.helperText}</Text>}
+        <DateField value={value || undefined} onChange={onChange} placeholder="Select date" allowFuture accentColor={THEME.colors.teal} />
+      </View>
+    );
+  }
+
   return (
     <View style={{ marginBottom: 18 }}>
       <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary, marginBottom: 8 }}>{field.label}</Text>
       {field.helperText && <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 8 }}>{field.helperText}</Text>}
       <TextInput
         value={value ?? ''}
-        onChangeText={onChange}
-        placeholder={field.type === 'date' ? 'YYYY-MM-DD' : field.placeholder}
+        onChangeText={(v) => onChange(field.type === 'number' ? sanitizeDecimal(v) : v)}
+        placeholder={field.placeholder}
         placeholderTextColor={THEME.colors.textMuted}
         keyboardType={field.type === 'number' ? 'numeric' : 'default'}
         multiline={field.type === 'textarea'}
+        maxLength={field.type === 'textarea' ? MAX_LENGTHS.longNote : field.type === 'number' ? 10 : MAX_LENGTHS.description}
         style={{
           backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 14,
           minHeight: field.type === 'textarea' ? 80 : undefined,

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useSendBroadcast } from '@/hooks/useAdmin';
 import { THEME } from '@/constants/theme';
+import { MAX_LENGTHS } from '@/utils/validation';
 
 const TEMPLATES = [
   { label: 'Check-in reminder',    title: 'Daily check-in',        body: "Don't forget to log today's metrics. Your consistency is your protocol." },
@@ -113,7 +114,11 @@ export default function BroadcastScreen() {
             placeholderTextColor={THEME.colors.textMuted}
             value={title}
             onChangeText={setTitle}
+            maxLength={MAX_LENGTHS.broadcastTitle}
           />
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11, marginTop: 4, textAlign: 'right' }}>
+            {title.length}/{MAX_LENGTHS.broadcastTitle}
+          </Text>
         </View>
 
         <View style={{ marginHorizontal: 24, marginBottom: 28 }}>
@@ -127,7 +132,11 @@ export default function BroadcastScreen() {
             value={body}
             onChangeText={setBody}
             multiline
+            maxLength={MAX_LENGTHS.broadcastBody}
           />
+          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11, marginTop: 4, textAlign: 'right' }}>
+            {body.length}/{MAX_LENGTHS.broadcastBody}
+          </Text>
         </View>
 
         {/* Send button */}

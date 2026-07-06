@@ -19,6 +19,7 @@ import { THEME } from '@/constants/theme';
 import { PasswordField, isPasswordValid } from '@/components/auth/PasswordField';
 import { OtpInput } from '@/components/auth/OtpInput';
 import { usePhoneOtp } from '@/hooks/usePhoneOtp';
+import { isValidEmail, MAX_LENGTHS } from '@/utils/validation';
 
 type Step = 'form' | 'otp';
 
@@ -49,6 +50,14 @@ export default function RegisterScreen() {
   async function handleRegister() {
     if (!fullName.trim() || !username.trim() || !email.trim() || !password) {
       Alert.alert('Missing fields', 'Please fill in all required fields.');
+      return;
+    }
+    if (username.trim().length < 3) {
+      Alert.alert('Username too short', 'Username must be at least 3 characters.');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
     }
     if (!phoneInputRef.current?.isValidNumber(phone)) {
@@ -190,18 +199,18 @@ export default function RegisterScreen() {
             <View style={{ gap: 16, marginTop: 28 }}>
               <View>
                 <Text style={styles.label}>Full name</Text>
-                <TextInput style={styles.input} placeholder="Eswar Reddy" placeholderTextColor={THEME.colors.textMuted} value={fullName} onChangeText={setFullName} autoCapitalize="words" />
+                <TextInput style={styles.input} placeholder="Eswar Reddy" placeholderTextColor={THEME.colors.textMuted} value={fullName} onChangeText={setFullName} autoCapitalize="words" maxLength={MAX_LENGTHS.personName} />
               </View>
 
               <View>
                 <Text style={styles.label}>Username</Text>
-                <TextInput style={styles.input} placeholder="eswarreddy" placeholderTextColor={THEME.colors.textMuted} value={username} onChangeText={handleUsernameChange} autoCapitalize="none" />
+                <TextInput style={styles.input} placeholder="eswarreddy" placeholderTextColor={THEME.colors.textMuted} value={username} onChangeText={handleUsernameChange} autoCapitalize="none" maxLength={MAX_LENGTHS.username} />
                 <Text style={styles.hint}>Letters and numbers only</Text>
               </View>
 
               <View>
                 <Text style={styles.label}>Email</Text>
-                <TextInput style={styles.input} placeholder="you@example.com" placeholderTextColor={THEME.colors.textMuted} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+                <TextInput style={styles.input} placeholder="you@example.com" placeholderTextColor={THEME.colors.textMuted} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" maxLength={254} />
               </View>
 
               <View>

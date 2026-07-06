@@ -13,12 +13,13 @@ const WEEKDAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 // this project, and adding one mid-build would need a native rebuild.
 // Plain Views/Text only.
 export function CalendarGrid({
-  selectedDate, onSelect, markedDates, accentColor,
+  selectedDate, onSelect, markedDates, accentColor, allowFuture,
 }: {
   selectedDate?: string | null;
   onSelect: (date: string) => void;
   markedDates?: Set<string>; // dates (yyyy-mm-dd) to show a dot under, e.g. "has a photo"
   accentColor?: string;
+  allowFuture?: boolean; // e.g. scheduling a future supplement course or plan start date
 }) {
   const color = accentColor ?? THEME.colors.teal;
   const todayStr = toDateStr(new Date());
@@ -36,7 +37,7 @@ export function CalendarGrid({
   while (cells.length % 7 !== 0) cells.push(null);
 
   const shiftMonth = (delta: number) => setVisibleMonth(new Date(year, month + delta, 1));
-  const isFutureMonth = year > new Date().getFullYear() || (year === new Date().getFullYear() && month >= new Date().getMonth() + 1);
+  const isFutureMonth = !allowFuture && (year > new Date().getFullYear() || (year === new Date().getFullYear() && month >= new Date().getMonth() + 1));
 
   return (
     <View>
@@ -64,7 +65,7 @@ export function CalendarGrid({
         {cells.map((day, i) => {
           if (day == null) return <View key={i} style={{ width: '14.28%', aspectRatio: 1 }} />;
           const dateStr = toDateStr(new Date(year, month, day));
-          const isFuture = dateStr > todayStr;
+          const isFuture = !allowFuture && dateStr > todayStr;
           const isSelected = dateStr === selectedDate;
           const isToday = dateStr === todayStr;
           const isMarked = markedDates?.has(dateStr);

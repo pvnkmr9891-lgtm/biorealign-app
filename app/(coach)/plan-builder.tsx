@@ -13,6 +13,8 @@ import {
 } from '@/hooks/usePlans';
 import { useAISuggestions, type AISuggestedTrack } from '@/hooks/useAISuggestions';
 import { THEME } from '@/constants/theme';
+import { MAX_LENGTHS, NUMERIC_RANGES, sanitizeInteger, clampToRange } from '@/utils/validation';
+import { DateField } from '@/components/ui/DateField';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TRACK_OPTIONS = [
@@ -60,13 +62,16 @@ function AddItemSheet({ trackId, planId, phase, onClose }: {
   const handleAdd = async () => {
     if (!title.trim()) { Alert.alert('Required', 'Please enter a title.'); return; }
     if (selectedDays.length === 0) { Alert.alert('Required', 'Select at least one day.'); return; }
+    const clampedWeek = clampToRange(parseInt(weekNumber) || 1, NUMERIC_RANGES.weekNumber);
+    const clampedSets = sets ? clampToRange(parseInt(sets), NUMERIC_RANGES.sets) : undefined;
+    const clampedDuration = duration ? clampToRange(parseInt(duration), NUMERIC_RANGES.durationMinutes) : undefined;
     await addItem.mutateAsync({
       track_id: trackId, plan_id: planId, title: title.trim(),
-      item_type: itemType, phase, week_number: parseInt(weekNumber) || 1,
+      item_type: itemType, phase, week_number: clampedWeek,
       day_of_week: selectedDays,
       description: description.trim() || undefined,
-      sets: parseInt(sets) || undefined, reps: reps.trim() || undefined,
-      duration_minutes: parseInt(duration) || undefined,
+      sets: clampedSets, reps: reps.trim() || undefined,
+      duration_minutes: clampedDuration,
       coach_note: coachNote.trim() || undefined, sort_order: 0,
     });
     onClose();
@@ -92,24 +97,24 @@ function AddItemSheet({ trackId, planId, phase, onClose }: {
           </View>
 
           <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Title *</Text>
-          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15, marginBottom: 16 }} value={title} onChangeText={setTitle} placeholder="e.g. Goblet Squat" placeholderTextColor={BRAND.textMuted} />
+          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15, marginBottom: 16 }} value={title} onChangeText={setTitle} placeholder="e.g. Goblet Squat" placeholderTextColor={BRAND.textMuted} maxLength={MAX_LENGTHS.shortTitle} />
 
           <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Description</Text>
-          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 14, marginBottom: 16, minHeight: 70 }} value={description} onChangeText={setDescription} placeholder="Instructions..." placeholderTextColor={BRAND.textMuted} multiline textAlignVertical="top" />
+          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 14, marginBottom: 16, minHeight: 70 }} value={description} onChangeText={setDescription} placeholder="Instructions..." placeholderTextColor={BRAND.textMuted} multiline textAlignVertical="top" maxLength={MAX_LENGTHS.description} />
 
           {itemType === 'exercise' && (
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Sets</Text>
-                <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15 }} value={sets} onChangeText={setSets} placeholder="3" placeholderTextColor={BRAND.textMuted} keyboardType="numeric" />
+                <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15 }} value={sets} onChangeText={(t) => setSets(sanitizeInteger(t))} placeholder="3" placeholderTextColor={BRAND.textMuted} keyboardType="numeric" maxLength={3} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Reps</Text>
-                <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15 }} value={reps} onChangeText={setReps} placeholder="12" placeholderTextColor={BRAND.textMuted} />
+                <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15 }} value={reps} onChangeText={setReps} placeholder="12" placeholderTextColor={BRAND.textMuted} maxLength={20} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Min</Text>
-                <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15 }} value={duration} onChangeText={setDuration} placeholder="30" placeholderTextColor={BRAND.textMuted} keyboardType="numeric" />
+                <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15 }} value={duration} onChangeText={(t) => setDuration(sanitizeInteger(t))} placeholder="30" placeholderTextColor={BRAND.textMuted} keyboardType="numeric" maxLength={3} />
               </View>
             </View>
           )}
@@ -125,10 +130,10 @@ function AddItemSheet({ trackId, planId, phase, onClose }: {
           </View>
 
           <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Week</Text>
-          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15, marginBottom: 16 }} value={weekNumber} onChangeText={setWeekNumber} placeholder="1" placeholderTextColor={BRAND.textMuted} keyboardType="numeric" />
+          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15, marginBottom: 16 }} value={weekNumber} onChangeText={(t) => setWeekNumber(sanitizeInteger(t))} placeholder="1" placeholderTextColor={BRAND.textMuted} keyboardType="numeric" maxLength={2} />
 
           <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Coach Note</Text>
-          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 14, marginBottom: 24, minHeight: 60 }} value={coachNote} onChangeText={setCoachNote} placeholder="Tip for the client..." placeholderTextColor={BRAND.textMuted} multiline textAlignVertical="top" />
+          <TextInput style={{ backgroundColor: '#1A1A1E', borderRadius: 10, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 14, paddingVertical: 12, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 14, marginBottom: 24, minHeight: 60 }} value={coachNote} onChangeText={setCoachNote} placeholder="Tip for the client..." placeholderTextColor={BRAND.textMuted} multiline textAlignVertical="top" maxLength={MAX_LENGTHS.note} />
 
           <TouchableOpacity onPress={handleAdd} disabled={addItem.isPending}
             style={{ backgroundColor: BRAND.teal, borderRadius: 12, paddingVertical: 16, alignItems: 'center' }}>
@@ -409,15 +414,16 @@ export default function PlanBuilder() {
 
             <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Plan Title *</Text>
             <TextInput style={{ backgroundColor: BRAND.surface, borderRadius: 12, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 16, paddingVertical: 14, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 16, marginBottom: 20 }}
-              value={planTitle} onChangeText={setPlanTitle} placeholder="e.g. 12-Week Posture Reset" placeholderTextColor={BRAND.textMuted} />
+              value={planTitle} onChangeText={setPlanTitle} placeholder="e.g. 12-Week Posture Reset" placeholderTextColor={BRAND.textMuted} maxLength={MAX_LENGTHS.shortTitle} />
 
             <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Start Date</Text>
-            <TextInput style={{ backgroundColor: BRAND.surface, borderRadius: 12, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 16, paddingVertical: 14, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 16, marginBottom: 20 }}
-              value={startDate} onChangeText={setStartDate} placeholder="YYYY-MM-DD" placeholderTextColor={BRAND.textMuted} />
+            <View style={{ marginBottom: 20 }}>
+              <DateField value={startDate} onChange={setStartDate} placeholder="Select start date" allowFuture accentColor={BRAND.teal} />
+            </View>
 
             <Text style={{ fontSize: 11, color: BRAND.textMuted, fontFamily: 'DMSans-Medium', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Coach Overview</Text>
             <TextInput style={{ backgroundColor: BRAND.surface, borderRadius: 12, borderWidth: 1, borderColor: BRAND.border, paddingHorizontal: 16, paddingVertical: 14, color: BRAND.text, fontFamily: 'DMSans-Regular', fontSize: 15, minHeight: 100, marginBottom: 32 }}
-              value={overview} onChangeText={setOverview} placeholder="Overall approach for this client..." placeholderTextColor={BRAND.textMuted} multiline textAlignVertical="top" />
+              value={overview} onChangeText={setOverview} placeholder="Overall approach for this client..." placeholderTextColor={BRAND.textMuted} multiline textAlignVertical="top" maxLength={MAX_LENGTHS.description} />
 
             <TouchableOpacity onPress={handleCreatePlan} disabled={createPlan.isPending}
               style={{ backgroundColor: BRAND.teal, borderRadius: 14, paddingVertical: 18, alignItems: 'center', shadowColor: BRAND.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 4 }}>

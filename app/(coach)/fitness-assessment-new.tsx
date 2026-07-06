@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSubmitFitnessAssessment, useClientFitnessAssessments, EnduranceProtocol } from '@/hooks/useFitnessAssessment';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { THEME } from '@/constants/theme';
+import { sanitizeInteger, sanitizeDecimal, sanitizeSignedDecimal, isWithinRange, NUMERIC_RANGES, MAX_LENGTHS } from '@/utils/validation';
 
 function daysAgoLabel(dateStr: string): string {
   const days = Math.floor((Date.now() - new Date(dateStr + 'T00:00:00').getTime()) / 86400000);
@@ -50,14 +51,19 @@ function FieldLabel({ children }: { children: string }) {
   return <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 6 }}>{children}</Text>;
 }
 
-function NumberInput({ value, onChangeText, placeholder }: { value: string; onChangeText: (v: string) => void; placeholder?: string }) {
+function NumberInput({ value, onChangeText, placeholder, allowDecimal = true, allowNegative = false, testID }: {
+  value: string; onChangeText: (v: string) => void; placeholder?: string; allowDecimal?: boolean; allowNegative?: boolean; testID?: string;
+}) {
+  const sanitize = allowNegative ? sanitizeSignedDecimal : allowDecimal ? sanitizeDecimal : sanitizeInteger;
   return (
     <TextInput
+      testID={testID}
       value={value}
-      onChangeText={(v) => onChangeText(v.replace(/[^0-9.\-]/g, ''))}
+      onChangeText={(v) => onChangeText(sanitize(v))}
       placeholder={placeholder}
       placeholderTextColor={THEME.colors.textMuted}
-      keyboardType="numeric"
+      keyboardType={allowNegative ? 'numbers-and-punctuation' : 'numeric'}
+      maxLength={7}
       style={{
         backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
         color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border,
@@ -170,6 +176,10 @@ export default function FitnessAssessmentNewScreen() {
       Alert.alert('Missing info', 'Please confirm the client\'s age and gender before submitting.');
       return;
     }
+    if (!isWithinRange(ageNum, NUMERIC_RANGES.age)) {
+      Alert.alert('Invalid age', `Age must be between ${NUMERIC_RANGES.age.min} and ${NUMERIC_RANGES.age.max}.`);
+      return;
+    }
     const domains: Parameters<typeof submit>[0]['domains'] = {};
 
     if (chairStand && armCurl) {
@@ -208,7 +218,7 @@ export default function FitnessAssessmentNewScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+    <SafeAreaView testID="fitness-assessment-new-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -228,7 +238,7 @@ export default function FitnessAssessmentNewScreen() {
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
             <View style={{ flex: 1 }}>
               <FieldLabel>Age</FieldLabel>
-              <NumberInput value={age} onChangeText={setAge} placeholder="e.g. 67" />
+              <NumberInput testID="assessment-age-input" value={age} onChangeText={setAge} placeholder="e.g. 67" allowDecimal={false} />
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>Gender</FieldLabel>
@@ -236,6 +246,7 @@ export default function FitnessAssessmentNewScreen() {
                 {(['male', 'female'] as const).map((g) => (
                   <TouchableOpacity
                     key={g}
+                    testID={`assessment-gender-${g}`}
                     onPress={() => { setGender(g); setGenderTouched(true); }}
                     style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: gender === g ? THEME.colors.teal : THEME.colors.surface3, borderWidth: 0.5, borderColor: gender === g ? THEME.colors.teal : THEME.colors.border }}
                   >
@@ -291,12 +302,12 @@ export default function FitnessAssessmentNewScreen() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <FieldLabel>Chair Stand (reps)</FieldLabel>
-              <NumberInput value={chairStand} onChangeText={setChairStand} placeholder={lastStrength ? `last time: ${lastStrength.raw_result_primary}` : 'e.g. 14'} />
+              <NumberInput testID="assessment-chair-stand-input" value={chairStand} onChangeText={setChairStand} placeholder={lastStrength ? `last time: ${lastStrength.raw_result_primary}` : 'e.g. 14'} allowDecimal={false} />
               <DeltaLine current={chairStand} last={lastStrength?.raw_result_primary} ago={lastAgo ?? undefined} />
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>Arm Curl (reps)</FieldLabel>
-              <NumberInput value={armCurl} onChangeText={setArmCurl} placeholder={lastStrength?.raw_result_secondary != null ? `last time: ${lastStrength.raw_result_secondary}` : 'e.g. 16'} />
+              <NumberInput testID="assessment-arm-curl-input" value={armCurl} onChangeText={setArmCurl} placeholder={lastStrength?.raw_result_secondary != null ? `last time: ${lastStrength.raw_result_secondary}` : 'e.g. 16'} allowDecimal={false} />
               <DeltaLine current={armCurl} last={lastStrength?.raw_result_secondary} ago={lastAgo ?? undefined} />
             </View>
           </View>
@@ -308,12 +319,12 @@ export default function FitnessAssessmentNewScreen() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <FieldLabel>Sit-and-Reach (in)</FieldLabel>
-              <NumberInput value={sitAndReach} onChangeText={setSitAndReach} placeholder={lastFlexibility ? `last time: ${lastFlexibility.raw_result_primary}` : 'e.g. -1.5'} />
+              <NumberInput value={sitAndReach} onChangeText={setSitAndReach} placeholder={lastFlexibility ? `last time: ${lastFlexibility.raw_result_primary}` : 'e.g. -1.5'} allowNegative />
               <DeltaLine current={sitAndReach} last={lastFlexibility?.raw_result_primary} ago={lastAgo ?? undefined} />
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>Back Scratch (in)</FieldLabel>
-              <NumberInput value={backScratch} onChangeText={setBackScratch} placeholder={lastFlexibility?.raw_result_secondary != null ? `last time: ${lastFlexibility.raw_result_secondary}` : 'e.g. -3.0'} />
+              <NumberInput value={backScratch} onChangeText={setBackScratch} placeholder={lastFlexibility?.raw_result_secondary != null ? `last time: ${lastFlexibility.raw_result_secondary}` : 'e.g. -3.0'} allowNegative />
               <DeltaLine current={backScratch} last={lastFlexibility?.raw_result_secondary} ago={lastAgo ?? undefined} />
             </View>
           </View>
@@ -358,11 +369,13 @@ export default function FitnessAssessmentNewScreen() {
             placeholder="Coach-only notes (not shown to client)"
             placeholderTextColor={THEME.colors.textMuted}
             multiline
+            maxLength={MAX_LENGTHS.note}
             style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 14, borderWidth: 0.5, borderColor: THEME.colors.border, minHeight: 70, textAlignVertical: 'top' }}
           />
         </Card>
 
         <TouchableOpacity
+          testID="save-assessment-button"
           onPress={onSubmit}
           disabled={!canSubmit}
           activeOpacity={0.85}

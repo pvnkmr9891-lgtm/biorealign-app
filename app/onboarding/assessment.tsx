@@ -20,6 +20,7 @@ import { useOnboardingStore } from '@/store/onboardingStore';
 import { useAssessmentStore } from '@/store/assessmentStore';
 import { useAssessmentSubmit } from '@/hooks/useAssessmentSubmit';
 import { supabase } from '@/lib/supabase';
+import { MAX_LENGTHS } from '@/utils/validation';
 import {
   getPhasesForProgram,
   PROGRAM_ASSESSMENT_KEY,
@@ -233,6 +234,7 @@ function MultiAddInput({ question, value, onChange }: { question: AQuestion; val
           placeholderTextColor={BRAND.textMuted}
           onSubmitEditing={addCustom}
           returnKeyType="done"
+          maxLength={MAX_LENGTHS.customListItem}
         />
         <TouchableOpacity onPress={addCustom} style={{ paddingHorizontal: 18, paddingVertical: 14, borderLeftWidth: 1, borderColor: BRAND.border }}>
           <Text style={{ fontSize: 14, fontFamily: 'DMSans-Bold', color: BRAND.teal }}>+ Add</Text>
@@ -529,6 +531,7 @@ function DescriptiveInput({ question, value, onChange }: { question: AQuestion; 
       placeholderTextColor={BRAND.textMuted}
       multiline
       returnKeyType="default"
+      maxLength={MAX_LENGTHS.longNote}
     />
   );
 }

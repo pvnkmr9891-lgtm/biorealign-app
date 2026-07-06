@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { THEME } from '@/constants/theme';
+import { MAX_LENGTHS, sanitizePhone, isValidPhone } from '@/utils/validation';
 
 // Shared by the client's own Profile screen and the admin profile drill-down
 // (Part 1's "reuse the same update logic" requirement) — same fields, same
@@ -23,6 +24,7 @@ export function EditProfileModal({ profile, visible, onClose, onSave }: {
 
   const handleSave = async () => {
     if (!name.trim()) { Alert.alert('Required', 'Name cannot be empty.'); return; }
+    if (phone.trim() && !isValidPhone(phone)) { Alert.alert('Invalid phone', 'Enter a valid phone number (7-15 digits).'); return; }
     setSaving(true);
     await onSave({ full_name: name.trim(), phone: phone.trim() });
     setSaving(false);
@@ -43,13 +45,13 @@ export function EditProfileModal({ profile, visible, onClose, onSave }: {
           <TextInput
             style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 20 }}
             value={name} onChangeText={setName} placeholder="Your full name"
-            placeholderTextColor={THEME.colors.textMuted}
+            placeholderTextColor={THEME.colors.textMuted} maxLength={MAX_LENGTHS.personName}
           />
           <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>Phone Number</Text>
           <TextInput
             style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 32 }}
-            value={phone} onChangeText={setPhone} placeholder="+91 98765 43210"
-            placeholderTextColor={THEME.colors.textMuted} keyboardType="phone-pad"
+            value={phone} onChangeText={(t) => setPhone(sanitizePhone(t))} placeholder="+91 98765 43210"
+            placeholderTextColor={THEME.colors.textMuted} keyboardType="phone-pad" maxLength={20}
           />
           <TouchableOpacity
             onPress={handleSave} disabled={saving}

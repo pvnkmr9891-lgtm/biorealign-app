@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { isValidEmail } from '@/utils/validation';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -23,6 +24,10 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       Alert.alert('Missing fields', 'Please enter your email and password.');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
     }
     setLoading(true);

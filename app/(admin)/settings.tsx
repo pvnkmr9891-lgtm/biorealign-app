@@ -10,6 +10,7 @@ import { SUPPORT_EMAIL, SUPPORT_WHATSAPP_DISPLAY } from '@/constants/contact';
 import { SUPPLEMENT_ITEMS } from '@/constants/supplementItems';
 import { useSupplementCatalogImages, useUploadSupplementCatalogImage, useDeleteSupplementCatalogImage } from '@/hooks/useSupplementCatalogImages';
 import { THEME } from '@/constants/theme';
+import { clampToRange } from '@/utils/validation';
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -54,7 +55,7 @@ function RehabPackagesSection() {
       await addPackage({
         key: draft.key.trim(),
         label: draft.label.trim(),
-        sessions_per_term: Number(draft.sessions_per_term),
+        sessions_per_term: clampToRange(Number(draft.sessions_per_term), { min: 1, max: 365 }),
         display_order: packages.length,
       });
       setDraft({ key: '', label: '', sessions_per_term: '' });
@@ -106,6 +107,7 @@ function RehabPackagesSection() {
                 placeholder="Sessions per term"
                 placeholderTextColor={THEME.colors.textMuted}
                 keyboardType="numeric"
+                maxLength={3}
                 style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
               />
               <View style={{ flexDirection: 'row', gap: 8 }}>
