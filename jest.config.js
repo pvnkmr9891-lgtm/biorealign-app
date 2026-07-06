@@ -8,6 +8,7 @@ module.exports = {
   // separate, heavier layer (see docs/TESTING.md).
   roots: ['<rootDir>/src/lib'],
   testMatch: ['**/__tests__/**/*.test.ts'],
+  setupFiles: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },

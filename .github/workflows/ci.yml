@@ -28,6 +28,13 @@ jobs:
         run: npx eslint .
         continue-on-error: true
 
+      # jest.setup.js pins TZ=Asia/Calcutta regardless of this runner's
+      # default (UTC) — timezone bugs only reproduce in the app's real
+      # timezone, so the test process must run in it, not the host's.
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: npm test -- --ci
+
   # Runs the role-simulation security tests against the live DB. Skipped
   # until the SUPABASE_DB_URL repo secret is set (Supabase dashboard →
   # Connect → Direct connection string, with password).
