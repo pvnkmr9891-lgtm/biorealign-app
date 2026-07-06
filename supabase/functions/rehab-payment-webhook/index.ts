@@ -13,12 +13,7 @@
 // Requires secrets: RAZORPAY_WEBHOOK_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-async function hmacSha256Hex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+import { verifyRazorpaySignature } from '../_shared/razorpay.ts';
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
@@ -33,8 +28,8 @@ Deno.serve(async (req) => {
       return new Response('Webhook not configured', { status: 500 });
     }
 
-    const expected = await hmacSha256Hex(webhookSecret, rawBody);
-    if (expected !== signature) {
+    const validSignature = await verifyRazorpaySignature(webhookSecret, rawBody, signature);
+    if (!validSignature) {
       console.error('[rehab-payment-webhook] signature mismatch');
       return new Response('Invalid signature', { status: 401 });
     }

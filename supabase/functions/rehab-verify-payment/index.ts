@@ -10,17 +10,12 @@
 // Requires secret: RAZORPAY_KEY_SECRET.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { verifyRazorpaySignature } from '../_shared/razorpay.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-async function hmacSha256Hex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -60,8 +55,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Payments are not configured yet.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const expectedSignature = await hmacSha256Hex(keySecret, `${razorpay_order_id}|${razorpay_payment_id}`);
-    if (expectedSignature !== razorpay_signature) {
+    const validSignature = await verifyRazorpaySignature(keySecret, `${razorpay_order_id}|${razorpay_payment_id}`, razorpay_signature);
+    if (!validSignature) {
       return new Response(JSON.stringify({ error: 'Invalid payment signature' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

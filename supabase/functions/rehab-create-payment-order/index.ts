@@ -7,6 +7,7 @@
 // Requires secrets: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { rupeesToPaise } from '../_shared/razorpay.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Payments are not configured yet — RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET are not set.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const amountPaise = Math.round(Number(request.quoted_price) * 100);
+    const amountPaise = rupeesToPaise(Number(request.quoted_price));
     const orderRes = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       headers: {

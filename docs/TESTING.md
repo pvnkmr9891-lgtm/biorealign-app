@@ -13,7 +13,7 @@ are the manual pass to run before every release build (OTA or binary).
 | Unit | Jest | scoring math, streak logic, date/week helpers | ✅ live (62 tests, `src/lib/`) |
 | Component | React Native Testing Library | form validation, conditional rendering | ❌ later |
 | DB security | `supabase/tests/rls_tests.sql` | cross-tenant leaks, role escalation | ✅ live (20 checks) |
-| API / Edge functions | Deno test + staged invokes | AI digest, payments, OTP flows | ❌ to build |
+| API / Edge functions | Deno test | Razorpay signature verification, currency math | ✅ live (19 tests, `supabase/functions/_shared/`) |
 | E2E | Maestro (`.maestro/`) | full user flows on a real build | 🚧 items 3, 4 & first half of 6 scaffolded, item 2 partial, **unverified — needs a device run** |
 | Manual | this document's checklists | UX, visual, exploratory, device quirks | ✅ process below |
 | Production | Sentry + PostHog | everything the above missed | ⏳ waiting on account keys |
@@ -43,6 +43,41 @@ delivery, a payment SDK overlay).
 4. **Coach: dashboard → attention item tap-through → client drill-down → send message → client receives**
 5. **Recovery booking → slot pick → Razorpay (test mode) → confirmation → admin sees booking**
 6. **Coach request → approve → client appears in coach list → coach enters fitness assessment → client sees scores**
+
+---
+
+## 2a. Edge function tests (Deno)
+
+`supabase/functions/_shared/razorpay.ts` holds the Razorpay HMAC signature
+verification and rupee→paise conversion, extracted out of
+`rehab-verify-payment`, `rehab-payment-webhook`, and
+`rehab-create-payment-order` (all three previously duplicated the same
+HMAC helper — now one copy, imported by all three, so it can't drift out
+of sync between the client-side verify path and the server-side webhook).
+
+`supabase/functions/_shared/razorpay.test.ts` covers:
+- HMAC-SHA256 correctness against reference vectors computed independently
+  via Node's `crypto` module (cross-checked, not just self-consistent)
+- Signature verification accepts the real thing and rejects a tampered
+  payment id, a wrong secret, an empty signature, and a single flipped
+  character (the classic "does a naive comparison actually check the
+  whole string" test)
+- Rupee→paise conversion, including the floating-point rounding case
+  (`19.99 * 100` is `1998.9999999999998` in raw JS float math — confirmed
+  in Node before writing the test — so `Math.round` isn't optional)
+
+**Run:** `deno test supabase/functions/_shared/razorpay.test.ts` (needs
+the Deno CLI — not installed in the session that wrote these tests, so
+the vectors are independently verified but the test *file itself* hasn't
+been executed by the actual Deno test runner yet; that's the next
+shakeout step, same caveat as the Maestro flows).
+
+**Bonus fix that came out of writing these tests:** the original
+signature comparison was a plain `!==` string check, which short-circuits
+on the first differing byte — a (largely theoretical, but free-to-fix)
+timing side-channel on code that gates real money. Replaced with a
+constant-time XOR comparison (`timingSafeEqualHex`) that always walks the
+full string.
 
 ---
 
