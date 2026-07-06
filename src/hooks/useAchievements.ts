@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 
 export type AchievementKind = 'streak' | 'tier' | 'perfect_week';
 
@@ -49,7 +50,7 @@ export function useRecordAchievement() {
       const { error } = await supabase
         .from('client_achievements')
         .upsert(
-          { client_id: user.id, kind, label, icon, achieved_on: achievedOn ?? new Date().toISOString().split('T')[0] },
+          { client_id: user.id, kind, label, icon, achieved_on: achievedOn ?? toLocalDateStr(new Date()) },
           { onConflict: 'client_id,kind,label,achieved_on', ignoreDuplicates: true }
         );
       if (error) throw error;

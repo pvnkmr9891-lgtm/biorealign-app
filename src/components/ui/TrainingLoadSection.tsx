@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Svg, { Polyline, Circle, Line } from 'react-native-svg';
 import { THEME } from '@/constants/theme';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 import type { TrainingLoadResult, DailyTrainingScore } from '@/hooks/useTrainingLoad';
 
 // ── Domain definitions ────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ export function TrainingLoadSection({ data }: { data: TrainingLoadResult }) {
   // Cut off to selected range (calendar days)
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - (range - 1));
-  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const cutoffStr = toLocalDateStr(cutoff);
   const rangeScores = data.scores.filter(s => s.date >= cutoffStr);
 
   // Latest score across full history (not limited to range)

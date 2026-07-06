@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { getWeekStart } from '@/hooks/useManualLog';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 import type { NutritionTrendPoint } from '@/hooks/useCoachClientOverview';
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
@@ -267,7 +268,7 @@ export function useSaveBodyMetrics() {
   return useMutation({
     mutationFn: async (payload: Partial<Omit<BodyMetric, 'id' | 'client_id' | 'recorded_at'>> & { recorded_date?: string }) => {
       const { recorded_date, ...rest } = payload;
-      const date = recorded_date ?? new Date().toISOString().split('T')[0];
+      const date = recorded_date ?? toLocalDateStr(new Date());
       const { data, error } = await supabase
         .from('body_metrics')
         .upsert(
@@ -368,7 +369,7 @@ export function useUploadProgressPhoto() {
   notes?: string;
   photoDate?: string; // yyyy-mm-dd — lets a client backfill a previous day/week, defaults to today
 }) => {
-  const today = photoDate ?? new Date().toISOString().split('T')[0];
+  const today = photoDate ?? toLocalDateStr(new Date());
   const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
   const path = `${user!.id}/${today}_${photoType}_${Date.now()}.${ext}`;
   const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { Plan, PlanTrack, PlanItem } from '@/types';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 
 export const planKeys = {
   all:           ['plans'] as const,
@@ -81,7 +82,7 @@ export function useTodayPlanItems() {
 
       if (error) throw error;
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = toLocalDateStr(new Date());
       const { data: completions } = await supabase
         .from('plan_item_completions')
         .select('plan_item_id')
@@ -105,7 +106,7 @@ export function useToggleItemComplete() {
 
   return useMutation({
     mutationFn: async ({ itemId, isCompleted }: { itemId: string; isCompleted: boolean }) => {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = toLocalDateStr(new Date());
       if (isCompleted) {
         await supabase.from('plan_item_completions').delete()
           .eq('plan_item_id', itemId).eq('client_id', user!.id).eq('completed_date', todayStr);

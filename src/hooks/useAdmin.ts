@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { toLocalDateStr, addDaysToDateStr } from '@/lib/dateHelpers';
 
 // ---------------------------------------------------------------------------
 // Platform analytics
@@ -20,7 +21,7 @@ export function useAdminAnalytics() {
         await Promise.all([
           supabase.from('profiles').select('id, role, created_at').eq('role', 'client'),
           supabase.from('enrollments').select('id, status, program_id, created_at, program:programs(name, slug)'),
-          supabase.from('daily_checkins').select('id, date, mood, energy, pain_level').gte('date', new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]),
+          supabase.from('daily_checkins').select('id, date, mood, energy, pain_level').gte('date', addDaysToDateStr(toLocalDateStr(new Date()), -30)),
           supabase.from('sessions').select('id, status, type, scheduled_at'),
           supabase.from('progress_metrics').select('fitness_score, recovery_score, longevity_score').order('recorded_at', { ascending: false }).limit(100),
           supabase.from('plans').select('id, status, client_id, coach_id'),
@@ -60,7 +61,7 @@ export function useAdminAnalytics() {
       const weekAgo = sevenDaysAgoIso;
       const sessionsThisWeek = sessions.filter((s: any) => s.scheduled_at > weekAgo).length;
 
-      const last7Days = checkins.filter((c: any) => c.date >= new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]);
+      const last7Days = checkins.filter((c: any) => c.date >= addDaysToDateStr(toLocalDateStr(new Date()), -7));
       const checkinRate = active.length > 0 ? Math.round((last7Days.length / (active.length * 7)) * 100) : 0;
 
       // Plans stats

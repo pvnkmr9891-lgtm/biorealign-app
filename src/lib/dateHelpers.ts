@@ -13,6 +13,17 @@ export function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Adds `delta` days to a 'YYYY-MM-DD' string and returns another
+// 'YYYY-MM-DD' string, entirely in local time — never round-trips through
+// toISOString(), which converts to UTC and rolls the date back a day for
+// any positive-UTC-offset timezone (see docs/TESTING.md's timezone note).
+export function addDaysToDateStr(dateStr: string, delta: number): string {
+  const [y, m, day] = dateStr.split('-').map(Number);
+  const d = new Date(y, m - 1, day);
+  d.setDate(d.getDate() + delta);
+  return toLocalDateStr(d);
+}
+
 export function getWeekStart(fromDate: Date = new Date()): string {
   const d = new Date(fromDate);
   const dow = d.getDay();

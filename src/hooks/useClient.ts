@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { toLocalDateStr, addDaysToDateStr } from '@/lib/dateHelpers';
 import type { DailyCheckin, Enrollment, ProgressMetric, ProgramContent, Session } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -83,7 +84,7 @@ export function useActiveEnrollment() {
 // ---------------------------------------------------------------------------
 export function useTodayCheckin() {
   const { user } = useAuth();
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateStr(new Date());
 
   return useQuery({
     queryKey: clientKeys.checkinToday(user?.id ?? ''),
@@ -138,7 +139,7 @@ export function useCheckinAllDates() {
     queryFn: async () => {
       const from = new Date();
       from.setMonth(from.getMonth() - 6);
-      const fromStr = from.toISOString().split('T')[0];
+      const fromStr = toLocalDateStr(from);
 
       const { data, error } = await supabase
         .from('daily_checkins')
@@ -172,7 +173,7 @@ export function useSaveCheckin() {
   date?: string;
 }) => {
   const { date: dateOverride, ...rest } = values;
-  const today = dateOverride ?? new Date().toISOString().split('T')[0];
+  const today = dateOverride ?? toLocalDateStr(new Date());
 
   // Save check-in
   const { data, error } = await supabase
@@ -214,7 +215,7 @@ export function useSaveCheckin() {
 },
     onSuccess: (_, variables) => {
       if (!user?.id) return;
-      const savedDate = variables.date ?? new Date().toISOString().split('T')[0];
+      const savedDate = variables.date ?? toLocalDateStr(new Date());
       const [y, m] = savedDate.split('-').map(Number);
       qc.invalidateQueries({ queryKey: clientKeys.checkinToday(user.id) });
       qc.invalidateQueries({ queryKey: clientKeys.checkinDate(user.id, savedDate) });
@@ -376,8 +377,8 @@ export function useCheckinStreak() {
       if (!dates.length) return 0;
 
       // Allow streak to start from today OR yesterday
-      const today     = new Date().toISOString().split('T')[0];
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      const today     = toLocalDateStr(new Date());
+      const yesterday = addDaysToDateStr(today, -1);
 
       let streak   = 0;
       let expected = dates[0] === today ? today : yesterday;
@@ -385,9 +386,7 @@ export function useCheckinStreak() {
       for (const date of dates) {
         if (date === expected) {
           streak++;
-          const d = new Date(expected);
-          d.setDate(d.getDate() - 1);
-          expected = d.toISOString().split('T')[0];
+          expected = addDaysToDateStr(expected, -1);
         } else {
           break;
         }

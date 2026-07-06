@@ -1,6 +1,7 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 
 // â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -254,7 +255,7 @@ export function useEndSupplementSchedule() {
     mutationFn: async ({ id, clientId, endDate }: { id: string; clientId?: string; endDate?: string }) => {
       const { error } = await supabase
         .from('supplement_schedules')
-        .update({ is_active: false, end_date: endDate ?? new Date().toISOString().split('T')[0] })
+        .update({ is_active: false, end_date: endDate ?? toLocalDateStr(new Date()) })
         .eq('id', id);
       if (error) throw error;
     },

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 
 export interface WorkoutExercise {
   id: string;
@@ -64,7 +65,7 @@ export function useWorkoutPlan() {
         .eq('plan_id', plan.id)
         .order('sort_order');
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateStr(new Date());
       const { data: completions } = await supabase
         .from('workout_completions')
         .select('day_id, completed_at')
