@@ -19,7 +19,7 @@ import { THEME } from '@/constants/theme';
 import { PasswordField, isPasswordValid } from '@/components/auth/PasswordField';
 import { OtpInput } from '@/components/auth/OtpInput';
 import { usePhoneOtp } from '@/hooks/usePhoneOtp';
-import { isValidEmail, MAX_LENGTHS } from '@/utils/validation';
+import { isValidEmail, isValidPhone, MAX_LENGTHS } from '@/utils/validation';
 
 type Step = 'form' | 'otp';
 
@@ -60,7 +60,14 @@ export default function RegisterScreen() {
       Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
     }
-    if (!phoneInputRef.current?.isValidNumber(phone)) {
+    // The react-native-phone-number-input ref's own isValidNumber() depends on
+    // an async country-calling-code lookup inside that library resolving
+    // before the first keystroke — when it hasn't, a genuinely valid 10-digit
+    // number gets rejected. Fall back to the app's own digit-count check
+    // (already used for phone validation on forgot-password) whenever the
+    // library says invalid, so a real number is never blocked by that race.
+    const libraryValid = phoneInputRef.current?.isValidNumber(phone) ?? false;
+    if (!libraryValid && !isValidPhone(phone)) {
       Alert.alert('Invalid phone number', 'Please enter a valid phone number.');
       return;
     }
@@ -68,6 +75,12 @@ export default function RegisterScreen() {
       Alert.alert('Weak password', 'Password must be at least 8 characters with a letter and a number.');
       return;
     }
+
+    // Same async race can leave `phone` without its "+91" prefix (see above) —
+    // normalize before it's ever sent to the DB or an OTP provider, and persist
+    // it back to state so the later OTP-verify/resend calls use it too.
+    const normalizedPhone = phone.trim().startsWith('+') ? phone.trim() : `+91${phone.trim()}`;
+    setPhone(normalizedPhone);
 
     setLoading(true);
 
@@ -99,7 +112,7 @@ export default function RegisterScreen() {
     // constraints, so a collision surfaces here as a clear error.
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ username: username.trim(), phone })
+      .update({ username: username.trim(), phone: normalizedPhone })
       .eq('id', data.user.id);
 
     if (profileError) {
@@ -113,7 +126,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    const otpResult = await sendOtp(phone);
+    const otpResult = await sendOtp(normalizedPhone);
     setLoading(false);
 
     if (!otpResult.ok) {

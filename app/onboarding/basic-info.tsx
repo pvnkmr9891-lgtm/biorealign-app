@@ -2,7 +2,8 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Alert,
+  Platform, ActivityIndicator, Alert, FlatList,
+  type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -48,40 +49,63 @@ const HEIGHTS = Array.from({ length: 143 }, (_, i) => String(130 + i)); // 130�
 const WEIGHTS = Array.from({ length: 171 }, (_, i) => String(30  + i)); // 30–200 kg
 
 // ── NumberSlider ─────────────────────────────────────────────────────────────
-// Horizontal slider: ‹ 8 9 10 [11] 12 13 14 ›
-// Tap adjacent numbers or tap-and-hold arrows for continuous step.
-// Purely tap-based — zero scroll conflicts with the outer page ScrollView.
+// A horizontally swipeable strip (FlatList) with snap-to-item behaviour, plus
+// tap-and-hold arrows for precise stepping — either input method works.
+// Each item gets a fixed pixel width (not an equal flex share) so long values
+// (4-digit years, "138 cm", "Sep"/"Oct") never wrap or truncate regardless of
+// how many items are visible at once.
 
-const SLIDER_VISIBLE = 7;
-const SLIDER_HALF    = 3;
+const ITEM_WIDTH = 64;
 
 function NumberSlider({
   items, selectedIndex, onChange, suffix = '',
 }: {
   items: string[]; selectedIndex: number; onChange: (i: number) => void; suffix?: string;
 }) {
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+  const listRef = useRef<FlatList<string>>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [liveIndex, setLiveIndex] = useState(selectedIndex);
+  const stepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function startStep(delta: number) {
-    let cur = Math.max(0, Math.min(items.length - 1, selectedIndex + delta));
-    onChange(cur);
-    intervalRef.current = setInterval(() => {
-      cur = Math.max(0, Math.min(items.length - 1, cur + delta));
-      onChange(cur);
-    }, 100);
-  }
-  function stopStep() {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }
+  useEffect(() => () => { if (stepIntervalRef.current) clearInterval(stepIntervalRef.current); }, []);
+  useEffect(() => { setLiveIndex(selectedIndex); }, [selectedIndex]);
+
+  // Follow external changes (arrow taps, initial mount) with an animated scroll.
+  useEffect(() => {
+    if (!trackWidth) return;
+    listRef.current?.scrollToOffset({ offset: selectedIndex * ITEM_WIDTH, animated: true });
+  }, [selectedIndex, trackWidth]);
 
   const atStart = selectedIndex === 0;
   const atEnd   = selectedIndex === items.length - 1;
 
-  const slots = Array.from({ length: SLIDER_VISIBLE }, (_, i) => {
-    const idx = selectedIndex - SLIDER_HALF + i;
-    return { idx, val: idx >= 0 && idx < items.length ? items[idx] : null };
-  });
+  function clamp(i: number) {
+    return Math.max(0, Math.min(items.length - 1, i));
+  }
+  function startStep(delta: number) {
+    let cur = clamp(selectedIndex + delta);
+    onChange(cur);
+    stepIntervalRef.current = setInterval(() => {
+      cur = clamp(cur + delta);
+      onChange(cur);
+    }, 120);
+  }
+  function stopStep() {
+    if (stepIntervalRef.current) { clearInterval(stepIntervalRef.current); stepIntervalRef.current = null; }
+  }
+
+  function indexFromOffset(offsetX: number) {
+    return clamp(Math.round(offsetX / ITEM_WIDTH));
+  }
+  function handleScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    setLiveIndex(indexFromOffset(e.nativeEvent.contentOffset.x));
+  }
+  function handleScrollSettled(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    const idx = indexFromOffset(e.nativeEvent.contentOffset.x);
+    if (idx !== selectedIndex) onChange(idx);
+  }
+
+  const sidePadding = trackWidth ? (trackWidth - ITEM_WIDTH) / 2 : 0;
 
   return (
     <View style={{ flex: 1 }}>
@@ -90,7 +114,6 @@ function NumberSlider({
         backgroundColor: 'rgba(255,255,255,0.04)',
         borderRadius: 14, borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
-        paddingVertical: 2,
       }}>
         <TouchableOpacity
           onPressIn={() => !atStart && startStep(-1)}
@@ -102,45 +125,55 @@ function NumberSlider({
           <Text style={{ fontSize: 18, color: atStart ? 'rgba(255,255,255,0.12)' : THEME.colors.teal }}>‹</Text>
         </TouchableOpacity>
 
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-          {slots.map(({ idx, val }, pos) => {
-            const dist     = Math.abs(pos - SLIDER_HALF);
-            const isCenter = pos === SLIDER_HALF;
-            let display = '';
-            if (val !== null) {
-              display = isCenter && suffix ? `${val}${suffix}` : val;
-            }
-            return (
-              <TouchableOpacity
-                key={pos}
-                style={{ flex: 1, alignItems: 'center', paddingVertical: 12 }}
-                onPress={() => val !== null && onChange(idx)}
-                activeOpacity={0.65}
-                disabled={val === null}
-              >
-                <Text
-                  numberOfLines={1}
-                  allowFontScaling={false}
-                  style={{
-                    fontSize:   isCenter ? 22 : dist === 1 ? 16 : dist === 2 ? 13 : 10,
-                    lineHeight: isCenter ? 26 : dist === 1 ? 19 : dist === 2 ? 16 : 13,
-                    fontFamily: isCenter ? THEME.fonts.sansSemibold : THEME.fonts.sans,
-                    color:      isCenter ? THEME.colors.teal : THEME.colors.textMuted,
-                    opacity:    isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.28 : 0.13,
-                    letterSpacing: isCenter ? 0.3 : 0,
-                    includeFontPadding: false,
-                  }}>
-                  {display}
-                </Text>
-                {isCenter && (
-                  <View style={{
-                    width: 22, height: 2, borderRadius: 1,
-                    backgroundColor: THEME.colors.teal, marginTop: 4, opacity: 0.7,
-                  }} />
-                )}
-              </TouchableOpacity>
-            );
-          })}
+        <View style={{ flex: 1 }} onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}>
+          {trackWidth > 0 && (
+            <FlatList
+              ref={listRef}
+              data={items}
+              keyExtractor={(_, i) => String(i)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={ITEM_WIDTH}
+              decelerationRate="fast"
+              scrollEventThrottle={16}
+              onScroll={handleScroll}
+              onMomentumScrollEnd={handleScrollSettled}
+              initialScrollIndex={selectedIndex}
+              getItemLayout={(_, i) => ({ length: ITEM_WIDTH, offset: ITEM_WIDTH * i, index: i })}
+              contentContainerStyle={{ paddingHorizontal: sidePadding }}
+              renderItem={({ item, index }) => {
+                const dist     = Math.abs(index - liveIndex);
+                const isCenter = index === liveIndex;
+                const display  = isCenter && suffix ? `${item}${suffix}` : item;
+                return (
+                  <TouchableOpacity
+                    style={{ width: ITEM_WIDTH, alignItems: 'center', paddingVertical: 12 }}
+                    onPress={() => onChange(index)}
+                    activeOpacity={0.65}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      allowFontScaling={false}
+                      style={{
+                        fontSize:   isCenter ? 20 : dist === 1 ? 16 : dist === 2 ? 13 : 10,
+                        fontFamily: isCenter ? THEME.fonts.sansSemibold : THEME.fonts.sans,
+                        color:      isCenter ? THEME.colors.teal : THEME.colors.textMuted,
+                        opacity:    isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.28 : dist === 3 ? 0.13 : 0,
+                        letterSpacing: isCenter ? 0.3 : 0,
+                      }}>
+                      {display}
+                    </Text>
+                    {isCenter && (
+                      <View style={{
+                        width: 22, height: 2, borderRadius: 1,
+                        backgroundColor: THEME.colors.teal, marginTop: 4, opacity: 0.7,
+                      }} />
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
         </View>
 
         <TouchableOpacity
