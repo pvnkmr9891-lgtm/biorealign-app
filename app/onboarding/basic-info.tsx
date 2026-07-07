@@ -68,16 +68,16 @@ function parseDob(text: string): { dd: number; mm: number; yyyy: number } | null
   return { dd, mm, yyyy };
 }
 
-// Pulls the first two digit-groups out of a free-form height string (e.g.
-// "5ft 2in", "5' 2\"", "5 2", "5ft2in") as feet and inches, regardless of
-// which unit words/symbols were used, and converts to centimetres.
-function parseHeightToCm(text: string): number | null {
-  const nums = text.match(/\d+/g);
-  if (!nums || nums.length === 0) return null;
-  const ft = parseInt(nums[0], 10);
-  const inch = nums.length > 1 ? parseInt(nums[1], 10) : 0;
-  if (Number.isNaN(ft) || Number.isNaN(inch) || inch >= 12) return null;
-  return (ft * 12 + inch) * 2.54;
+// Clamps a typed numeric string into [min, max] on blur, so an out-of-range
+// value snaps back visibly instead of only being caught by a submit-time
+// alert. Returns the input unchanged if it isn't a parseable number yet
+// (e.g. still empty, or the user is mid-edit) — required-ness is enforced
+// separately at submit.
+function clampNumericText(text: string, min: number, max: number): string {
+  if (!text.trim()) return text;
+  const n = parseFloat(text);
+  if (Number.isNaN(n)) return text;
+  return String(Math.min(max, Math.max(min, n)));
 }
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
@@ -162,9 +162,12 @@ export default function BasicInfoScreen() {
   // Date of birth — free text, auto-formatted to DD-MM-YYYY as the user types.
   const [dobText, setDobText] = useState('');
 
-  // Height (e.g. "5ft 2in") and weight (kg) — free text, parsed on submit.
-  const [heightText, setHeightText] = useState('');
-  const [weightText, setWeightText] = useState('');
+  // Height as two separate numeric fields (feet capped at 9, inches 0-11)
+  // and weight in kg — each restricted live via maxLength/keyboardType and
+  // clamped into range on blur, not just checked at final submit.
+  const [heightFeet,   setHeightFeet]   = useState('');
+  const [heightInches, setHeightInches] = useState('');
+  const [weightText,   setWeightText]   = useState('');
 
   // Goals
   const [goals,     setGoals]     = useState<string[]>([]);
@@ -238,23 +241,30 @@ export default function BasicInfoScreen() {
     }
     const dob = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 
-    const heightCm = parseHeightToCm(heightText);
-    if (heightCm === null) {
-      Alert.alert('Invalid height', 'Please enter your height like "5ft 2in".');
+    const feet = parseInt(heightFeet, 10);
+    if (Number.isNaN(feet) || feet < 1 || feet > 9) {
+      Alert.alert('Invalid height', 'Feet must be between 1 and 9.');
       return;
     }
-    if (heightCm < 50 || heightCm > 274.32) {
-      Alert.alert('Invalid height', 'Height must be between 1ft 8in and 9ft.');
+    const inches = heightInches.trim() ? parseInt(heightInches, 10) : 0;
+    if (Number.isNaN(inches) || inches < 0 || inches > 11) {
+      Alert.alert('Invalid height', 'Inches must be between 0 and 11.');
       return;
     }
+    const totalInches = feet * 12 + inches;
+    if (totalInches > 108) { // 9ft, the hard cap
+      Alert.alert('Invalid height', 'Maximum height is 9ft.');
+      return;
+    }
+    const heightCm = totalInches * 2.54;
 
-    const weightKg = parseFloat(weightText.replace(/[^0-9.]/g, ''));
+    const weightKg = parseFloat(weightText);
     if (Number.isNaN(weightKg) || weightKg <= 0) {
       Alert.alert('Invalid weight', 'Please enter your weight in kg.');
       return;
     }
-    if (weightKg < 20 || weightKg > 250) {
-      Alert.alert('Invalid weight', 'Weight must be between 20kg and 250kg.');
+    if (weightKg < 20 || weightKg > 300) {
+      Alert.alert('Invalid weight', 'Weight must be between 20kg and 300kg.');
       return;
     }
 
@@ -375,21 +385,40 @@ export default function BasicInfoScreen() {
             <Card>
               <View style={{ gap: 14 }}>
                 <View>
-                  <FieldLabel icon="📏">Height</FieldLabel>
-                  <TextInput
-                    value={heightText}
-                    onChangeText={setHeightText}
-                    placeholder="e.g. 5ft 2in"
-                    placeholderTextColor={THEME.colors.textMuted}
-                    maxLength={20}
-                    style={inputStyle}
-                  />
+                  <FieldLabel icon="📏">Height (max 9ft)</FieldLabel>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        value={heightFeet}
+                        onChangeText={(t) => setHeightFeet(t.replace(/[^0-9]/g, ''))}
+                        onBlur={() => setHeightFeet(t => clampNumericText(t, 1, 9))}
+                        placeholder="ft"
+                        placeholderTextColor={THEME.colors.textMuted}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        style={inputStyle}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        value={heightInches}
+                        onChangeText={(t) => setHeightInches(t.replace(/[^0-9]/g, ''))}
+                        onBlur={() => setHeightInches(t => clampNumericText(t, 0, 11))}
+                        placeholder="in"
+                        placeholderTextColor={THEME.colors.textMuted}
+                        keyboardType="number-pad"
+                        maxLength={2}
+                        style={inputStyle}
+                      />
+                    </View>
+                  </View>
                 </View>
                 <View>
-                  <FieldLabel icon="⚖️">Weight (kg)</FieldLabel>
+                  <FieldLabel icon="⚖️">Weight in kg (max 300)</FieldLabel>
                   <TextInput
                     value={weightText}
                     onChangeText={(t) => setWeightText(t.replace(/[^0-9.]/g, ''))}
+                    onBlur={() => setWeightText(t => clampNumericText(t, 20, 300))}
                     placeholder="e.g. 70"
                     placeholderTextColor={THEME.colors.textMuted}
                     keyboardType="decimal-pad"
