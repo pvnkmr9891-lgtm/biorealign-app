@@ -971,18 +971,27 @@ function AddRoutineModal({
                         </View>
 
                         {isExpanded && (
-                          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)', gap: 7 }}>
+                          <View style={{ marginTop: 12, paddingTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)' }}>
                             {t.items.length === 0 ? (
-                              <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans }}>No {itemLabel}s in this routine.</Text>
+                              <Text style={{ color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sans, paddingVertical: 10 }}>
+                                No {itemLabel}s in this routine.
+                              </Text>
                             ) : t.items.map((item, idx) => {
                               const detail = exerciseDetailLine(item);
                               return (
-                                <View key={item.id ?? idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                  <Text style={{ color: THEME.colors.textPrimary, fontSize: 12.5, fontFamily: THEME.fonts.sans, flex: 1 }} numberOfLines={1}>
-                                    {item.item_name}
+                                <View
+                                  key={item.id ?? idx}
+                                  style={{
+                                    paddingVertical: 10,
+                                    borderTopWidth: idx > 0 ? 1 : 0,
+                                    borderTopColor: 'rgba(255,255,255,0.05)',
+                                  }}
+                                >
+                                  <Text style={{ color: THEME.colors.textPrimary, fontSize: 14.5, fontFamily: THEME.fonts.sansMedium, lineHeight: 20 }}>
+                                    {idx + 1}. {item.item_name?.trim() ? item.item_name : '(no name saved)'}
                                   </Text>
                                   {detail && (
-                                    <Text style={{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans }} numberOfLines={1}>
+                                    <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, marginTop: 3, lineHeight: 17 }}>
                                       {detail}
                                     </Text>
                                   )}
