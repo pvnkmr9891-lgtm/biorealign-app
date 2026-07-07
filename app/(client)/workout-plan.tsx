@@ -845,11 +845,24 @@ function AddRoutineModal({
   const [selectedTemplate, setSelectedTemplate] = useState<RoutineTemplate | null>(null);
   const [scope, setScope] = useState<RoutineScope>('today');
   const [customDates, setCustomDates] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   function reset() {
-    setStep('list'); setSelectedTemplate(null); setScope('today'); setCustomDates(new Set());
+    setStep('list'); setSelectedTemplate(null); setScope('today'); setCustomDates(new Set()); setExpandedIds(new Set());
   }
   function handleClose() { reset(); onClose(); }
+
+  function toggleExpanded(id: string) {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function useTemplate(t: RoutineTemplate) {
+    setSelectedTemplate(t);
+    setStep('scope');
+  }
 
   function toggleCustomDate(dateStr: string) {
     setCustomDates(prev => {
@@ -919,25 +932,68 @@ function AddRoutineModal({
                 </Text>
               ) : (
                 <View style={{ gap: 10 }}>
-                  {templates.map(t => (
-                    <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}>
-                      <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedTemplate(t); setStep('scope'); }} activeOpacity={0.8}>
-                        <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }} numberOfLines={1}>{t.name}</Text>
-                        <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginTop: 2 }}>
-                          {t.items.length} {itemLabel}{t.items.length !== 1 ? 's' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => Alert.alert('Delete routine', `Delete "${t.name}"? This can't be undone.`, [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: () => onDelete(t.id) },
-                        ])}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Text style={{ color: THEME.colors.textMuted, fontSize: 16 }}>🗑</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                  {templates.map(t => {
+                    const isExpanded = expandedIds.has(t.id);
+                    return (
+                      <View key={t.id} style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <TouchableOpacity style={{ flex: 1 }} onPress={() => toggleExpanded(t.id)} activeOpacity={0.8}>
+                            <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }} numberOfLines={1}>{t.name}</Text>
+                            <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginTop: 2 }}>
+                              {t.items.length} {itemLabel}{t.items.length !== 1 ? 's' : ''}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => toggleExpanded(t.id)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.05)' }}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={{ color: THEME.colors.textSecondary, fontSize: 12, fontFamily: THEME.fonts.sansMedium }}>{isExpanded ? 'Hide' : 'View'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => useTemplate(t)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, backgroundColor: 'rgba(0,196,180,0.12)', borderWidth: 1, borderColor: THEME.colors.teal }}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={{ color: THEME.colors.teal, fontSize: 12, fontFamily: THEME.fonts.sansMedium }}>Use</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => Alert.alert('Delete routine', `Delete "${t.name}"? This can't be undone.`, [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => onDelete(t.id) },
+                            ])}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={{ color: THEME.colors.textMuted, fontSize: 16 }}>🗑</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {isExpanded && (
+                          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)', gap: 7 }}>
+                            {t.items.length === 0 ? (
+                              <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans }}>No {itemLabel}s in this routine.</Text>
+                            ) : t.items.map((item, idx) => {
+                              const detail = exerciseDetailLine(item);
+                              return (
+                                <View key={item.id ?? idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                  <Text style={{ color: THEME.colors.textPrimary, fontSize: 12.5, fontFamily: THEME.fonts.sans, flex: 1 }} numberOfLines={1}>
+                                    {item.item_name}
+                                  </Text>
+                                  {detail && (
+                                    <Text style={{ color: THEME.colors.textMuted, fontSize: 11, fontFamily: THEME.fonts.sans }} numberOfLines={1}>
+                                      {detail}
+                                    </Text>
+                                  )}
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               )
             )}
