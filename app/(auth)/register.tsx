@@ -250,6 +250,7 @@ export default function RegisterScreen() {
                   codeTextStyle={{ color: THEME.colors.textPrimary }}
                   withDarkTheme
                   placeholder="98765 43210"
+                  textInputProps={{ maxLength: 10 }}
                 />
               </View>
 
