@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getFocusEmoji } from '@/hooks/useWorkout';
 import { useManualLog, isToday, getDayDate, DEFAULT_TEMPLATE } from '@/hooks/useManualLog';
+import { toLocalDateStr } from '@/lib/dateHelpers';
 import { useRecalculateStreak } from '@/hooks/useStreakSystem';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -28,6 +29,10 @@ import { DINNER_GROUPS, type DinnerItem } from '@/constants/dinnerGroups';
 import { CRAVING_GROUPS, type CravingItem } from '@/constants/cravingGroups';
 import { SUPPLEMENT_ITEMS, type SupplementItemDefault } from '@/constants/supplementItems';
 import { useSupplementCatalogImages } from '@/hooks/useSupplementCatalogImages';
+import {
+  useMyRoutineTemplates, useSaveRoutineTemplate, useApplyRoutineTemplate, useDeleteRoutineTemplate,
+  type RoutineTemplate, type RoutineTemplateItem,
+} from '@/hooks/useWorkoutRoutineTemplates';
 
 const DAY_NAMES  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_ABBRS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -681,6 +686,327 @@ const wg = StyleSheet.create({
   gotItBtn:  { margin: 14, backgroundColor: THEME.colors.teal, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   gotItText: { color: '#000', fontSize: 14, fontFamily: THEME.fonts.sansMedium },
 });
+
+// ── Save Routine modal ───────────────────────────────────────────────────
+// Names and snapshots the currently-open day's Warmup/Workout/Cooldown
+// items into a reusable template (see useWorkoutRoutineTemplates.ts).
+function SaveRoutineModal({ visible, onClose, onSave, saving }: {
+  visible: boolean; onClose: () => void; onSave: (name: string) => Promise<void>; saving: boolean;
+}) {
+  const [name, setName] = useState('');
+
+  function handleClose() {
+    setName('');
+    onClose();
+  }
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
+      <Pressable style={wg.backdrop} onPress={handleClose}>
+        <Pressable style={wg.card}>
+          <View style={wg.header}>
+            <Text style={wg.title}>💾  Save Routine</Text>
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={wg.closeX}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={wg.divider} />
+          <View style={{ padding: 18, gap: 12 }}>
+            <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, lineHeight: 18 }}>
+              Saves every exercise currently in Warmup, Workout, and Cool-down for this day, so you can reapply the whole set later.
+            </Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Day 1 Push Routine"
+              placeholderTextColor={THEME.colors.textMuted}
+              maxLength={MAX_LENGTHS.shortTitle}
+              autoFocus
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 14, paddingVertical: 12,
+                color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sans,
+              }}
+            />
+            <TouchableOpacity
+              style={[wg.gotItBtn, { margin: 0, opacity: name.trim() && !saving ? 1 : 0.5 }]}
+              onPress={() => onSave(name.trim())}
+              disabled={!name.trim() || saving}
+              activeOpacity={0.85}
+            >
+              {saving ? <ActivityIndicator color="#000" /> : <Text style={wg.gotItText}>Save Routine</Text>}
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Multi-date calendar for the "Custom dates" apply-scope ──────────────────
+// Deliberately separate from the shared CalendarGrid (which is single-select
+// and disables future dates by default) — this one disables PAST dates
+// instead, since scheduling a routine into upcoming days is the whole point.
+function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
+  selectedDates: Set<string>; onToggleDate: (dateStr: string) => void;
+}) {
+  const todayStr = toLocalDateStr(new Date());
+  const [visibleMonth, setVisibleMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <TouchableOpacity onPress={() => setVisibleMonth(new Date(year, month - 1, 1))} style={{ padding: 8 }}>
+          <Text style={{ fontSize: 18, color: THEME.colors.textMuted }}>‹</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+          {visibleMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+        </Text>
+        <TouchableOpacity onPress={() => setVisibleMonth(new Date(year, month + 1, 1))} style={{ padding: 8 }}>
+          <Text style={{ fontSize: 18, color: THEME.colors.textMuted }}>›</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+        {['S','M','T','W','T','F','S'].map((w, i) => (
+          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>{w}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {cells.map((day, i) => {
+          if (day == null) return <View key={i} style={{ width: '14.28%', aspectRatio: 1 }} />;
+          const dateStr = toLocalDateStr(new Date(year, month, day));
+          const isPast = dateStr < todayStr;
+          const isSunday = new Date(year, month, day).getDay() === 0;
+          const disabled = isPast || isSunday;
+          const isSelected = selectedDates.has(dateStr);
+          const isToday = dateStr === todayStr;
+          return (
+            <TouchableOpacity
+              key={i}
+              disabled={disabled}
+              onPress={() => onToggleDate(dateStr)}
+              style={{ width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <View style={{
+                width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: isSelected ? THEME.colors.teal : 'transparent',
+                borderWidth: isToday && !isSelected ? 1 : 0, borderColor: THEME.colors.teal,
+              }}>
+                <Text style={{
+                  fontSize: 12.5, fontFamily: isSelected ? THEME.fonts.sansMedium : THEME.fonts.sans,
+                  color: isSelected ? THEME.colors.background : THEME.colors.textPrimary,
+                  opacity: disabled ? 0.25 : 1,
+                }}>
+                  {day}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <Text style={{ fontSize: 11, color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, marginTop: 10, textAlign: 'center' }}>
+        {selectedDates.size} date{selectedDates.size !== 1 ? 's' : ''} selected · past dates and Sundays can't be picked
+      </Text>
+    </View>
+  );
+}
+
+type RoutineScope = 'today' | 'week' | 'month' | 'custom';
+
+// ── Add Routine modal ────────────────────────────────────────────────────
+// Step flow: pick a saved template -> pick a scope (today / week / month /
+// custom dates) -> confirm -> apply. "Today" here means whichever day is
+// currently open in the Workout Plan screen, not necessarily the literal
+// calendar date, since that's the day the user has in view when they tap
+// the button.
+function AddRoutineModal({
+  visible, onClose, templates, loadingTemplates, onApply, onDelete, applying, weekStart, selectedDay,
+}: {
+  visible: boolean; onClose: () => void; templates: RoutineTemplate[]; loadingTemplates: boolean;
+  onApply: (template: RoutineTemplate, targetDates: Date[]) => Promise<void>; onDelete: (id: string) => Promise<void>;
+  applying: boolean; weekStart: string; selectedDay: number;
+}) {
+  const [step, setStep] = useState<'list' | 'scope' | 'custom' | 'confirm'>('list');
+  const [selectedTemplate, setSelectedTemplate] = useState<RoutineTemplate | null>(null);
+  const [scope, setScope] = useState<RoutineScope>('today');
+  const [customDates, setCustomDates] = useState<Set<string>>(new Set());
+
+  function reset() {
+    setStep('list'); setSelectedTemplate(null); setScope('today'); setCustomDates(new Set());
+  }
+  function handleClose() { reset(); onClose(); }
+
+  function toggleCustomDate(dateStr: string) {
+    setCustomDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr); else next.add(dateStr);
+      return next;
+    });
+  }
+
+  function computeScopeDates(): Date[] {
+    const viewedDate = getDayDate(weekStart, selectedDay);
+    if (scope === 'today') return [viewedDate];
+    if (scope === 'week') {
+      const dates: Date[] = [];
+      for (let d = 1; d <= 6; d++) dates.push(getDayDate(weekStart, d));
+      return dates;
+    }
+    if (scope === 'month') {
+      const year = viewedDate.getFullYear(), month = viewedDate.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay  = new Date(year, month + 1, 0);
+      const dates: Date[] = [];
+      const firstMon = new Date(firstDay);
+      const dow0 = firstMon.getDay();
+      firstMon.setDate(firstMon.getDate() - (dow0 === 0 ? 6 : dow0 - 1));
+      for (let mon = new Date(firstMon); mon <= lastDay; mon.setDate(mon.getDate() + 7)) {
+        for (let d = 0; d < 6; d++) {
+          const actual = addDaysToDate(mon, d);
+          if (actual >= firstDay && actual <= lastDay) dates.push(actual);
+        }
+      }
+      return dates;
+    }
+    // custom
+    return Array.from(customDates).map(s => parseDateLocal(s));
+  }
+
+  async function handleConfirmApply() {
+    if (!selectedTemplate) return;
+    await onApply(selectedTemplate, computeScopeDates());
+    handleClose();
+  }
+
+  const scopeDatesCount = step === 'confirm' ? computeScopeDates().length : 0;
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
+      <Pressable style={wg.backdrop} onPress={handleClose}>
+        <Pressable style={[wg.card, { maxHeight: '82%' }]}>
+          <View style={wg.header}>
+            <Text style={wg.title}>
+              {step === 'list' ? '📂  Add Routine' : step === 'scope' ? selectedTemplate?.name ?? '' : step === 'custom' ? 'Pick dates' : 'Confirm'}
+            </Text>
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={wg.closeX}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={wg.divider} />
+
+          <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ padding: 18 }}>
+            {step === 'list' && (
+              loadingTemplates ? (
+                <ActivityIndicator color={THEME.colors.teal} style={{ marginVertical: 20 }} />
+              ) : templates.length === 0 ? (
+                <Text style={{ color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sans, textAlign: 'center', paddingVertical: 20 }}>
+                  No saved routines yet — build a day's exercises, then tap Save Routine.
+                </Text>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {templates.map(t => (
+                    <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                      <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedTemplate(t); setStep('scope'); }} activeOpacity={0.8}>
+                        <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }} numberOfLines={1}>{t.name}</Text>
+                        <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginTop: 2 }}>
+                          {t.items.length} exercise{t.items.length !== 1 ? 's' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => Alert.alert('Delete routine', `Delete "${t.name}"? This can't be undone.`, [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Delete', style: 'destructive', onPress: () => onDelete(t.id) },
+                        ])}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={{ color: THEME.colors.textMuted, fontSize: 16 }}>🗑</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )
+            )}
+
+            {step === 'scope' && (
+              <View style={{ gap: 10 }}>
+                {([
+                  { key: 'today' as const, label: 'This day only' },
+                  { key: 'week'  as const, label: 'This week (Mon-Sat)' },
+                  { key: 'month' as const, label: 'This month' },
+                  { key: 'custom' as const, label: 'Custom dates…' },
+                ]).map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={{
+                      paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12,
+                      backgroundColor: scope === opt.key ? 'rgba(0,196,180,0.1)' : THEME.colors.surface2,
+                      borderWidth: 1, borderColor: scope === opt.key ? THEME.colors.teal : THEME.colors.border,
+                    }}
+                    onPress={() => {
+                      setScope(opt.key);
+                      if (opt.key === 'custom') setStep('custom'); else setStep('confirm');
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ color: scope === opt.key ? THEME.colors.teal : THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {step === 'custom' && (
+              <View style={{ gap: 14 }}>
+                <RoutineMultiCalendar selectedDates={customDates} onToggleDate={toggleCustomDate} />
+                <TouchableOpacity
+                  style={[wg.gotItBtn, { margin: 0, opacity: customDates.size ? 1 : 0.5 }]}
+                  disabled={!customDates.size}
+                  onPress={() => setStep('confirm')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={wg.gotItText}>Continue with {customDates.size} date{customDates.size !== 1 ? 's' : ''}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {step === 'confirm' && selectedTemplate && (
+              <View style={{ gap: 14 }}>
+                <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sans, lineHeight: 21 }}>
+                  Apply <Text style={{ fontFamily: THEME.fonts.sansMedium }}>"{selectedTemplate.name}"</Text> ({selectedTemplate.items.length} exercises) to{' '}
+                  <Text style={{ fontFamily: THEME.fonts.sansMedium }}>{scopeDatesCount} day{scopeDatesCount !== 1 ? 's' : ''}</Text>?
+                </Text>
+                <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, lineHeight: 18 }}>
+                  Any exercises you added yourself on those days will be replaced. Exercises your coach assigned are never touched. Dates already in the past are skipped automatically.
+                </Text>
+                <TouchableOpacity
+                  style={[wg.gotItBtn, { margin: 0, opacity: applying ? 0.6 : 1 }]}
+                  onPress={handleConfirmApply}
+                  disabled={applying}
+                  activeOpacity={0.85}
+                >
+                  {applying ? <ActivityIndicator color="#000" /> : <Text style={wg.gotItText}>Apply Routine</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 // ── Food Guidelines per programme (dead since Lite mode has no curated
 // programmes — kept disabled rather than deleted; see PROGRAMS_ENABLED) ──
@@ -2482,7 +2808,7 @@ const suppBtnStyle  = { paddingHorizontal: 6, paddingVertical: 2 } as const;
 const suppIconStyle = { fontSize: 16, fontFamily: THEME.fonts.sans } as const;
 
 // ── Day Panel (content for the selected day) ──────────────────────────
-function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise, scrollViewRef }: {
+function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise, scrollViewRef, onOpenSaveRoutine, onOpenAddRoutine }: {
   dayNumber: number;
   resolvedGrouped: any;
   weekStart: string;
@@ -2491,6 +2817,8 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
   onAddExercise: (dayNumber: number, itemType: string, itemsForOrder: any[], payload: any, mealSlot?: string) => Promise<void>;
   onRemoveExercise: (id: string) => Promise<void>;
   scrollViewRef: React.RefObject<ScrollView>;
+  onOpenSaveRoutine: () => void;
+  onOpenAddRoutine: () => void;
 }) {
   const [expandedFoodSlot, setExpandedFoodSlot] = useState<string | null>(null);
   const [suppAllOpen, setSuppAllOpen] = useState<boolean | null>(null);
@@ -2574,6 +2902,27 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
           onRemove={onRemoveExercise}
         />
       ))}
+
+      {/* Save / Add Routine — snapshot this day's Warmup/Workout/Cooldown, or
+          apply a previously saved one to this day/week/month/custom dates */}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 12 }}>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+          onPress={onOpenSaveRoutine}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 16 }}>💾</Text>
+          <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Save Routine</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+          onPress={onOpenAddRoutine}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 16 }}>📂</Text>
+          <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Water tracker — custom circular UI */}
       {(dayData['water'] || []).length > 0 && (
@@ -2822,6 +3171,14 @@ function ManualLogView({ userId }: { userId: string }) {
   const queryClient = useQueryClient();
   const { mutate: recalcStreak } = useRecalculateStreak();
 
+  // Save Routine / Add Routine
+  const [saveRoutineVisible, setSaveRoutineVisible] = useState(false);
+  const [addRoutineVisible, setAddRoutineVisible]   = useState(false);
+  const { data: routineTemplates = [], isLoading: templatesLoading } = useMyRoutineTemplates();
+  const { mutateAsync: saveRoutineTemplate, isPending: savingRoutine }     = useSaveRoutineTemplate();
+  const { mutateAsync: applyRoutineTemplate, isPending: applyingRoutine } = useApplyRoutineTemplate();
+  const { mutateAsync: deleteRoutineTemplate } = useDeleteRoutineTemplate();
+
   const [calendarOpen, setCalendarOpen]   = useState(false);
   const [startDate, setStartDate]         = useState<string | null>((profile as any)?.workout_start_date ?? null);
   const [planIntensity, setPlanIntensity]       = useState<string | null>((profile as any)?.workout_intensity ?? null);
@@ -2943,6 +3300,56 @@ function ManualLogView({ userId }: { userId: string }) {
     }
     return result;
   }, [grouped, pending]);
+
+  // Snapshot the currently-open day's Warmup/Workout/Cooldown into a named,
+  // reusable template (see useWorkoutRoutineTemplates.ts).
+  const handleSaveRoutine = useCallback(async (name: string) => {
+    const dayData = resolvedGrouped[selectedDay] || {};
+    const items: RoutineTemplateItem[] = [];
+    (['warmup', 'workout', 'cooldown'] as const).forEach(sectionKey => {
+      (dayData[sectionKey] || []).forEach((item: any) => {
+        items.push({
+          item_type:  sectionKey,
+          item_name:  item.item_name,
+          item_order: item.item_order ?? 0,
+          sets:       item.sets ?? null,
+          reps:       item.reps ?? null,
+          side:       item.side ?? null,
+          hold_secs:  item.hold_secs ?? null,
+          rest_secs:  item.rest_secs ?? null,
+        });
+      });
+    });
+    if (items.length === 0) {
+      Alert.alert('Nothing to save', 'Add at least one exercise to Warmup, Workout, or Cool-down before saving a routine.');
+      return;
+    }
+    try {
+      await saveRoutineTemplate({ name, items });
+      setSaveRoutineVisible(false);
+      Alert.alert('Saved', `"${name}" saved with ${items.length} exercise${items.length !== 1 ? 's' : ''}.`);
+    } catch (e: any) {
+      Alert.alert('Could not save routine', e?.message ?? 'Please try again.');
+    }
+  }, [resolvedGrouped, selectedDay, saveRoutineTemplate]);
+
+  // Applies a saved template's items to the resolved target dates, replacing
+  // only the client's own existing items on those days (see
+  // useApplyRoutineTemplate — coach-assigned exercises are never touched,
+  // and past dates/Sundays are silently skipped).
+  const handleApplyRoutine = useCallback(async (template: RoutineTemplate, targetDates: Date[]) => {
+    try {
+      const result = await applyRoutineTemplate({ items: template.items, targetDates });
+      setAddRoutineVisible(false);
+      const parts = [`Applied "${template.name}" to ${result.appliedCount} day${result.appliedCount !== 1 ? 's' : ''}.`];
+      if (result.skippedPast)   parts.push(`${result.skippedPast} past date${result.skippedPast !== 1 ? 's were' : ' was'} skipped.`);
+      if (result.skippedSunday) parts.push(`${result.skippedSunday} Sunday${result.skippedSunday !== 1 ? 's were' : ' was'} skipped (rest day).`);
+      Alert.alert('Routine applied', parts.join(' '));
+      queryClient.invalidateQueries({ queryKey: ['manual_logs', userId] });
+    } catch (e: any) {
+      Alert.alert('Could not apply routine', e?.message ?? 'Please try again.');
+    }
+  }, [applyRoutineTemplate, queryClient, userId]);
 
   // Toggle a single item (local only — not saved until Save button)
   const handleToggle = useCallback((id: string, currentChecked: boolean) => {
@@ -3266,6 +3673,8 @@ function ManualLogView({ userId }: { userId: string }) {
               onAddExercise={handleAddExercise}
               onRemoveExercise={handleRemoveExercise}
               scrollViewRef={scrollViewRef}
+              onOpenSaveRoutine={() => setSaveRoutineVisible(true)}
+              onOpenAddRoutine={() => setAddRoutineVisible(true)}
             />
           </View>
       </ScrollView>
@@ -3295,6 +3704,24 @@ function ManualLogView({ userId }: { userId: string }) {
   }}
   onDaySelect={(ws) => setSelectedWeekStart(ws)}
 />
+
+      <SaveRoutineModal
+        visible={saveRoutineVisible}
+        onClose={() => setSaveRoutineVisible(false)}
+        onSave={handleSaveRoutine}
+        saving={savingRoutine}
+      />
+      <AddRoutineModal
+        visible={addRoutineVisible}
+        onClose={() => setAddRoutineVisible(false)}
+        templates={routineTemplates}
+        loadingTemplates={templatesLoading}
+        onApply={handleApplyRoutine}
+        onDelete={deleteRoutineTemplate}
+        applying={applyingRoutine}
+        weekStart={weekStart}
+        selectedDay={selectedDay}
+      />
 
       {/* Sticky Save button */}
       <SaveButton isDirty={isDirty} isSaving={isSaving} onSave={handleSave} />
