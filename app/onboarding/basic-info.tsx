@@ -263,8 +263,8 @@ export default function BasicInfoScreen() {
       Alert.alert('Invalid weight', 'Please enter your weight in kg.');
       return;
     }
-    if (weightKg < 20 || weightKg > 300) {
-      Alert.alert('Invalid weight', 'Weight must be between 20kg and 300kg.');
+    if (weightKg < 20 || weightKg >= 300) {
+      Alert.alert('Invalid weight', 'Weight must be between 20kg and under 300kg.');
       return;
     }
 
@@ -414,11 +414,11 @@ export default function BasicInfoScreen() {
                   </View>
                 </View>
                 <View>
-                  <FieldLabel icon="⚖️">Weight in kg (max 300)</FieldLabel>
+                  <FieldLabel icon="⚖️">Weight in kg (under 300)</FieldLabel>
                   <TextInput
                     value={weightText}
                     onChangeText={(t) => setWeightText(t.replace(/[^0-9.]/g, ''))}
-                    onBlur={() => setWeightText(t => clampNumericText(t, 20, 300))}
+                    onBlur={() => setWeightText(t => clampNumericText(t, 20, 299.9))}
                     placeholder="e.g. 70"
                     placeholderTextColor={THEME.colors.textMuted}
                     keyboardType="decimal-pad"
