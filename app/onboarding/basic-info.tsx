@@ -80,6 +80,18 @@ function clampNumericText(text: string, min: number, max: number): string {
   return String(Math.min(max, Math.max(min, n)));
 }
 
+// Rejects a keystroke the instant the typed value would exceed max, rather
+// than waiting for blur/submit to catch it — maxLength alone only caps
+// character count, not magnitude (a 6-char field happily accepts "999999").
+// Only the upper bound is checked live: a lower bound can't be enforced
+// mid-type (every multi-digit number is transiently "too low" on its way
+// up, e.g. "9" before "90"), so min is still enforced on blur/submit only.
+function isUnderLiveMax(text: string, max: number): boolean {
+  if (!text || text === '.') return true;
+  const n = parseFloat(text);
+  return Number.isNaN(n) || n < max;
+}
+
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
 function Card({ children }: { children: React.ReactNode }) {
@@ -402,7 +414,10 @@ export default function BasicInfoScreen() {
                     <View style={{ flex: 1 }}>
                       <TextInput
                         value={heightInches}
-                        onChangeText={(t) => setHeightInches(t.replace(/[^0-9]/g, ''))}
+                        onChangeText={(t) => {
+                          const sanitized = t.replace(/[^0-9]/g, '');
+                          if (isUnderLiveMax(sanitized, 12)) setHeightInches(sanitized);
+                        }}
                         onBlur={() => setHeightInches(t => clampNumericText(t, 0, 11))}
                         placeholder="in"
                         placeholderTextColor={THEME.colors.textMuted}
@@ -417,12 +432,15 @@ export default function BasicInfoScreen() {
                   <FieldLabel icon="⚖️">Weight in kg (under 300)</FieldLabel>
                   <TextInput
                     value={weightText}
-                    onChangeText={(t) => setWeightText(t.replace(/[^0-9.]/g, ''))}
+                    onChangeText={(t) => {
+                      const sanitized = t.replace(/[^0-9.]/g, '');
+                      if (isUnderLiveMax(sanitized, 300)) setWeightText(sanitized);
+                    }}
                     onBlur={() => setWeightText(t => clampNumericText(t, 20, 299.9))}
                     placeholder="e.g. 70"
                     placeholderTextColor={THEME.colors.textMuted}
                     keyboardType="decimal-pad"
-                    maxLength={6}
+                    maxLength={5}
                     style={inputStyle}
                   />
                 </View>
