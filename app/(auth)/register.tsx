@@ -19,9 +19,19 @@ import { THEME } from '@/constants/theme';
 import { PasswordField, isPasswordValid } from '@/components/auth/PasswordField';
 import { OtpInput } from '@/components/auth/OtpInput';
 import { usePhoneOtp } from '@/hooks/usePhoneOtp';
-import { isValidEmail, isValidPhone, MAX_LENGTHS } from '@/utils/validation';
+import { isValidEmail, MAX_LENGTHS } from '@/utils/validation';
 
 type Step = 'form' | 'otp';
+
+// The app is India-only for registration (defaultCode="IN" below is fixed,
+// not user-selectable), so the fallback check should require exactly a
+// 10-digit Indian mobile number — optionally with a "91" country-code
+// prefix — rather than the looser 7-15 digit range isValidPhone() allows
+// for other, more country-agnostic screens (e.g. forgot-password).
+function isTenDigitIndianNumber(value: string): boolean {
+  const digits = value.replace(/[^0-9]/g, '');
+  return digits.length === 10 || (digits.length === 12 && digits.startsWith('91'));
+}
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -63,12 +73,12 @@ export default function RegisterScreen() {
     // The react-native-phone-number-input ref's own isValidNumber() depends on
     // an async country-calling-code lookup inside that library resolving
     // before the first keystroke — when it hasn't, a genuinely valid 10-digit
-    // number gets rejected. Fall back to the app's own digit-count check
-    // (already used for phone validation on forgot-password) whenever the
-    // library says invalid, so a real number is never blocked by that race.
+    // number gets rejected. Fall back to a strict 10-digit-Indian-number check
+    // whenever the library says invalid, so a real number is never blocked by
+    // that race, without loosening the length requirement itself.
     const libraryValid = phoneInputRef.current?.isValidNumber(phone) ?? false;
-    if (!libraryValid && !isValidPhone(phone)) {
-      Alert.alert('Invalid phone number', 'Please enter a valid phone number.');
+    if (!libraryValid && !isTenDigitIndianNumber(phone)) {
+      Alert.alert('Invalid phone number', 'Please enter a valid 10-digit phone number.');
       return;
     }
     if (!isPasswordValid(password)) {
