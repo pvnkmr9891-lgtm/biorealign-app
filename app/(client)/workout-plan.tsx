@@ -31,7 +31,7 @@ import { SUPPLEMENT_ITEMS, type SupplementItemDefault } from '@/constants/supple
 import { useSupplementCatalogImages } from '@/hooks/useSupplementCatalogImages';
 import {
   useMyRoutineTemplates, useSaveRoutineTemplate, useApplyRoutineTemplate, useDeleteRoutineTemplate,
-  type RoutineTemplate, type RoutineTemplateItem,
+  type RoutineTemplate, type RoutineTemplateItem, type RoutineDomain,
 } from '@/hooks/useWorkoutRoutineTemplates';
 
 const DAY_NAMES  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -690,8 +690,9 @@ const wg = StyleSheet.create({
 // ── Save Routine modal ───────────────────────────────────────────────────
 // Names and snapshots the currently-open day's Warmup/Workout/Cooldown
 // items into a reusable template (see useWorkoutRoutineTemplates.ts).
-function SaveRoutineModal({ visible, onClose, onSave, saving }: {
+function SaveRoutineModal({ visible, onClose, onSave, saving, description, namePlaceholder }: {
   visible: boolean; onClose: () => void; onSave: (name: string) => Promise<void>; saving: boolean;
+  description: string; namePlaceholder: string;
 }) {
   const [name, setName] = useState('');
 
@@ -713,12 +714,12 @@ function SaveRoutineModal({ visible, onClose, onSave, saving }: {
           <View style={wg.divider} />
           <View style={{ padding: 18, gap: 12 }}>
             <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, lineHeight: 18 }}>
-              Saves every exercise currently in Warmup, Workout, and Cool-down for this day, so you can reapply the whole set later.
+              {description}
             </Text>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="e.g. Day 1 Push Routine"
+              placeholder={namePlaceholder}
               placeholderTextColor={THEME.colors.textMuted}
               maxLength={MAX_LENGTHS.shortTitle}
               autoFocus
@@ -833,10 +834,12 @@ type RoutineScope = 'today' | 'week' | 'month' | 'custom';
 // the button.
 function AddRoutineModal({
   visible, onClose, templates, loadingTemplates, onApply, onDelete, applying, weekStart, selectedDay,
+  itemLabel, emptyStateMessage,
 }: {
   visible: boolean; onClose: () => void; templates: RoutineTemplate[]; loadingTemplates: boolean;
   onApply: (template: RoutineTemplate, targetDates: Date[]) => Promise<void>; onDelete: (id: string) => Promise<void>;
   applying: boolean; weekStart: string; selectedDay: number;
+  itemLabel: string; emptyStateMessage: string;
 }) {
   const [step, setStep] = useState<'list' | 'scope' | 'custom' | 'confirm'>('list');
   const [selectedTemplate, setSelectedTemplate] = useState<RoutineTemplate | null>(null);
@@ -912,7 +915,7 @@ function AddRoutineModal({
                 <ActivityIndicator color={THEME.colors.teal} style={{ marginVertical: 20 }} />
               ) : templates.length === 0 ? (
                 <Text style={{ color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sans, textAlign: 'center', paddingVertical: 20 }}>
-                  No saved routines yet — build a day's exercises, then tap Save Routine.
+                  {emptyStateMessage}
                 </Text>
               ) : (
                 <View style={{ gap: 10 }}>
@@ -921,7 +924,7 @@ function AddRoutineModal({
                       <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedTemplate(t); setStep('scope'); }} activeOpacity={0.8}>
                         <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }} numberOfLines={1}>{t.name}</Text>
                         <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginTop: 2 }}>
-                          {t.items.length} exercise{t.items.length !== 1 ? 's' : ''}
+                          {t.items.length} {itemLabel}{t.items.length !== 1 ? 's' : ''}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -985,11 +988,11 @@ function AddRoutineModal({
             {step === 'confirm' && selectedTemplate && (
               <View style={{ gap: 14 }}>
                 <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sans, lineHeight: 21 }}>
-                  Apply <Text style={{ fontFamily: THEME.fonts.sansMedium }}>"{selectedTemplate.name}"</Text> ({selectedTemplate.items.length} exercises) to{' '}
+                  Apply <Text style={{ fontFamily: THEME.fonts.sansMedium }}>"{selectedTemplate.name}"</Text> ({selectedTemplate.items.length} {itemLabel}{selectedTemplate.items.length !== 1 ? 's' : ''}) to{' '}
                   <Text style={{ fontFamily: THEME.fonts.sansMedium }}>{scopeDatesCount} day{scopeDatesCount !== 1 ? 's' : ''}</Text>?
                 </Text>
                 <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, lineHeight: 18 }}>
-                  Any exercises you added yourself on those days will be replaced. Exercises your coach assigned are never touched. Dates already in the past are skipped automatically.
+                  Any {itemLabel}s you added yourself on those days will be replaced. Anything your coach assigned is never touched. Dates already in the past are skipped automatically.
                 </Text>
                 <TouchableOpacity
                   style={[wg.gotItBtn, { margin: 0, opacity: applying ? 0.6 : 1 }]}
@@ -2808,7 +2811,11 @@ const suppBtnStyle  = { paddingHorizontal: 6, paddingVertical: 2 } as const;
 const suppIconStyle = { fontSize: 16, fontFamily: THEME.fonts.sans } as const;
 
 // ── Day Panel (content for the selected day) ──────────────────────────
-function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise, scrollViewRef, onOpenSaveRoutine, onOpenAddRoutine }: {
+function DayPanel({
+  dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise, scrollViewRef,
+  onOpenSaveRoutine, onOpenAddRoutine, onOpenSaveNutritionRoutine, onOpenAddNutritionRoutine,
+  onOpenSaveSupplementRoutine, onOpenAddSupplementRoutine,
+}: {
   dayNumber: number;
   resolvedGrouped: any;
   weekStart: string;
@@ -2819,6 +2826,10 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
   scrollViewRef: React.RefObject<ScrollView>;
   onOpenSaveRoutine: () => void;
   onOpenAddRoutine: () => void;
+  onOpenSaveNutritionRoutine: () => void;
+  onOpenAddNutritionRoutine: () => void;
+  onOpenSaveSupplementRoutine: () => void;
+  onOpenAddSupplementRoutine: () => void;
 }) {
   const [expandedFoodSlot, setExpandedFoodSlot] = useState<string | null>(null);
   const [suppAllOpen, setSuppAllOpen] = useState<boolean | null>(null);
@@ -3035,6 +3046,29 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
               </View>
             );
           })}
+
+          {/* Save / Add Routine — snapshot this day's Nutrition (excluding
+              Confession Booth, which is free-form logging, not a plannable
+              routine), or apply a previously saved one */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 12 }}>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+              onPress={onOpenSaveNutritionRoutine}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 16 }}>💾</Text>
+              <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Save Routine</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+              onPress={onOpenAddNutritionRoutine}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 16 }}>📂</Text>
+              <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* ── Confession Booth — standalone craving logger ─────────────── */}
           {(() => {
             const cravingItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === 'craving');
@@ -3083,6 +3117,27 @@ function DayPanel({ dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll
               />
             );
           })}
+
+          {/* Save / Add Routine — snapshot this day's full Supplement
+              schedule (all 5 slots), or apply a previously saved one */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+              onPress={onOpenSaveSupplementRoutine}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 16 }}>💾</Text>
+              <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Save Routine</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 13, borderWidth: 0.5, borderColor: THEME.colors.border }}
+              onPress={onOpenAddSupplementRoutine}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 16 }}>📂</Text>
+              <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </View>
@@ -3164,6 +3219,58 @@ function parseDateLocal(str: string): Date {
   return new Date(y, m - 1, d);
 }
 
+// ── Save Routine item collectors, one per domain ─────────────────────────
+// Each reads a day's already-resolved section data (see resolvedGrouped)
+// and maps it into the flat RoutineTemplateItem shape the templates tables
+// store, keeping only the fields relevant to that domain.
+function collectWorkoutRoutineItems(dayData: any): RoutineTemplateItem[] {
+  const items: RoutineTemplateItem[] = [];
+  (['warmup', 'workout', 'cooldown'] as const).forEach(sectionKey => {
+    (dayData[sectionKey] || []).forEach((item: any) => {
+      items.push({
+        item_type:  sectionKey,
+        item_name:  item.item_name,
+        item_order: item.item_order ?? 0,
+        sets:       item.sets ?? null,
+        reps:       item.reps ?? null,
+        side:       item.side ?? null,
+        hold_secs:  item.hold_secs ?? null,
+        rest_secs:  item.rest_secs ?? null,
+      });
+    });
+  });
+  return items;
+}
+
+// Excludes meal_slot='craving' (Confession Booth) deliberately — that's
+// free-form logging of what actually happened, not part of a plannable
+// routine, which is exactly why Save/Add Routine sit before it on screen.
+function collectNutritionRoutineItems(dayData: any): RoutineTemplateItem[] {
+  return (dayData['food'] || [])
+    .filter((item: any) => item.meal_slot !== 'craving')
+    .map((item: any) => ({
+      item_type:  'food',
+      item_name:  item.item_name,
+      item_order: item.item_order ?? 0,
+      meal_slot:  item.meal_slot ?? null,
+      quantity:   item.quantity ?? null,
+      calories:   item.calories ?? null,
+      protein_g:  item.protein_g ?? null,
+      carbs_g:    item.carbs_g ?? null,
+      fat_g:      item.fat_g ?? null,
+    }));
+}
+
+function collectSupplementRoutineItems(dayData: any): RoutineTemplateItem[] {
+  return (dayData['supplement'] || []).map((item: any) => ({
+    item_type:  'supplement',
+    item_name:  item.item_name,
+    item_order: item.item_order ?? 0,
+    meal_slot:  item.meal_slot ?? null,
+    quantity:   item.quantity ?? null,
+  }));
+}
+
 function ManualLogView({ userId }: { userId: string }) {
   const scrollViewRef = useRef<ScrollView>(null);
   const { profile, fetchProfile, setProfile } = useAuthStore();
@@ -3171,13 +3278,27 @@ function ManualLogView({ userId }: { userId: string }) {
   const queryClient = useQueryClient();
   const { mutate: recalcStreak } = useRecalculateStreak();
 
-  // Save Routine / Add Routine
-  const [saveRoutineVisible, setSaveRoutineVisible] = useState(false);
-  const [addRoutineVisible, setAddRoutineVisible]   = useState(false);
-  const { data: routineTemplates = [], isLoading: templatesLoading } = useMyRoutineTemplates();
-  const { mutateAsync: saveRoutineTemplate, isPending: savingRoutine }     = useSaveRoutineTemplate();
-  const { mutateAsync: applyRoutineTemplate, isPending: applyingRoutine } = useApplyRoutineTemplate();
-  const { mutateAsync: deleteRoutineTemplate } = useDeleteRoutineTemplate();
+  // Save Routine / Add Routine — one set of modal-visibility state per
+  // domain (workout / nutrition / supplement), sharing the same
+  // save/apply/delete mutations (they're domain-parameterized) and the
+  // same SaveRoutineModal/AddRoutineModal components.
+  const [workoutRoutineModal, setWorkoutRoutineModal]       = useState<'save' | 'add' | null>(null);
+  const [nutritionRoutineModal, setNutritionRoutineModal]   = useState<'save' | 'add' | null>(null);
+  const [supplementRoutineModal, setSupplementRoutineModal] = useState<'save' | 'add' | null>(null);
+
+  const { data: workoutTemplates = [], isLoading: workoutTemplatesLoading }       = useMyRoutineTemplates('workout');
+  const { data: nutritionTemplates = [], isLoading: nutritionTemplatesLoading }   = useMyRoutineTemplates('nutrition');
+  const { data: supplementTemplates = [], isLoading: supplementTemplatesLoading } = useMyRoutineTemplates('supplement');
+
+  const { mutateAsync: saveRoutineTemplate, isPending: savingRoutine } = useSaveRoutineTemplate();
+
+  const { mutateAsync: applyWorkoutRoutine, isPending: applyingWorkoutRoutine }       = useApplyRoutineTemplate('workout');
+  const { mutateAsync: applyNutritionRoutine, isPending: applyingNutritionRoutine }   = useApplyRoutineTemplate('nutrition');
+  const { mutateAsync: applySupplementRoutine, isPending: applyingSupplementRoutine } = useApplyRoutineTemplate('supplement');
+
+  const { mutateAsync: deleteWorkoutTemplate }    = useDeleteRoutineTemplate('workout');
+  const { mutateAsync: deleteNutritionTemplate }  = useDeleteRoutineTemplate('nutrition');
+  const { mutateAsync: deleteSupplementTemplate } = useDeleteRoutineTemplate('supplement');
 
   const [calendarOpen, setCalendarOpen]   = useState(false);
   const [startDate, setStartDate]         = useState<string | null>((profile as any)?.workout_start_date ?? null);
@@ -3301,46 +3422,44 @@ function ManualLogView({ userId }: { userId: string }) {
     return result;
   }, [grouped, pending]);
 
-  // Snapshot the currently-open day's Warmup/Workout/Cooldown into a named,
-  // reusable template (see useWorkoutRoutineTemplates.ts).
-  const handleSaveRoutine = useCallback(async (name: string) => {
+  // Snapshot the currently-open day's items for one domain into a named,
+  // reusable template (see useWorkoutRoutineTemplates.ts / the collect*
+  // helpers above).
+  const handleSaveRoutine = useCallback(async (
+    domain: RoutineDomain, name: string, closeModal: () => void, emptyMessage: string,
+  ) => {
     const dayData = resolvedGrouped[selectedDay] || {};
-    const items: RoutineTemplateItem[] = [];
-    (['warmup', 'workout', 'cooldown'] as const).forEach(sectionKey => {
-      (dayData[sectionKey] || []).forEach((item: any) => {
-        items.push({
-          item_type:  sectionKey,
-          item_name:  item.item_name,
-          item_order: item.item_order ?? 0,
-          sets:       item.sets ?? null,
-          reps:       item.reps ?? null,
-          side:       item.side ?? null,
-          hold_secs:  item.hold_secs ?? null,
-          rest_secs:  item.rest_secs ?? null,
-        });
-      });
-    });
+    const items =
+      domain === 'workout'    ? collectWorkoutRoutineItems(dayData) :
+      domain === 'nutrition'  ? collectNutritionRoutineItems(dayData) :
+                                 collectSupplementRoutineItems(dayData);
     if (items.length === 0) {
-      Alert.alert('Nothing to save', 'Add at least one exercise to Warmup, Workout, or Cool-down before saving a routine.');
+      Alert.alert('Nothing to save', emptyMessage);
       return;
     }
     try {
-      await saveRoutineTemplate({ name, items });
-      setSaveRoutineVisible(false);
-      Alert.alert('Saved', `"${name}" saved with ${items.length} exercise${items.length !== 1 ? 's' : ''}.`);
+      await saveRoutineTemplate({ name, domain, items });
+      closeModal();
+      Alert.alert('Saved', `"${name}" saved with ${items.length} item${items.length !== 1 ? 's' : ''}.`);
     } catch (e: any) {
       Alert.alert('Could not save routine', e?.message ?? 'Please try again.');
     }
   }, [resolvedGrouped, selectedDay, saveRoutineTemplate]);
 
-  // Applies a saved template's items to the resolved target dates, replacing
-  // only the client's own existing items on those days (see
-  // useApplyRoutineTemplate — coach-assigned exercises are never touched,
-  // and past dates/Sundays are silently skipped).
-  const handleApplyRoutine = useCallback(async (template: RoutineTemplate, targetDates: Date[]) => {
+  // Applies a saved template's items to the resolved target dates via
+  // whichever domain's apply-mutation is passed in, replacing only the
+  // client's own existing items on those days (see useApplyRoutineTemplate
+  // — coach-assigned exercises are never touched, and past dates/Sundays
+  // are silently skipped).
+  const handleApplyRoutine = useCallback(async (
+    applyFn: (args: { items: RoutineTemplateItem[]; targetDates: Date[] }) => Promise<{ appliedCount: number; skippedPast: number; skippedSunday: number }>,
+    closeModal: () => void,
+    template: RoutineTemplate,
+    targetDates: Date[],
+  ) => {
     try {
-      const result = await applyRoutineTemplate({ items: template.items, targetDates });
-      setAddRoutineVisible(false);
+      const result = await applyFn({ items: template.items, targetDates });
+      closeModal();
       const parts = [`Applied "${template.name}" to ${result.appliedCount} day${result.appliedCount !== 1 ? 's' : ''}.`];
       if (result.skippedPast)   parts.push(`${result.skippedPast} past date${result.skippedPast !== 1 ? 's were' : ' was'} skipped.`);
       if (result.skippedSunday) parts.push(`${result.skippedSunday} Sunday${result.skippedSunday !== 1 ? 's were' : ' was'} skipped (rest day).`);
@@ -3349,7 +3468,7 @@ function ManualLogView({ userId }: { userId: string }) {
     } catch (e: any) {
       Alert.alert('Could not apply routine', e?.message ?? 'Please try again.');
     }
-  }, [applyRoutineTemplate, queryClient, userId]);
+  }, [queryClient, userId]);
 
   // Toggle a single item (local only — not saved until Save button)
   const handleToggle = useCallback((id: string, currentChecked: boolean) => {
@@ -3673,8 +3792,12 @@ function ManualLogView({ userId }: { userId: string }) {
               onAddExercise={handleAddExercise}
               onRemoveExercise={handleRemoveExercise}
               scrollViewRef={scrollViewRef}
-              onOpenSaveRoutine={() => setSaveRoutineVisible(true)}
-              onOpenAddRoutine={() => setAddRoutineVisible(true)}
+              onOpenSaveRoutine={() => setWorkoutRoutineModal('save')}
+              onOpenAddRoutine={() => setWorkoutRoutineModal('add')}
+              onOpenSaveNutritionRoutine={() => setNutritionRoutineModal('save')}
+              onOpenAddNutritionRoutine={() => setNutritionRoutineModal('add')}
+              onOpenSaveSupplementRoutine={() => setSupplementRoutineModal('save')}
+              onOpenAddSupplementRoutine={() => setSupplementRoutineModal('add')}
             />
           </View>
       </ScrollView>
@@ -3705,22 +3828,73 @@ function ManualLogView({ userId }: { userId: string }) {
   onDaySelect={(ws) => setSelectedWeekStart(ws)}
 />
 
+      {/* Workout routine modals */}
       <SaveRoutineModal
-        visible={saveRoutineVisible}
-        onClose={() => setSaveRoutineVisible(false)}
-        onSave={handleSaveRoutine}
+        visible={workoutRoutineModal === 'save'}
+        onClose={() => setWorkoutRoutineModal(null)}
+        onSave={(name) => handleSaveRoutine('workout', name, () => setWorkoutRoutineModal(null), 'Add at least one exercise to Warmup, Workout, or Cool-down before saving a routine.')}
         saving={savingRoutine}
+        description="Saves every exercise currently in Warmup, Workout, and Cool-down for this day, so you can reapply the whole set later."
+        namePlaceholder="e.g. Day 1 Push Routine"
       />
       <AddRoutineModal
-        visible={addRoutineVisible}
-        onClose={() => setAddRoutineVisible(false)}
-        templates={routineTemplates}
-        loadingTemplates={templatesLoading}
-        onApply={handleApplyRoutine}
-        onDelete={deleteRoutineTemplate}
-        applying={applyingRoutine}
+        visible={workoutRoutineModal === 'add'}
+        onClose={() => setWorkoutRoutineModal(null)}
+        templates={workoutTemplates}
+        loadingTemplates={workoutTemplatesLoading}
+        onApply={(template, dates) => handleApplyRoutine(applyWorkoutRoutine, () => setWorkoutRoutineModal(null), template, dates)}
+        onDelete={deleteWorkoutTemplate}
+        applying={applyingWorkoutRoutine}
         weekStart={weekStart}
         selectedDay={selectedDay}
+        itemLabel="exercise"
+        emptyStateMessage="No saved routines yet — build a day's exercises, then tap Save Routine."
+      />
+
+      {/* Nutrition routine modals */}
+      <SaveRoutineModal
+        visible={nutritionRoutineModal === 'save'}
+        onClose={() => setNutritionRoutineModal(null)}
+        onSave={(name) => handleSaveRoutine('nutrition', name, () => setNutritionRoutineModal(null), 'Add at least one item to a meal slot before saving a routine.')}
+        saving={savingRoutine}
+        description="Saves every item currently in your meal slots for this day (not Confession Booth), so you can reapply the whole set later."
+        namePlaceholder="e.g. High Protein Day"
+      />
+      <AddRoutineModal
+        visible={nutritionRoutineModal === 'add'}
+        onClose={() => setNutritionRoutineModal(null)}
+        templates={nutritionTemplates}
+        loadingTemplates={nutritionTemplatesLoading}
+        onApply={(template, dates) => handleApplyRoutine(applyNutritionRoutine, () => setNutritionRoutineModal(null), template, dates)}
+        onDelete={deleteNutritionTemplate}
+        applying={applyingNutritionRoutine}
+        weekStart={weekStart}
+        selectedDay={selectedDay}
+        itemLabel="item"
+        emptyStateMessage="No saved routines yet — build a day's meals, then tap Save Routine."
+      />
+
+      {/* Supplement routine modals */}
+      <SaveRoutineModal
+        visible={supplementRoutineModal === 'save'}
+        onClose={() => setSupplementRoutineModal(null)}
+        onSave={(name) => handleSaveRoutine('supplement', name, () => setSupplementRoutineModal(null), 'Add at least one supplement before saving a routine.')}
+        saving={savingRoutine}
+        description="Saves every supplement currently scheduled across all 5 slots for this day, so you can reapply the whole set later."
+        namePlaceholder="e.g. Standard Stack"
+      />
+      <AddRoutineModal
+        visible={supplementRoutineModal === 'add'}
+        onClose={() => setSupplementRoutineModal(null)}
+        templates={supplementTemplates}
+        loadingTemplates={supplementTemplatesLoading}
+        onApply={(template, dates) => handleApplyRoutine(applySupplementRoutine, () => setSupplementRoutineModal(null), template, dates)}
+        onDelete={deleteSupplementTemplate}
+        applying={applyingSupplementRoutine}
+        weekStart={weekStart}
+        selectedDay={selectedDay}
+        itemLabel="supplement"
+        emptyStateMessage="No saved routines yet — build a day's supplement schedule, then tap Save Routine."
       />
 
       {/* Sticky Save button */}

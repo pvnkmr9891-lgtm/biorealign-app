@@ -1,7 +1,7 @@
-// Client-owned "saved routine" templates for the Workout Plan screen's
-// Save Routine / Add Routine feature. Snapshots a day's Warmup/Workout/
-// Cooldown items (manual_workout_logs rows) into a reusable named template,
-// and re-applies a template's items into one or more target dates later.
+// Client-owned "saved routine" templates for the workout/nutrition/supplement
+// Save Routine / Add Routine features. Snapshots a day's items for one
+// domain into a reusable named template, and re-applies a template's items
+// into one or more target dates later.
 //
 // Deliberately separate from the older (disabled) routines/routine_exercises
 // tables, which model exercise-library browsing, not day-application.
@@ -10,41 +10,56 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { getWeekStart } from '@/lib/dateHelpers';
 
+export type RoutineDomain = 'workout' | 'nutrition' | 'supplement';
+
 export interface RoutineTemplateItem {
   id?: string;
-  item_type: 'warmup' | 'workout' | 'cooldown';
-  item_name: string;
-  item_order: number;
-  sets: number | null;
-  reps: number | null;
-  side: string | null;
-  hold_secs: number | null;
-  rest_secs: number | null;
+  item_type:   'warmup' | 'workout' | 'cooldown' | 'food' | 'supplement';
+  item_name:   string;
+  item_order:  number;
+  // workout-only
+  sets?:       number | null;
+  reps?:       number | null;
+  side?:       string | null;
+  hold_secs?:  number | null;
+  rest_secs?:  number | null;
+  // nutrition/supplement-only
+  meal_slot?:  string | null;
+  quantity?:   string | null;
+  calories?:   number | null;
+  protein_g?:  number | null;
+  carbs_g?:    number | null;
+  fat_g?:      number | null;
 }
 
 export interface RoutineTemplate {
   id: string;
   name: string;
+  domain: RoutineDomain;
   created_at: string;
   items: RoutineTemplateItem[];
 }
 
 const routineKeys = {
-  list: (uid: string) => ['workout_routine_templates', uid] as const,
+  list: (uid: string, domain: RoutineDomain) => ['routine_templates', uid, domain] as const,
 };
 
-// ── List saved templates (for the "Add Routine" picker) ─────────────────────
-export function useMyRoutineTemplates() {
+const TEMPLATE_ITEM_COLUMNS =
+  'id, item_type, item_name, item_order, sets, reps, side, hold_secs, rest_secs, meal_slot, quantity, calories, protein_g, carbs_g, fat_g';
+
+// ── List saved templates for one domain (for the "Add Routine" picker) ──────
+export function useMyRoutineTemplates(domain: RoutineDomain) {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: routineKeys.list(user?.id ?? ''),
+    queryKey: routineKeys.list(user?.id ?? '', domain),
     enabled: !!user?.id,
     queryFn: async (): Promise<RoutineTemplate[]> => {
       const { data, error } = await supabase
         .from('client_routine_templates')
-        .select('id, name, created_at, items:client_routine_template_items(id, item_type, item_name, item_order, sets, reps, side, hold_secs, rest_secs)')
+        .select(`id, name, domain, created_at, items:client_routine_template_items(${TEMPLATE_ITEM_COLUMNS})`)
         .eq('client_id', user!.id)
+        .eq('domain', domain)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []).map((t: any) => ({
@@ -61,10 +76,10 @@ export function useSaveRoutineTemplate() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ name, items }: { name: string; items: RoutineTemplateItem[] }) => {
+    mutationFn: async ({ name, domain, items }: { name: string; domain: RoutineDomain; items: RoutineTemplateItem[] }) => {
       const { data: template, error: templateError } = await supabase
         .from('client_routine_templates')
-        .insert({ client_id: user!.id, name })
+        .insert({ client_id: user!.id, name, domain })
         .select()
         .single();
       if (templateError) throw templateError;
@@ -75,25 +90,31 @@ export function useSaveRoutineTemplate() {
           item_type:   item.item_type,
           item_name:   item.item_name,
           item_order:  item.item_order ?? idx,
-          sets:        item.sets,
-          reps:        item.reps,
-          side:        item.side,
-          hold_secs:   item.hold_secs,
-          rest_secs:   item.rest_secs,
+          sets:        item.sets ?? null,
+          reps:        item.reps ?? null,
+          side:        item.side ?? null,
+          hold_secs:   item.hold_secs ?? null,
+          rest_secs:   item.rest_secs ?? null,
+          meal_slot:   item.meal_slot ?? null,
+          quantity:    item.quantity ?? null,
+          calories:    item.calories ?? null,
+          protein_g:   item.protein_g ?? null,
+          carbs_g:     item.carbs_g ?? null,
+          fat_g:       item.fat_g ?? null,
         }));
         const { error: itemsError } = await supabase.from('client_routine_template_items').insert(rows);
         if (itemsError) throw itemsError;
       }
       return template;
     },
-    onSuccess: () => {
-      if (user?.id) qc.invalidateQueries({ queryKey: routineKeys.list(user.id) });
+    onSuccess: (_data, variables) => {
+      if (user?.id) qc.invalidateQueries({ queryKey: routineKeys.list(user.id, variables.domain) });
     },
   });
 }
 
 // ── Delete a saved template ───────────────────────────────────────────────
-export function useDeleteRoutineTemplate() {
+export function useDeleteRoutineTemplate(domain: RoutineDomain) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
@@ -103,7 +124,7 @@ export function useDeleteRoutineTemplate() {
       if (error) throw error;
     },
     onSuccess: () => {
-      if (user?.id) qc.invalidateQueries({ queryKey: routineKeys.list(user.id) });
+      if (user?.id) qc.invalidateQueries({ queryKey: routineKeys.list(user.id, domain) });
     },
   });
 }
@@ -118,13 +139,25 @@ function toWeekDayPair(d: Date): { weekStart: string; dayNumber: number } | null
   return { weekStart: getWeekStart(d), dayNumber: dow };
 }
 
+// Which manual_workout_logs rows a domain's "replace" step is allowed to
+// touch for a given day. Nutrition explicitly excludes meal_slot='craving'
+// (Confession Booth) — that's free-form logging of what actually happened,
+// not part of a plannable routine, and the Save/Add Routine buttons sit
+// before it on the Nutrition screen specifically to keep it untouched.
+function domainDeleteFilter(query: any, domain: RoutineDomain) {
+  if (domain === 'workout')    return query.in('item_type', ['warmup', 'workout', 'cooldown']);
+  if (domain === 'supplement') return query.eq('item_type', 'supplement');
+  return query.eq('item_type', 'food').neq('meal_slot', 'craving'); // nutrition
+}
+
 // ── Apply a template's items to one or more target dates ────────────────────
-// Only ever deletes the client's OWN existing warmup/workout/cooldown rows
+// Only ever deletes the client's OWN existing rows for that domain
 // (added_by_coach = false) for each target day before inserting the
 // template's items — coach-assigned exercises for that day are never
-// touched. Dates before today are silently skipped (skippedCount reported
-// back) since re-writing a day that's already happened doesn't make sense.
-export function useApplyRoutineTemplate() {
+// touched. Dates before today (and Sundays) are silently skipped
+// (reported back) since re-writing a day that's already happened, or one
+// with no day_number at all, doesn't make sense.
+export function useApplyRoutineTemplate(domain: RoutineDomain) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
@@ -146,14 +179,14 @@ export function useApplyRoutineTemplate() {
       }
 
       for (const { weekStart, dayNumber } of pairs) {
-        const { error: deleteError } = await supabase
+        const baseQuery = supabase
           .from('manual_workout_logs')
           .delete()
           .eq('client_id', userId)
           .eq('week_start_date', weekStart)
           .eq('day_number', dayNumber)
-          .in('item_type', ['warmup', 'workout', 'cooldown'])
           .eq('added_by_coach', false);
+        const { error: deleteError } = await domainDeleteFilter(baseQuery, domain);
         if (deleteError) throw deleteError;
 
         if (items.length) {
@@ -164,23 +197,29 @@ export function useApplyRoutineTemplate() {
             item_type:       item.item_type,
             item_name:       item.item_name,
             item_order:      item.item_order ?? idx,
-            sets:            item.sets,
-            reps:            item.reps,
-            side:            item.side,
-            hold_secs:       item.hold_secs,
-            rest_secs:       item.rest_secs,
+            sets:            item.sets ?? null,
+            reps:            item.reps ?? null,
+            side:            item.side ?? null,
+            hold_secs:       item.hold_secs ?? null,
+            rest_secs:       item.rest_secs ?? null,
+            meal_slot:       item.meal_slot ?? null,
+            quantity:        item.quantity ?? null,
+            calories:        item.calories ?? null,
+            protein_g:       item.protein_g ?? null,
+            carbs_g:         item.carbs_g ?? null,
+            fat_g:           item.fat_g ?? null,
             completed:       false,
             is_custom:       true,
             added_by_coach:  false,
           }));
           // upsert + ignoreDuplicates, not insert: manual_workout_logs has a
           // unique constraint on (client_id, week_start_date, day_number,
-          // item_type, item_name). If a routine's exercise name happens to
-          // match a coach-assigned exercise already on that day (which the
-          // delete above deliberately leaves alone), a plain insert would
-          // throw a conflict and fail the whole apply — this just silently
-          // skips that one exercise instead, same pattern already used for
-          // supplement scope-apply elsewhere in this screen.
+          // item_type, item_name). If a routine's item name happens to match
+          // a coach-assigned item already on that day (which the delete
+          // above deliberately leaves alone), a plain insert would throw a
+          // conflict and fail the whole apply — this just silently skips
+          // that one item instead, same pattern already used for supplement
+          // scope-apply elsewhere in the Workout Plan screen.
           const { error: insertError } = await supabase.from('manual_workout_logs').upsert(rows, {
             onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
             ignoreDuplicates: true,
