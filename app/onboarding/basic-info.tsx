@@ -1,9 +1,8 @@
 // app/onboarding/basic-info.tsx
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Alert, FlatList,
-  type NativeSyntheticEvent, type NativeScrollEvent,
+  Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -42,152 +41,43 @@ const DIET_OPTIONS = [
   { label: '🍗 Non-Veg', value: 'non_veg' },
 ];
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const DAYS   = Array.from({ length: 31  }, (_, i) => String(i + 1).padStart(2, '0'));
-const YEARS  = Array.from({ length: 76  }, (_, i) => String(1940 + i)); // 1940–2015
-const HEIGHTS = Array.from({ length: 143 }, (_, i) => String(130 + i)); // 130–272 cm
-const WEIGHTS = Array.from({ length: 171 }, (_, i) => String(30  + i)); // 30–200 kg
+// ── Date-of-birth auto-formatting ──────────────────────────────────────────
+// Reformats whatever digits are currently in the field into DD-MM-YYYY,
+// inserting hyphens automatically as the user types (and re-deriving
+// cleanly on backspace, since it always recomputes from digits only).
+function formatDobInput(raw: string): string {
+  const digits = raw.replace(/[^0-9]/g, '').slice(0, 8);
+  let out = digits.slice(0, 2);
+  if (digits.length > 2) out += '-' + digits.slice(2, 4);
+  if (digits.length > 4) out += '-' + digits.slice(4, 8);
+  return out;
+}
 
-// ── NumberSlider ─────────────────────────────────────────────────────────────
-// A horizontally swipeable strip (FlatList) with snap-to-item behaviour, plus
-// tap-and-hold arrows for precise stepping — either input method works.
-// Each item gets a fixed pixel width (not an equal flex share) so long values
-// (4-digit years, "138 cm", "Sep"/"Oct") never wrap or truncate regardless of
-// how many items are visible at once.
+// Parses "DD-MM-YYYY" into a real calendar date, or null if invalid —
+// checks month range, and the day against the actual number of days in
+// that specific month/year (rejects Feb 30, Apr 31, etc.), not just 1-31.
+function parseDob(text: string): { dd: number; mm: number; yyyy: number } | null {
+  const match = text.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return null;
+  const dd = Number(match[1]);
+  const mm = Number(match[2]);
+  const yyyy = Number(match[3]);
+  if (mm < 1 || mm > 12) return null;
+  const daysInMonth = new Date(yyyy, mm, 0).getDate();
+  if (dd < 1 || dd > daysInMonth) return null;
+  return { dd, mm, yyyy };
+}
 
-const ITEM_WIDTH = 64;
-
-function NumberSlider({
-  items, selectedIndex, onChange, suffix = '',
-}: {
-  items: string[]; selectedIndex: number; onChange: (i: number) => void; suffix?: string;
-}) {
-  const listRef = useRef<FlatList<string>>(null);
-  const [trackWidth, setTrackWidth] = useState(0);
-  const [liveIndex, setLiveIndex] = useState(selectedIndex);
-  const stepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => () => { if (stepIntervalRef.current) clearInterval(stepIntervalRef.current); }, []);
-  useEffect(() => { setLiveIndex(selectedIndex); }, [selectedIndex]);
-
-  // Follow external changes (arrow taps, initial mount) with an animated scroll.
-  useEffect(() => {
-    if (!trackWidth) return;
-    listRef.current?.scrollToOffset({ offset: selectedIndex * ITEM_WIDTH, animated: true });
-  }, [selectedIndex, trackWidth]);
-
-  const atStart = selectedIndex === 0;
-  const atEnd   = selectedIndex === items.length - 1;
-
-  function clamp(i: number) {
-    return Math.max(0, Math.min(items.length - 1, i));
-  }
-  function startStep(delta: number) {
-    let cur = clamp(selectedIndex + delta);
-    onChange(cur);
-    stepIntervalRef.current = setInterval(() => {
-      cur = clamp(cur + delta);
-      onChange(cur);
-    }, 120);
-  }
-  function stopStep() {
-    if (stepIntervalRef.current) { clearInterval(stepIntervalRef.current); stepIntervalRef.current = null; }
-  }
-
-  function indexFromOffset(offsetX: number) {
-    return clamp(Math.round(offsetX / ITEM_WIDTH));
-  }
-  function handleScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    setLiveIndex(indexFromOffset(e.nativeEvent.contentOffset.x));
-  }
-  function handleScrollSettled(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const idx = indexFromOffset(e.nativeEvent.contentOffset.x);
-    if (idx !== selectedIndex) onChange(idx);
-  }
-
-  const sidePadding = trackWidth ? (trackWidth - ITEM_WIDTH) / 2 : 0;
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        borderRadius: 14, borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-      }}>
-        <TouchableOpacity
-          onPressIn={() => !atStart && startStep(-1)}
-          onPressOut={stopStep}
-          disabled={atStart}
-          style={{ paddingHorizontal: 12, paddingVertical: 14 }}
-          activeOpacity={0.6}
-        >
-          <Text style={{ fontSize: 18, color: atStart ? 'rgba(255,255,255,0.12)' : THEME.colors.teal }}>‹</Text>
-        </TouchableOpacity>
-
-        <View style={{ flex: 1 }} onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}>
-          {trackWidth > 0 && (
-            <FlatList
-              ref={listRef}
-              data={items}
-              keyExtractor={(_, i) => String(i)}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={ITEM_WIDTH}
-              decelerationRate="fast"
-              scrollEventThrottle={16}
-              onScroll={handleScroll}
-              onMomentumScrollEnd={handleScrollSettled}
-              initialScrollIndex={selectedIndex}
-              getItemLayout={(_, i) => ({ length: ITEM_WIDTH, offset: ITEM_WIDTH * i, index: i })}
-              contentContainerStyle={{ paddingHorizontal: sidePadding }}
-              renderItem={({ item, index }) => {
-                const dist     = Math.abs(index - liveIndex);
-                const isCenter = index === liveIndex;
-                const display  = isCenter && suffix ? `${item}${suffix}` : item;
-                return (
-                  <TouchableOpacity
-                    style={{ width: ITEM_WIDTH, alignItems: 'center', paddingVertical: 12 }}
-                    onPress={() => onChange(index)}
-                    activeOpacity={0.65}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      allowFontScaling={false}
-                      style={{
-                        fontSize:   isCenter ? 20 : dist === 1 ? 16 : dist === 2 ? 13 : 10,
-                        fontFamily: isCenter ? THEME.fonts.sansSemibold : THEME.fonts.sans,
-                        color:      isCenter ? THEME.colors.teal : THEME.colors.textMuted,
-                        opacity:    isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.28 : dist === 3 ? 0.13 : 0,
-                        letterSpacing: isCenter ? 0.3 : 0,
-                      }}>
-                      {display}
-                    </Text>
-                    {isCenter && (
-                      <View style={{
-                        width: 22, height: 2, borderRadius: 1,
-                        backgroundColor: THEME.colors.teal, marginTop: 4, opacity: 0.7,
-                      }} />
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          )}
-        </View>
-
-        <TouchableOpacity
-          onPressIn={() => !atEnd && startStep(1)}
-          onPressOut={stopStep}
-          disabled={atEnd}
-          style={{ paddingHorizontal: 12, paddingVertical: 14 }}
-          activeOpacity={0.6}
-        >
-          <Text style={{ fontSize: 18, color: atEnd ? 'rgba(255,255,255,0.12)' : THEME.colors.teal }}>›</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+// Pulls the first two digit-groups out of a free-form height string (e.g.
+// "5ft 2in", "5' 2\"", "5 2", "5ft2in") as feet and inches, regardless of
+// which unit words/symbols were used, and converts to centimetres.
+function parseHeightToCm(text: string): number | null {
+  const nums = text.match(/\d+/g);
+  if (!nums || nums.length === 0) return null;
+  const ft = parseInt(nums[0], 10);
+  const inch = nums.length > 1 ? parseInt(nums[1], 10) : 0;
+  if (Number.isNaN(ft) || Number.isNaN(inch) || inch >= 12) return null;
+  return (ft * 12 + inch) * 2.54;
 }
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
@@ -269,14 +159,12 @@ export default function BasicInfoScreen() {
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [gender,   setGender]   = useState<string | null>(null);
 
-  // DOB drum indices
-  const [dobDay,   setDobDay]   = useState(0);  // into DAYS   (0 → "01")
-  const [dobMonth, setDobMonth] = useState(0);  // into MONTHS (0 → "Jan")
-  const [dobYear,  setDobYear]  = useState(50); // into YEARS  (50 → 1990)
+  // Date of birth — free text, auto-formatted to DD-MM-YYYY as the user types.
+  const [dobText, setDobText] = useState('');
 
-  // Height / weight drum indices (0 = minimum per spec)
-  const [heightIdx, setHeightIdx] = useState(0); // 0 → 130 cm
-  const [weightIdx, setWeightIdx] = useState(0); // 0 → 30 kg
+  // Height (e.g. "5ft 2in") and weight (kg) — free text, parsed on submit.
+  const [heightText, setHeightText] = useState('');
+  const [weightText, setWeightText] = useState('');
 
   // Goals
   const [goals,     setGoals]     = useState<string[]>([]);
@@ -331,10 +219,44 @@ export default function BasicInfoScreen() {
       return;
     }
 
-    const day   = DAYS[dobDay];
-    const month = String(dobMonth + 1).padStart(2, '0');
-    const year  = YEARS[dobYear];
-    const dob   = `${year}-${month}-${day}`;
+    const parsedDob = parseDob(dobText);
+    if (!parsedDob) {
+      Alert.alert('Invalid date of birth', 'Please enter your date of birth as DD-MM-YYYY.');
+      return;
+    }
+    const { dd, mm, yyyy } = parsedDob;
+    const dobDate = new Date(yyyy, mm - 1, dd);
+    const today = new Date();
+    let age = today.getFullYear() - dobDate.getFullYear();
+    const hadBirthdayThisYear =
+      today.getMonth() > dobDate.getMonth() ||
+      (today.getMonth() === dobDate.getMonth() && today.getDate() >= dobDate.getDate());
+    if (!hadBirthdayThisYear) age -= 1;
+    if (dobDate > today || age < 1 || age > 120) {
+      Alert.alert('Invalid date of birth', 'Please enter a valid date of birth.');
+      return;
+    }
+    const dob = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+
+    const heightCm = parseHeightToCm(heightText);
+    if (heightCm === null) {
+      Alert.alert('Invalid height', 'Please enter your height like "5ft 2in".');
+      return;
+    }
+    if (heightCm < 50 || heightCm > 274.32) {
+      Alert.alert('Invalid height', 'Height must be between 1ft 8in and 9ft.');
+      return;
+    }
+
+    const weightKg = parseFloat(weightText.replace(/[^0-9.]/g, ''));
+    if (Number.isNaN(weightKg) || weightKg <= 0) {
+      Alert.alert('Invalid weight', 'Please enter your weight in kg.');
+      return;
+    }
+    if (weightKg < 20 || weightKg > 250) {
+      Alert.alert('Invalid weight', 'Weight must be between 20kg and 250kg.');
+      return;
+    }
 
     setSaving(true);
 
@@ -342,8 +264,8 @@ export default function BasicInfoScreen() {
       full_name:   fullName.trim(),
       dob,
       gender:      gender ?? null,
-      height_cm:   Number(HEIGHTS[heightIdx]),
-      weight_kg:   Number(WEIGHTS[weightIdx]),
+      height_cm:   Math.round(heightCm),
+      weight_kg:   weightKg,
       health_goals: goals,
       conditions,
       medications,
@@ -438,21 +360,15 @@ export default function BasicInfoScreen() {
             {/* ─ Date of Birth ─ */}
             <Card>
               <FieldLabel icon="🎂">Date of birth</FieldLabel>
-
-              <View style={{ gap: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 11, color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, width: 44 }}>Day</Text>
-                  <View style={{ flex: 1 }}><NumberSlider items={DAYS}   selectedIndex={dobDay}   onChange={setDobDay} /></View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 11, color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, width: 44 }}>Month</Text>
-                  <View style={{ flex: 1 }}><NumberSlider items={MONTHS} selectedIndex={dobMonth} onChange={setDobMonth} /></View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 11, color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, width: 44 }}>Year</Text>
-                  <View style={{ flex: 1 }}><NumberSlider items={YEARS}  selectedIndex={dobYear}  onChange={setDobYear} /></View>
-                </View>
-              </View>
+              <TextInput
+                value={dobText}
+                onChangeText={(t) => setDobText(formatDobInput(t))}
+                placeholder="DD-MM-YYYY"
+                placeholderTextColor={THEME.colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={10}
+                style={inputStyle}
+              />
             </Card>
 
             {/* ─ Height & Weight ─ */}
@@ -460,11 +376,26 @@ export default function BasicInfoScreen() {
               <View style={{ gap: 14 }}>
                 <View>
                   <FieldLabel icon="📏">Height</FieldLabel>
-                  <NumberSlider items={HEIGHTS} selectedIndex={heightIdx} onChange={setHeightIdx} suffix=" cm" />
+                  <TextInput
+                    value={heightText}
+                    onChangeText={setHeightText}
+                    placeholder="e.g. 5ft 2in"
+                    placeholderTextColor={THEME.colors.textMuted}
+                    maxLength={20}
+                    style={inputStyle}
+                  />
                 </View>
                 <View>
-                  <FieldLabel icon="⚖️">Weight</FieldLabel>
-                  <NumberSlider items={WEIGHTS} selectedIndex={weightIdx} onChange={setWeightIdx} suffix=" kg" />
+                  <FieldLabel icon="⚖️">Weight (kg)</FieldLabel>
+                  <TextInput
+                    value={weightText}
+                    onChangeText={(t) => setWeightText(t.replace(/[^0-9.]/g, ''))}
+                    placeholder="e.g. 70"
+                    placeholderTextColor={THEME.colors.textMuted}
+                    keyboardType="decimal-pad"
+                    maxLength={6}
+                    style={inputStyle}
+                  />
                 </View>
               </View>
             </Card>
