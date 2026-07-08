@@ -939,7 +939,7 @@ function AddRoutineModal({
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
       <Pressable style={wg.backdrop} onPress={handleClose}>
-        <Pressable style={[wg.card, { maxHeight: ADD_ROUTINE_CARD_MAX_HEIGHT }]}>
+        <Pressable style={[wg.card, { height: ADD_ROUTINE_CARD_MAX_HEIGHT }]}>
           <View style={wg.header}>
             <Text style={wg.title}>
               {step === 'list' ? '📂  Add Routine' : step === 'scope' ? selectedTemplate?.name ?? '' : step === 'custom' ? 'Pick dates' : 'Confirm'}
@@ -950,15 +950,18 @@ function AddRoutineModal({
           </View>
           <View style={wg.divider} />
 
-          {/* Explicit pixel maxHeight, not '%'/flexShrink — this modal sits
-              inside a Pressable-based backdrop (alignItems:'center', which
-              doesn't stretch children), and a '%'-capped parent combined
-              with a flex-based child scroll height is unreliable for
-              computing the actual scrollable range on Android in that
-              layout; concrete numbers here sidestep that entirely. */}
+          {/* A genuinely FIXED height, not maxHeight — a ScrollView whose
+              own container is maxHeight-based (auto-sized) while its
+              CONTENT height also changes dynamically (expanding a routine
+              card) is a known-unreliable combination for Android to
+              recompute the scrollable range against. Fixing both the card
+              and this ScrollView to a real, unambiguous pixel height
+              removes that double-dynamic-sizing problem entirely — content
+              size vs. a constant viewport size is the one case ScrollView
+              handles reliably everywhere. */}
           <ScrollView
-            style={{ maxHeight: ADD_ROUTINE_CARD_MAX_HEIGHT - ADD_ROUTINE_HEADER_HEIGHT }}
-            contentContainerStyle={{ padding: 18 }}
+            style={{ height: ADD_ROUTINE_CARD_MAX_HEIGHT - ADD_ROUTINE_HEADER_HEIGHT }}
+            contentContainerStyle={{ padding: 18, flexGrow: 1 }}
             nestedScrollEnabled
             showsVerticalScrollIndicator
           >
