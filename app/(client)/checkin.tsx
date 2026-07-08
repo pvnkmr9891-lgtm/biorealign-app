@@ -2,15 +2,15 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   ActivityIndicator, TextInput, Animated, Modal, Pressable,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   useActiveEnrollment, useTodayCheckin, useSaveCheckin,
   useCheckinByDate, useCheckinAllDates,
 } from '@/hooks/useClient';
 import { THEME } from '@/constants/theme';
-import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type MetricKey = 'mood' | 'energy' | 'sleep_hrs' | 'pain_level';
@@ -1012,13 +1012,19 @@ function SuccessScreen({
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function CheckinScreen() {
   const router   = useRouter();
+  const insets   = useSafeAreaInsets();
   const today    = useMemo(() => toDateStr(new Date()), []);
 
   const [selectedDate,  setSelectedDate]  = useState(today);
   const [calendarOpen,  setCalendarOpen]  = useState(false);
   const [scores,        setScores]        = useState<Scores>(DEFAULTS);
   const [notes,         setNotes]         = useState('');
-  const [saved,         setSaved]         = useState(false);
+  // 'summary' = the read-only saved-scores view (SuccessScreen); 'form' =
+  // the editable selectors. Defaults to whichever makes sense for the
+  // viewed date once it loads (see the effect below) — a day that's
+  // already logged opens straight to its summary instead of silently
+  // dropping back into the raw edit form and losing that view entirely.
+  const [viewMode, setViewMode] = useState<'summary' | 'form'>('form');
 
   const { data: enrollment }                            = useActiveEnrollment();
   const { data: todayCheckin, isLoading: todayLoading } = useTodayCheckin();
@@ -1032,7 +1038,8 @@ export default function CheckinScreen() {
   const activeCheckin = isToday ? todayCheckin : dateCheckin;
   const checkinLoading = isToday ? todayLoading : dateLoading;
 
-  // Fill scores from existing check-in for the selected date
+  // Fill scores from existing check-in for the selected date, and default
+  // the view to summary/form accordingly.
   useEffect(() => {
     if (activeCheckin) {
       setScores({
@@ -1042,11 +1049,12 @@ export default function CheckinScreen() {
         pain_level: activeCheckin.pain_level,
       });
       setNotes(activeCheckin.notes ?? '');
+      setViewMode('summary');
     } else {
       setScores(DEFAULTS);
       setNotes('');
+      setViewMode('form');
     }
-    setSaved(false);
   }, [selectedDate, activeCheckin?.id]);
 
   const preview = computeScores(scores);
@@ -1058,12 +1066,11 @@ export default function CheckinScreen() {
       enrollment_id: enrollment?.id,
       date:          selectedDate,
     });
-    setSaved(true);
+    setViewMode('summary');
   };
 
   const handleSelectDate = (dateStr: string) => {
     setSelectedDate(dateStr);
-    setSaved(false);
   };
 
   const displayDate = new Date(selectedDate + 'T00:00:00')
@@ -1077,13 +1084,13 @@ export default function CheckinScreen() {
     );
   }
 
-  if (saved) {
+  if (viewMode === 'summary') {
     return (
       <SuccessScreen
         scores={scores}
         isUpdate={!!activeCheckin}
         selectedDate={selectedDate}
-        onUpdate={() => setSaved(false)}
+        onUpdate={() => setViewMode('form')}
         onDone={() => router.replace('/(client)')}
       />
     );
@@ -1091,6 +1098,7 @@ export default function CheckinScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 120 }}
@@ -1099,7 +1107,14 @@ export default function CheckinScreen() {
       >
         {/* Header */}
         <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => (activeCheckin ? setViewMode('summary') : router.back())}
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border, marginTop: 2 }}
+            >
+              <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>←</Text>
+            </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flex: 1 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 11, color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 8 }}>
                 Daily Pulse
@@ -1127,6 +1142,7 @@ export default function CheckinScreen() {
               <Text style={{ fontSize: 18 }}>📅</Text>
             </TouchableOpacity>
           </View>
+          </View>
 
           {activeCheckin && (
             <View style={{ backgroundColor: THEME.colors.tealMuted, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginTop: 10, alignSelf: 'flex-start', borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}>
@@ -1136,7 +1152,7 @@ export default function CheckinScreen() {
             </View>
           )}
           {!isToday && (
-            <TouchableOpacity onPress={() => { setSelectedDate(today); setSaved(false); }} style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+            <TouchableOpacity onPress={() => setSelectedDate(today)} style={{ marginTop: 8, alignSelf: 'flex-start' }}>
               <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sans, fontSize: 12, textDecorationLine: 'underline' }}>
                 ← Back to today
               </Text>
@@ -1212,8 +1228,12 @@ export default function CheckinScreen() {
 
       </ScrollView>
 
-      {/* Fixed save button */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: THEME.colors.background, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, paddingHorizontal: 24, paddingVertical: 16, paddingBottom: TAB_BAR_CLEARANCE }}>
+      {/* Fixed save button — inside the KeyboardAvoidingView so it rises
+          above the keyboard along with the scroll content, instead of
+          staying pinned to the true screen bottom and getting covered.
+          The dock is hidden on this screen (see HIDDEN_SCREENS), so this
+          only needs normal safe-area clearance now, not dock clearance. */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: THEME.colors.background, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, paddingHorizontal: 24, paddingVertical: 16, paddingBottom: insets.bottom + 16 }}>
         <TouchableOpacity
           onPress={handleSave}
           disabled={isPending}
@@ -1229,6 +1249,7 @@ export default function CheckinScreen() {
           )}
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Checkin calendar */}
       <CheckinCalendar

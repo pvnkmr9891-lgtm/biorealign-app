@@ -51,6 +51,7 @@ const HIDDEN_SCREENS = [
   'routine-new', 'routine-add-exercise',
   'routine-explore', 'routine-category',
   'workout-detail', 'plan-add-exercise',
+  'checkin',
 ];
 
 // Total vertical space the floating dock occupies, measured from the very

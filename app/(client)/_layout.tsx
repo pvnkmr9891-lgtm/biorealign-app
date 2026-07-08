@@ -20,12 +20,16 @@ export default function ClientLayout() {
         {/* Main tabs */}
         <Stack.Screen name="index" />
         <Stack.Screen name="workout-plan" />
-        <Stack.Screen name="checkin" />
         <Stack.Screen name="progress" />
         <Stack.Screen name="programs" />
         <Stack.Screen name="my-plan" />
         <Stack.Screen name="messages" />
         <Stack.Screen name="profile" />
+        {/* checkin owns its own fixed bottom Save bar — same treatment as
+            recovery/fitness-assessment below; dock is hidden on this screen
+            too (see HIDDEN_SCREENS in SlidingTabBar), so no dock clearance
+            is needed here either. */}
+        <Stack.Screen name="checkin" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         <Stack.Screen name="routine-new"          options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         <Stack.Screen name="routine-category" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
         <Stack.Screen name="routine-add-exercise" options={{ contentStyle: { backgroundColor: THEME.colors.background, paddingBottom: 0 } }} />
