@@ -1625,12 +1625,17 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
   // ── Grouped breakfast state ─────────────────────────────────────────────────
   // Per group: selected item + its inline quantity (editable before review)
-  const defaultGroupOpen = () => Object.fromEntries(activeGroups.map((g, i) => [g.key, i === 0]));
+  // All sections start collapsed — nothing pre-expanded by default.
+  const defaultGroupOpen = () => Object.fromEntries(activeGroups.map((g) => [g.key, false]));
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(defaultGroupOpen);
   const [groupSelected, setGroupSelected] = useState<Record<string, BreakfastItem | LunchItem | DinnerItem | CravingItem | null>>({});
   const [groupQty, setGroupQty] = useState<Record<string, number>>({});
   // Review step: array of items with editable macros
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
+  // Cross-section search for the grouped picker — filters items within
+  // every section at once so the user doesn't have to guess which
+  // section a dish lives under.
+  const [groupSearch, setGroupSearch] = useState('');
 
   function reset() {
     setStep(kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice');
@@ -1644,6 +1649,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setGroupSelected({});
     setGroupQty({});
     setReviewItems([]);
+    setGroupSearch('');
   }
 
   // Reset fully whenever modal becomes visible so stale selections don't persist
@@ -1959,9 +1965,48 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           {/* ── Grouped breakfast picker ───────────────────────────────────── */}
           {step === 'grouped' && (
             <>
+              {/* Search across every section at once — matching sections
+                  auto-expand so there's no need to guess which one a dish
+                  is filed under. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, borderWidth: 1, borderColor: THEME.colors.border, paddingHorizontal: 12, marginBottom: 10 }}>
+                <Text style={{ fontSize: 14, marginRight: 8, opacity: 0.5 }}>🔍</Text>
+                <TextInput
+                  value={groupSearch}
+                  onChangeText={setGroupSearch}
+                  placeholder="Search any dish across all sections..."
+                  placeholderTextColor={THEME.colors.textMuted}
+                  style={{ flex: 1, paddingVertical: 12, color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sans, fontSize: 13 }}
+                />
+                {groupSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setGroupSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={{ color: THEME.colors.textMuted, fontSize: 14 }}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
               <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                {activeGroups.map(group => {
-                  const isOpen = groupOpen[group.key];
+                {(() => {
+                  const query = groupSearch.trim().toLowerCase();
+                  const isSearching = query.length > 0;
+                  const visibleGroups = activeGroups
+                    .map(group => ({
+                      group,
+                      items: isSearching
+                        ? group.items.filter(item => cleanFoodName(item.name).toLowerCase().includes(query))
+                        : group.items,
+                    }))
+                    .filter(({ items }) => !isSearching || items.length > 0);
+
+                  if (isSearching && visibleGroups.length === 0) {
+                    return (
+                      <Text style={{ color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sans, textAlign: 'center', paddingVertical: 24 }}>
+                        No dishes match "{groupSearch.trim()}".
+                      </Text>
+                    );
+                  }
+
+                  return visibleGroups.map(({ group, items }) => {
+                  const isOpen = isSearching ? true : groupOpen[group.key];
                   const selected = groupSelected[group.key];
                   return (
                     <View key={group.key} style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: selected ? group.color : THEME.colors.border, overflow: 'hidden' }}>
@@ -1988,7 +2033,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                       </TouchableOpacity>
 
                       {/* Items list */}
-                      {isOpen && group.items.map(item => {
+                      {isOpen && items.map(item => {
                         const isSelected = groupSelected[group.key]?.id === item.id;
                         return (
                           <View key={item.id} style={{ borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
@@ -2084,7 +2129,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                       })}
                     </View>
                   );
-                })}
+                  });
+                })()}
               </ScrollView>
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
