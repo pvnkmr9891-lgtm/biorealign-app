@@ -877,6 +877,16 @@ function AddRoutineModal({
   const { height: windowHeight } = useWindowDimensions();
   const cardHeight = windowHeight * 0.82;
 
+  // Incremented by Modal's onShow (fires once the modal is FULLY presented)
+  // and used as the ScrollView's key. Content measured while the fade-in
+  // presentation is still running can capture stale dimensions on Android
+  // (statusBarTranslucent), leaving the scrollable range computed as ~zero
+  // until some later incidental re-render fixes it — which is exactly the
+  // "scroll only starts working after a minute" symptom. Remounting the
+  // ScrollView on onShow forces a fresh measurement against the settled
+  // window, immediately.
+  const [showTick, setShowTick] = useState(0);
+
   function reset() {
     setStep('list'); setSelectedTemplate(null); setScope('today'); setCustomDates(new Set()); setExpandedIds(new Set());
   }
@@ -939,7 +949,14 @@ function AddRoutineModal({
   const scopeDatesCount = step === 'confirm' ? computeScopeDates().length : 0;
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={handleClose}
+      onShow={() => setShowTick(t => t + 1)}
+      statusBarTranslucent
+    >
       <Pressable style={wg.backdrop} onPress={handleClose}>
         <Pressable style={[wg.card, { height: cardHeight }]}>
           <View style={wg.header}>
@@ -951,7 +968,7 @@ function AddRoutineModal({
                 often unknowingly one bundle behind; this makes which code
                 is actually running provable at a glance. Remove once the
                 scroll fix is confirmed on-device. */}
-            <Text style={{ color: THEME.colors.textMuted, fontSize: 9, fontFamily: THEME.fonts.sans, marginLeft: 'auto', marginRight: 10 }}>v4</Text>
+            <Text style={{ color: THEME.colors.textMuted, fontSize: 9, fontFamily: THEME.fonts.sans, marginLeft: 'auto', marginRight: 10 }}>v5</Text>
             <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={wg.closeX}>✕</Text>
             </TouchableOpacity>
@@ -960,9 +977,11 @@ function AddRoutineModal({
 
           {/* Canonical scroll-in-modal structure: the card has a definite
               pixel height (computed live via useWindowDimensions), so
-              flex:1 here resolves against a known number — the one layout
-              ScrollView handles reliably on both platforms. */}
+              flex:1 here resolves against a known number. The showTick key
+              remounts this ScrollView after the modal is fully presented —
+              see the comment at the showTick state for why. */}
           <ScrollView
+            key={`routine-scroll-${showTick}`}
             style={{ flex: 1 }}
             contentContainerStyle={{ padding: 18 }}
             nestedScrollEnabled
