@@ -3,7 +3,7 @@ import { WaterTracker } from '@/components/ui/WaterTracker';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image,
+  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image, Dimensions,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -826,6 +826,12 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
 
 type RoutineScope = 'today' | 'week' | 'month' | 'custom';
 
+// Computed in real pixels (not '%') so the modal's own maxHeight and its
+// ScrollView's maxHeight are always in a strictly-correct relationship —
+// see the comment at the ScrollView itself for why that matters here.
+const ADD_ROUTINE_CARD_MAX_HEIGHT = Dimensions.get('window').height * 0.82;
+const ADD_ROUTINE_HEADER_HEIGHT = 57; // wg.header's paddingVertical(14*2) + title line height + wg.divider(1)
+
 const WORKOUT_SECTION_LABELS: Record<string, string> = { warmup: 'Warm-up', workout: 'Workout', cooldown: 'Cool-down' };
 const MEAL_SLOT_ORDER = ['morning_drink', 'breakfast', 'lunch', 'evening_snacks', 'dinner'];
 const MEAL_SLOT_LABELS: Record<string, string> = {
@@ -933,7 +939,7 @@ function AddRoutineModal({
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
       <Pressable style={wg.backdrop} onPress={handleClose}>
-        <Pressable style={[wg.card, { maxHeight: '82%' }]}>
+        <Pressable style={[wg.card, { maxHeight: ADD_ROUTINE_CARD_MAX_HEIGHT }]}>
           <View style={wg.header}>
             <Text style={wg.title}>
               {step === 'list' ? '📂  Add Routine' : step === 'scope' ? selectedTemplate?.name ?? '' : step === 'custom' ? 'Pick dates' : 'Confirm'}
@@ -944,7 +950,18 @@ function AddRoutineModal({
           </View>
           <View style={wg.divider} />
 
-          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ padding: 18 }} nestedScrollEnabled>
+          {/* Explicit pixel maxHeight, not '%'/flexShrink — this modal sits
+              inside a Pressable-based backdrop (alignItems:'center', which
+              doesn't stretch children), and a '%'-capped parent combined
+              with a flex-based child scroll height is unreliable for
+              computing the actual scrollable range on Android in that
+              layout; concrete numbers here sidestep that entirely. */}
+          <ScrollView
+            style={{ maxHeight: ADD_ROUTINE_CARD_MAX_HEIGHT - ADD_ROUTINE_HEADER_HEIGHT }}
+            contentContainerStyle={{ padding: 18 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
             {step === 'list' && (
               loadingTemplates ? (
                 <ActivityIndicator color={THEME.colors.teal} style={{ marginVertical: 20 }} />
