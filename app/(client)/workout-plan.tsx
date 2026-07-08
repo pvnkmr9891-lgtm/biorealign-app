@@ -3,7 +3,7 @@ import { WaterTracker } from '@/components/ui/WaterTracker';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image, Dimensions,
+  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image, useWindowDimensions,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -826,11 +826,8 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
 
 type RoutineScope = 'today' | 'week' | 'month' | 'custom';
 
-// Computed in real pixels (not '%') so the modal's own maxHeight and its
-// ScrollView's maxHeight are always in a strictly-correct relationship —
-// see the comment at the ScrollView itself for why that matters here.
-const ADD_ROUTINE_CARD_MAX_HEIGHT = Dimensions.get('window').height * 0.82;
-const ADD_ROUTINE_HEADER_HEIGHT = 57; // wg.header's paddingVertical(14*2) + title line height + wg.divider(1)
+// wg.header's paddingVertical(14*2) + title line height + wg.divider(1)
+const ADD_ROUTINE_HEADER_HEIGHT = 57;
 
 const WORKOUT_SECTION_LABELS: Record<string, string> = { warmup: 'Warm-up', workout: 'Workout', cooldown: 'Cool-down' };
 const MEAL_SLOT_ORDER = ['morning_drink', 'breakfast', 'lunch', 'evening_snacks', 'dinner'];
@@ -874,6 +871,14 @@ function AddRoutineModal({
   const [scope, setScope] = useState<RoutineScope>('today');
   const [customDates, setCustomDates] = useState<Set<string>>(new Set());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  // Computed live via the hook, not Dimensions.get() at module scope —
+  // a module-level Dimensions.get() call is evaluated once when the JS
+  // bundle first loads, before native window dimensions are reliably
+  // established, and can silently capture a wrong value. useWindowDimensions
+  // ties this to the actual render instead.
+  const { height: windowHeight } = useWindowDimensions();
+  const cardHeight = windowHeight * 0.82;
 
   function reset() {
     setStep('list'); setSelectedTemplate(null); setScope('today'); setCustomDates(new Set()); setExpandedIds(new Set());
@@ -939,7 +944,7 @@ function AddRoutineModal({
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
       <Pressable style={wg.backdrop} onPress={handleClose}>
-        <Pressable style={[wg.card, { height: ADD_ROUTINE_CARD_MAX_HEIGHT }]}>
+        <Pressable style={[wg.card, { height: cardHeight }]}>
           <View style={wg.header}>
             <Text style={wg.title}>
               {step === 'list' ? '📂  Add Routine' : step === 'scope' ? selectedTemplate?.name ?? '' : step === 'custom' ? 'Pick dates' : 'Confirm'}
@@ -960,7 +965,7 @@ function AddRoutineModal({
               size vs. a constant viewport size is the one case ScrollView
               handles reliably everywhere. */}
           <ScrollView
-            style={{ height: ADD_ROUTINE_CARD_MAX_HEIGHT - ADD_ROUTINE_HEADER_HEIGHT }}
+            style={{ height: cardHeight - ADD_ROUTINE_HEADER_HEIGHT }}
             contentContainerStyle={{ padding: 18, flexGrow: 1 }}
             nestedScrollEnabled
             showsVerticalScrollIndicator
