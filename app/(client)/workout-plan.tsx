@@ -826,9 +826,6 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
 
 type RoutineScope = 'today' | 'week' | 'month' | 'custom';
 
-// wg.header's paddingVertical(14*2) + title line height + wg.divider(1)
-const ADD_ROUTINE_HEADER_HEIGHT = 57;
-
 const WORKOUT_SECTION_LABELS: Record<string, string> = { warmup: 'Warm-up', workout: 'Workout', cooldown: 'Cool-down' };
 const MEAL_SLOT_ORDER = ['morning_drink', 'breakfast', 'lunch', 'evening_snacks', 'dinner'];
 const MEAL_SLOT_LABELS: Record<string, string> = {
@@ -949,24 +946,25 @@ function AddRoutineModal({
             <Text style={wg.title}>
               {step === 'list' ? '📂  Add Routine' : step === 'scope' ? selectedTemplate?.name ?? '' : step === 'custom' ? 'Pick dates' : 'Confirm'}
             </Text>
+            {/* Temporary bundle-version marker — expo-updates applies a
+                downloaded OTA only on the NEXT cold start, so testers are
+                often unknowingly one bundle behind; this makes which code
+                is actually running provable at a glance. Remove once the
+                scroll fix is confirmed on-device. */}
+            <Text style={{ color: THEME.colors.textMuted, fontSize: 9, fontFamily: THEME.fonts.sans, marginLeft: 'auto', marginRight: 10 }}>v4</Text>
             <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={wg.closeX}>✕</Text>
             </TouchableOpacity>
           </View>
           <View style={wg.divider} />
 
-          {/* A genuinely FIXED height, not maxHeight — a ScrollView whose
-              own container is maxHeight-based (auto-sized) while its
-              CONTENT height also changes dynamically (expanding a routine
-              card) is a known-unreliable combination for Android to
-              recompute the scrollable range against. Fixing both the card
-              and this ScrollView to a real, unambiguous pixel height
-              removes that double-dynamic-sizing problem entirely — content
-              size vs. a constant viewport size is the one case ScrollView
-              handles reliably everywhere. */}
+          {/* Canonical scroll-in-modal structure: the card has a definite
+              pixel height (computed live via useWindowDimensions), so
+              flex:1 here resolves against a known number — the one layout
+              ScrollView handles reliably on both platforms. */}
           <ScrollView
-            style={{ height: cardHeight - ADD_ROUTINE_HEADER_HEIGHT }}
-            contentContainerStyle={{ padding: 18, flexGrow: 1 }}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 18 }}
             nestedScrollEnabled
             showsVerticalScrollIndicator
           >
