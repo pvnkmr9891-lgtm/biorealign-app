@@ -3,7 +3,7 @@ import { WaterTracker } from '@/components/ui/WaterTracker';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image, useWindowDimensions,
+  ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image, useWindowDimensions, BackHandler,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -2974,6 +2974,22 @@ function DayPanel({
   const [suppAllOpen, setSuppAllOpen] = useState<boolean | null>(null);
   const foodSectionOffsets = useRef<Record<string, number>>({});
 
+  // Hub-and-detail navigation: null = the 4-tile overview grid; a section
+  // key = that section's full editing UI. Kept as in-place view state (not
+  // a route) so the pending-save model, week/day selection, and routine
+  // modals all keep working unchanged.
+  const [activeSection, setActiveSection] = useState<'workout' | 'water' | 'nutrition' | 'supplement' | null>(null);
+
+  // Android hardware back returns to the hub instead of leaving the screen.
+  useEffect(() => {
+    if (activeSection === null) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setActiveSection(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [activeSection]);
+
   function handleMealSlotPress(slotKey: string) {
     setExpandedFoodSlot(slotKey);
     setTimeout(() => {
@@ -2996,6 +3012,33 @@ function DayPanel({
   const dateStr  = dayDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   const barColor = allDone ? '#4CC986' : isTodayDay ? THEME.colors.teal : isDayFuture ? 'rgba(255,255,255,0.12)' : THEME.colors.amber;
   const pctColor = isDayFuture ? 'rgba(255,255,255,0.18)' : allDone ? '#4CC986' : isTodayDay ? THEME.colors.teal : THEME.colors.textMuted;
+
+  // Hub tile metrics. Nutrition adherence counts exclude cravings (they're
+  // confessions, not plan items), but the kcal figure includes everything
+  // eaten — matching what DailyNutritionRing already reports inside.
+  const tileDone = (items: any[]) => items.filter((i: any) => i.completed).length;
+  const workoutTileItems = [...(dayData['warmup'] || []), ...(dayData['workout'] || []), ...(dayData['cooldown'] || [])];
+  const waterTileItems   = dayData['water'] || [];
+  const foodTileItems    = (dayData['food'] || []).filter((i: any) => i.meal_slot !== 'craving');
+  const suppTileItems    = dayData['supplement'] || [];
+  const eatenCalories    = (dayData['food'] || []).filter((i: any) => i.completed).reduce((s: number, i: any) => s + (i.calories ?? 0), 0);
+
+  const hubTiles: { key: 'workout' | 'water' | 'nutrition' | 'supplement'; icon: string; label: string; color: string; done: number; total: number; metric: string }[] = [
+    { key: 'workout', icon: '💪', label: 'Workout', color: THEME.colors.teal,
+      done: tileDone(workoutTileItems), total: workoutTileItems.length,
+      metric: workoutTileItems.length ? `${tileDone(workoutTileItems)}/${workoutTileItems.length} done` : 'Nothing added yet' },
+    { key: 'water', icon: '💧', label: 'Water', color: '#64B5F6',
+      done: tileDone(waterTileItems), total: waterTileItems.length,
+      metric: waterTileItems.length ? `${tileDone(waterTileItems)}/${waterTileItems.length} glasses` : 'Nothing added yet' },
+    { key: 'nutrition', icon: '🥗', label: 'Nutrition', color: '#4ADE80',
+      done: tileDone(foodTileItems), total: foodTileItems.length,
+      metric: foodTileItems.length
+        ? `${tileDone(foodTileItems)}/${foodTileItems.length} items${eatenCalories > 0 ? ` · ${eatenCalories} kcal` : ''}`
+        : 'Nothing added yet' },
+    { key: 'supplement', icon: '💊', label: 'Supplements', color: '#A78BFA',
+      done: tileDone(suppTileItems), total: suppTileItems.length,
+      metric: suppTileItems.length ? `${tileDone(suppTileItems)}/${suppTileItems.length} taken` : 'Nothing added yet' },
+  ];
 
   return (
     <View style={[
@@ -3040,7 +3083,61 @@ function DayPanel({
 
       <View style={styles.dayDivider} />
 
+      {/* ── Hub: 4-tile overview grid (tap a tile to open that section) ── */}
+      {activeSection === null && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 14, paddingVertical: 14 }}>
+          {hubTiles.map(tile => {
+            const complete = tile.total > 0 && tile.done === tile.total;
+            const pctTile = tile.total ? Math.round((tile.done / tile.total) * 100) : 0;
+            return (
+              <TouchableOpacity
+                key={tile.key}
+                onPress={() => setActiveSection(tile.key)}
+                activeOpacity={0.8}
+                style={{
+                  width: '47%', flexGrow: 1,
+                  backgroundColor: `${tile.color}0D`,
+                  borderRadius: 16, padding: 14, gap: 8,
+                  borderWidth: 1, borderColor: complete ? `${tile.color}66` : THEME.colors.border,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 20 }}>{tile.icon}</Text>
+                  <Text style={{ color: complete ? tile.color : THEME.colors.textMuted, fontSize: complete ? 12 : 15 }}>
+                    {complete ? '✓' : '›'}
+                  </Text>
+                </View>
+                <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }}>{tile.label}</Text>
+                <Text
+                  style={{ color: tile.total ? THEME.colors.textSecondary : THEME.colors.textMuted, fontSize: 11.5, fontFamily: THEME.fonts.sans }}
+                  numberOfLines={1}
+                >
+                  {tile.metric}
+                </Text>
+                <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                  <View style={{ width: `${pctTile}%`, height: '100%', backgroundColor: tile.color, borderRadius: 2 }} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {/* ── Detail: back-to-overview link ── */}
+      {activeSection !== null && (
+        <TouchableOpacity
+          onPress={() => setActiveSection(null)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, alignSelf: 'flex-start' }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: THEME.colors.teal, fontSize: 16, lineHeight: 18 }}>‹</Text>
+          <Text style={{ color: THEME.colors.teal, fontSize: 13, fontFamily: THEME.fonts.sansMedium }}>Overview</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Sections — warmup / workout / cooldown (water + food handled separately) */}
+      {activeSection === 'workout' && (<>
       {SECTIONS.filter(s => s.key !== 'water').map(s => (
         <SectionGroup
           key={s.key}
@@ -3050,6 +3147,7 @@ function DayPanel({
           locked={isDayFuture}
           onAdd={(payload: any) => onAddExercise(dayNumber, s.key, dayData[s.key] || [], payload)}
           onRemove={onRemoveExercise}
+          forceOpenState={true}
         />
       ))}
 
@@ -3073,18 +3171,26 @@ function DayPanel({
           <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
         </TouchableOpacity>
       </View>
+      </>)}
 
       {/* Water tracker — custom circular UI */}
-      {(dayData['water'] || []).length > 0 && (
-        <View style={{ marginHorizontal: 14, marginTop: 10, marginBottom: 4 }}>
-          <WaterTracker
-            items={dayData['water'] || []}
-            onToggle={onToggle}
-            locked={isDayFuture}
-          />
-        </View>
+      {activeSection === 'water' && (
+        (dayData['water'] || []).length > 0 ? (
+          <View style={{ marginHorizontal: 14, marginTop: 10, marginBottom: 4 }}>
+            <WaterTracker
+              items={dayData['water'] || []}
+              onToggle={onToggle}
+              locked={isDayFuture}
+            />
+          </View>
+        ) : (
+          <Text style={{ color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sans, textAlign: 'center', paddingVertical: 24 }}>
+            Water tracking hasn't been set up for this week yet.
+          </Text>
+        )
       )}
 
+      {activeSection === 'nutrition' && (<>
       {/* Meal Selection Wheel — lights up a section as soon as anything in it is checked */}
       {(() => {
         const foodItems = dayData['food'] || [];
@@ -3223,11 +3329,13 @@ function DayPanel({
           })()}
         </View>
       </View>
+      </>)}
 
       {/* Supplements category card — same treatment, using the existing
           purple supplement accent (#A78BFA) already used throughout this
           file for supplement-related UI (meal wheel header, nutrition ring
           fat segment, SUPPLEMENT_SLOTS color). */}
+      {activeSection === 'supplement' && (
       <View style={[styles.categoryCard, { marginTop: 16 }]}>
         <View style={[styles.categoryCardHeader, { borderBottomColor: 'rgba(167,139,250,0.18)' }]}>
           <Text style={styles.categoryCardIcon}>💊</Text>
@@ -3279,6 +3387,7 @@ function DayPanel({
           </View>
         </View>
       </View>
+      )}
     </View>
   );
 }
