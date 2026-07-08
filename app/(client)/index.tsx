@@ -25,6 +25,7 @@ import { getWeekStart } from '@/hooks/useManualLog';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
+import { ConsistencyHeatmap } from '@/components/ui/ConsistencyHeatmap';
 
 // ── Local date string helper (YYYY-MM-DD in local time) ───────────────────────
 function localDateStr(date: Date): string {
@@ -216,176 +217,9 @@ function weekMessage(pct: number, weekOffset: number): { emoji: string; text: st
   return pool[Math.abs(weekOffset) % pool.length];
 }
 
-// ── Weekly Progress Card with navigation, animation, contextual messages ───────
-function WeekStatsCard({ clientId }: { clientId: string }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const isCurrentWeek = weekOffset === 0;
-
-  const weekStart = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + weekOffset * 7);
-    return getWeekStart(d);
-  })();
-
-  const { data } = useWeekStats(clientId, weekStart);
-  const done  = data?.done  ?? 0;
-  const total = data?.total ?? 0;
-  const pct   = data?.pct   ?? 0;
-
-  const prevWeekStart = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + (weekOffset - 1) * 7);
-    return getWeekStart(d);
-  })();
-  const { data: prevData } = useWeekStats(clientId, prevWeekStart);
-  const prevPct = prevData?.pct ?? 0;
-  const showDelta = total > 0 && (prevData?.total ?? 0) > 0;
-  const delta = pct - prevPct;
-
-  // Week label
-  const [wsY, wsM, wsD] = weekStart.split('-').map(Number);
-  const wStart = new Date(wsY, wsM - 1, wsD);
-  const wEnd   = new Date(wsY, wsM - 1, wsD + 5);
-  const fmt    = (d: Date) => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  const weekLabel = isCurrentWeek ? 'This week' : `${fmt(wStart)} – ${fmt(wEnd)}`;
-
-  // Colors
-  const isPerfect  = pct === 100 && total > 0;
-  const ringColor  =
-    isPerfect    ? '#FFD700' :
-    pct >= 70    ? THEME.colors.teal :
-    pct >= 40    ? THEME.colors.amber :
-    pct > 0      ? '#F87171' :
-                   THEME.colors.border;
-  const cardBorder = isPerfect ? 'rgba(255,215,0,0.35)' : 'rgba(0,196,180,0.15)';
-
-  // Glow pulse for perfect week
-  const glowAnim  = useRef(new Animated.Value(0)).current;
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
-
-  useEffect(() => {
-    if (isPerfect) {
-      // Fade-in + scale the celebration text
-      Animated.parallel([
-        Animated.timing(fadeAnim,  { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, tension: 180, friction: 8, useNativeDriver: true }),
-      ]).start();
-      // Looping glow pulse on the ring
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-          Animated.timing(glowAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
-        ])
-      );
-      loop.start();
-      return () => loop.stop();
-    } else {
-      fadeAnim.setValue(0);
-      scaleAnim.setValue(0.8);
-      glowAnim.setValue(0);
-    }
-  }, [isPerfect, weekOffset]);
-
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.85] });
-  const msg = weekMessage(pct, weekOffset);
-
-  return (
-    <View style={{ marginHorizontal: 24, marginBottom: 24, backgroundColor: THEME.colors.surface2, borderRadius: 16, padding: 18, borderWidth: isPerfect ? 1 : 0.5, borderColor: cardBorder }}>
-
-      {/* Header row: label + nav */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-          {weekLabel}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-          <TouchableOpacity onPress={() => setWeekOffset(o => o - 1)} style={{ padding: 6 }}>
-            <Text style={{ fontSize: 18, color: THEME.colors.teal }}>‹</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setWeekOffset(o => o + 1)}
-            disabled={isCurrentWeek}
-            style={{ padding: 6, opacity: isCurrentWeek ? 0.3 : 1 }}
-          >
-            <Text style={{ fontSize: 18, color: THEME.colors.teal }}>›</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Main content: stats left + ring right */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flex: 1 }}>
-          {isPerfect && (
-            <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }], marginBottom: 6 }}>
-              <Text style={{ fontSize: 17, fontFamily: THEME.fonts.sansMedium, color: '#FFD700', letterSpacing: 0.2 }}>
-                🏆 Perfect week!
-              </Text>
-            </Animated.View>
-          )}
-          <Text style={{ color: THEME.colors.textPrimary, fontSize: 15, fontFamily: THEME.fonts.sansMedium }}>
-            {total === 0 ? 'No tasks logged yet' : `${done} of ${total} tasks done`}
-          </Text>
-          {total > 0 && !isPerfect && (
-            <Text style={{ color: THEME.colors.textMuted, fontSize: 12, fontFamily: THEME.fonts.sans, marginTop: 3 }}>
-              {pct}% complete
-            </Text>
-          )}
-          {showDelta && delta !== 0 && (
-            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: delta > 0 ? '#6EE7B7' : '#F87171', marginTop: 2 }}>
-              {delta > 0 ? '▲' : '▼'} {Math.abs(delta)}pts vs prior week
-            </Text>
-          )}
-        </View>
-
-        {/* % ring with optional glow */}
-        <View style={{ alignItems: 'center', justifyContent: 'center', width: 64, height: 64 }}>
-          {isPerfect && (
-            <Animated.View style={{
-              position: 'absolute',
-              width: 72, height: 72, borderRadius: 36,
-              backgroundColor: '#FFD700',
-              opacity: glowOpacity,
-            }} />
-          )}
-          <View style={{
-            width: 62, height: 62, borderRadius: 31, borderWidth: 2.5,
-            borderColor: ringColor,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: `${ringColor}12`,
-          }}>
-            {total === 0 ? (
-              <Text style={{ color: THEME.colors.textMuted, fontSize: 9, fontFamily: THEME.fonts.sans, textAlign: 'center' }}>no{'\n'}data</Text>
-            ) : (
-              <>
-                <Text style={{ color: ringColor, fontSize: 15, fontFamily: THEME.fonts.sansMedium, lineHeight: 18 }}>{pct}%</Text>
-                <Text style={{ color: THEME.colors.textMuted, fontSize: 8, fontFamily: THEME.fonts.sans }}>done</Text>
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/* Progress bar */}
-      {total > 0 && (
-        <View style={{ marginTop: 14 }}>
-          <View style={{ height: 5, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${pct}%`, backgroundColor: ringColor, borderRadius: 3 }} />
-          </View>
-        </View>
-      )}
-
-      {/* Contextual message */}
-      {msg && total > 0 && (
-        <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: `${ringColor}0A`, borderRadius: 10, padding: 12 }}>
-          <Text style={{ fontSize: 16, lineHeight: 20 }}>{msg.emoji}</Text>
-          <Text style={{ flex: 1, fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary, lineHeight: 18 }}>
-            {msg.text}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-}
+// (WeekStatsCard, WeeklyActivityCard, and Perfect Days used to be 3 separate
+// week-summary cards here. Consolidated into ThisWeekCard, defined further
+// down, right where WeekPerfectCard used to be.)
 
 // ── Animated ring arc helper ──────────────────────────────────────────────────
 function RingArc({ pct, cx, cy, r, sw, color }: { pct: number; cx: number; cy: number; r: number; sw: number; color: string }) {
@@ -998,177 +832,24 @@ function DailyTrackerCard({ planStartDate }: { planStartDate: string | null }) {
   );
 }
 
-// ── This Week card with concentric ring progress ──────────────────────────────
-function WeeklyActivityCard({ clientId }: { clientId: string }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const isCurrentWeek = weekOffset === 0;
+// ── This Week card — perfect days + active days + task completion, merged into
+//    one compact card (previously 3 separate cards each answering a version of
+//    "how did my week go": Perfect Days, This Week Activity, Weekly Progress) ──
+const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S'];
 
-  const weekStart = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + weekOffset * 7);
-    return getWeekStart(d);
-  })();
-
-  const { data: activity } = useWeekActivity(clientId, weekStart);
-
-  const activeDays  = activity?.activeDays  ?? 0;
-  const checkinDays = activity?.checkinCount ?? 0;
-  const MAX = 6;
-
-  const prevWeekStart = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + (weekOffset - 1) * 7);
-    return getWeekStart(d);
-  })();
-  const { data: prevActivity } = useWeekActivity(clientId, prevWeekStart);
-  const activeDaysDelta  = activeDays  - (prevActivity?.activeDays ?? 0);
-  const checkinDaysDelta = checkinDays - (prevActivity?.checkinCount ?? 0);
-
-  const [wsY, wsM, wsD] = weekStart.split('-').map(Number);
-  const wStartDate = new Date(wsY, wsM - 1, wsD);
-  const wEndDate   = new Date(wsY, wsM - 1, wsD + 5);
-  const fmt = (d: Date) => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  const weekLabel = isCurrentWeek ? 'This week' : `${fmt(wStartDate)} – ${fmt(wEndDate)}`;
-
-  // Ring geometry
-  const SIZE    = 130;
-  const CENTER  = SIZE / 2;
-  const OUTER_R = 54;
-  const INNER_R = 36;
-  const SW      = 11;
-  const outerCirc = 2 * Math.PI * OUTER_R;
-  const innerCirc = 2 * Math.PI * INNER_R;
-
-  const outerAnim = useRef(new Animated.Value(0)).current;
-  const innerAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    outerAnim.setValue(0);
-    innerAnim.setValue(0);
-    Animated.parallel([
-      Animated.timing(outerAnim, { toValue: activeDays / MAX,  duration: 900, useNativeDriver: false }),
-      Animated.timing(innerAnim, { toValue: checkinDays / MAX, duration: 900, delay: 200, useNativeDriver: false }),
-    ]).start();
-  }, [activeDays, checkinDays, weekStart]);
-
-  const outerOffset = outerAnim.interpolate({ inputRange: [0, 1], outputRange: [outerCirc, 0] });
-  const innerOffset = innerAnim.interpolate({ inputRange: [0, 1], outputRange: [innerCirc, 0] });
-
+function StatBlock({ icon, label, value, color, pulse }: {
+  icon: string; label: string; value: string; color: string; pulse?: Animated.Value;
+}) {
   return (
-    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
-
-      {/* Header + nav */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-          {weekLabel}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-          <TouchableOpacity onPress={() => setWeekOffset(o => o - 1)} style={{ padding: 6 }}>
-            <Text style={{ fontSize: 18, color: THEME.colors.teal }}>‹</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setWeekOffset(o => o + 1)} disabled={isCurrentWeek} style={{ padding: 6, opacity: isCurrentWeek ? 0.3 : 1 }}>
-            <Text style={{ fontSize: 18, color: THEME.colors.teal }}>›</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Body: legend left, rings right */}
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-
-        {/* Legend */}
-        <View style={{ flex: 1, gap: 20 }}>
-          {/* Active days */}
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: THEME.colors.teal }} />
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>Active days</Text>
-            </View>
-            <Text style={{ fontSize: 22, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, marginLeft: 15 }}>
-              {activeDays}
-              <Text style={{ fontSize: 13, color: THEME.colors.textMuted }}> / {MAX}</Text>
-            </Text>
-            {activeDaysDelta !== 0 && (
-              <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: activeDaysDelta > 0 ? '#6EE7B7' : '#F87171', marginLeft: 15, marginTop: 1 }}>
-                {activeDaysDelta > 0 ? '▲' : '▼'} {Math.abs(activeDaysDelta)} vs last wk
-              </Text>
-            )}
-          </View>
-
-          {/* Daily Pulse */}
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: THEME.colors.amber }} />
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>Daily Pulse</Text>
-            </View>
-            <Text style={{ fontSize: 22, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber, marginLeft: 15 }}>
-              {checkinDays}
-              <Text style={{ fontSize: 13, color: THEME.colors.textMuted }}> / {MAX}</Text>
-            </Text>
-            {checkinDaysDelta !== 0 && (
-              <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: checkinDaysDelta > 0 ? '#6EE7B7' : '#F87171', marginLeft: 15, marginTop: 1 }}>
-                {checkinDaysDelta > 0 ? '▲' : '▼'} {Math.abs(checkinDaysDelta)} vs last wk
-              </Text>
-            )}
-          </View>
-        </View>
-
-        {/* Concentric rings */}
-        <Svg
-          width={SIZE}
-          height={SIZE}
-          style={{ transform: [{ rotate: '-90deg' }] }}
-        >
-          {/* Outer track (Active days) */}
-          <Circle
-            cx={CENTER} cy={CENTER} r={OUTER_R}
-            stroke={THEME.colors.border}
-            strokeWidth={SW}
-            fill="none"
-            opacity={0.35}
-          />
-          <AnimatedArc
-            cx={CENTER} cy={CENTER} r={OUTER_R}
-            stroke={THEME.colors.teal}
-            strokeWidth={SW}
-            fill="none"
-            strokeDasharray={outerCirc}
-            strokeDashoffset={outerOffset}
-            strokeLinecap="round"
-          />
-
-          {/* Inner track (Daily Pulse) */}
-          <Circle
-            cx={CENTER} cy={CENTER} r={INNER_R}
-            stroke={THEME.colors.border}
-            strokeWidth={SW}
-            fill="none"
-            opacity={0.35}
-          />
-          <AnimatedArc
-            cx={CENTER} cy={CENTER} r={INNER_R}
-            stroke={THEME.colors.amber}
-            strokeWidth={SW}
-            fill="none"
-            strokeDasharray={innerCirc}
-            strokeDashoffset={innerOffset}
-            strokeLinecap="round"
-          />
-        </Svg>
-      </View>
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Animated.Text style={{ fontSize: 18, marginBottom: 4, transform: pulse ? [{ scale: pulse }] : undefined }}>{icon}</Animated.Text>
+      <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansMedium, color }}>{value}</Text>
+      <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>{label}</Text>
     </View>
   );
 }
 
-// ── Week Perfect Days card ────────────────────────────────────────────────────
-const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S'];
-
-// Sparkle star positions evenly spaced on a circle (degrees → x/y offsets)
-const SPARKLE = Array.from({ length: 6 }, (_, i) => {
-  const rad = ((i / 6) * 2 * Math.PI) - Math.PI / 2;
-  return { x: Math.cos(rad), y: Math.sin(rad) };
-});
-
-function WeekPerfectCard({ planStartDate }: { planStartDate: string | null }) {
+function ThisWeekCard({ clientId, planStartDate }: { clientId: string; planStartDate: string | null }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const isCurrentWeek = weekOffset === 0;
 
@@ -1178,10 +859,15 @@ function WeekPerfectCard({ planStartDate }: { planStartDate: string | null }) {
     return getWeekStart(d);
   })();
 
-  // Fetch per-day alignment data for this week
   const { data: weekDays = [] } = useWeeklyAlignment(weekStart);
+  const { data: activity }      = useWeekActivity(clientId, weekStart);
+  const { data: stats }         = useWeekStats(clientId, weekStart);
+
   const perfectCount = weekDays.filter(d => d.score !== null && d.score >= 100).length;
-  const isPerfect    = perfectCount === 6;
+  const isPerfect     = perfectCount === 6;
+  const activeDays    = activity?.activeDays ?? 0;
+  const total         = stats?.total ?? 0;
+  const pct           = stats?.pct   ?? 0;
 
   // Record the milestone once — upsert with ignoreDuplicates makes repeat
   // calls (re-renders, revisiting an already-perfect past week) safe no-ops.
@@ -1202,115 +888,54 @@ function WeekPerfectCard({ planStartDate }: { planStartDate: string | null }) {
     ? Math.ceil((new Date(planStartDate + 'T00:00:00').getTime() - new Date().getTime()) / (86400000 * 7))
     : -52;
 
-  // Fire visual params (scale with perfectCount)
-  const t          = perfectCount / 6;
-  const fireSize   = isPerfect ? 64 : Math.round(28 + t * 28); // 28→56, 64 for perfect
-  const fireOpacity = perfectCount === 0 ? 0.25 : 0.4 + t * 0.6;
-  const fireColor  = perfectCount === 0 ? '#666'
-    : perfectCount <= 2 ? '#E8A44A'
-    : perfectCount <= 4 ? '#FF8C00'
-    : perfectCount === 5 ? '#FF5500'
-    : '#FFD700'; // gold for 6/6
-
-  // Pulse animation
-  const pulseAnim   = useRef(new Animated.Value(1)).current;
-  const sparkleAnim = useRef(new Animated.Value(0)).current;
-
+  // Small pulse on the fire icon only, no giant animation
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     pulseAnim.stopAnimation();
-    if (perfectCount === 0) { pulseAnim.setValue(1); return; }
+    if (!isPerfect) { pulseAnim.setValue(1); return; }
     const loop = Animated.loop(Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: isPerfect ? 1.22 : 1.08, duration: 700, useNativeDriver: true }),
-      Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1.2, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1,   duration: 700, useNativeDriver: true }),
     ]));
-    loop.start();
-    return () => loop.stop();
-  }, [perfectCount]);
-
-  useEffect(() => {
-    sparkleAnim.stopAnimation();
-    if (!isPerfect) { sparkleAnim.setValue(0); return; }
-    const loop = Animated.loop(
-      Animated.timing(sparkleAnim, { toValue: 1, duration: 3000, useNativeDriver: true })
-    );
     loop.start();
     return () => loop.stop();
   }, [isPerfect]);
 
-  const sparkleRotate = sparkleAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const fireColor = perfectCount === 0 ? THEME.colors.textMuted
+    : perfectCount <= 2 ? '#E8A44A'
+    : perfectCount <= 4 ? '#FF8C00'
+    : perfectCount === 5 ? '#FF5500'
+    : '#FFD700';
 
-  // Container for the fire glyph + sparkle ring
-  const RING_SIZE = 140;
-  const SPARKLE_R = RING_SIZE / 2 - 8;
+  const msg = weekMessage(pct, weekOffset);
 
   return (
-    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: isPerfect ? `${fireColor}40` : THEME.colors.border, marginBottom: 16 }}>
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 18, borderWidth: isPerfect ? 1 : 0.5, borderColor: isPerfect ? 'rgba(255,215,0,0.4)' : THEME.colors.border, marginBottom: 16 }}>
 
-      {/* Header + week nav */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <View>
-          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-            Perfect Days
-          </Text>
-          <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11, marginTop: 2 }}>
-            {weekLabel}
-          </Text>
-        </View>
+      {/* Header + nav */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          {weekLabel}{isPerfect ? '  🏆' : ''}
+        </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
           <TouchableOpacity onPress={() => setWeekOffset(o => o - 1)} disabled={weekOffset <= minOffset} style={{ padding: 6, opacity: weekOffset <= minOffset ? 0.3 : 1 }}>
-            <Text style={{ fontSize: 20, color: THEME.colors.teal }}>‹</Text>
+            <Text style={{ fontSize: 18, color: THEME.colors.teal }}>‹</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setWeekOffset(o => o + 1)} disabled={isCurrentWeek} style={{ padding: 6, opacity: isCurrentWeek ? 0.3 : 1 }}>
-            <Text style={{ fontSize: 20, color: THEME.colors.teal }}>›</Text>
+            <Text style={{ fontSize: 18, color: THEME.colors.teal }}>›</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Fire + count centred */}
-      <View style={{ alignItems: 'center', marginBottom: 20 }}>
-        {/* Fire + sparkle ring */}
-        <View style={{ width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-          {/* Rotating sparkle ring — only when 6/6 */}
-          {isPerfect && (
-            <Animated.View style={{
-              position: 'absolute',
-              width: RING_SIZE, height: RING_SIZE,
-              transform: [{ rotate: sparkleRotate }],
-            }}>
-              {SPARKLE.map((s, i) => (
-                <Text key={i} style={{
-                  position: 'absolute',
-                  fontSize: 14,
-                  left: RING_SIZE / 2 + s.x * SPARKLE_R - 9,
-                  top:  RING_SIZE / 2 + s.y * SPARKLE_R - 9,
-                }}>⭐</Text>
-              ))}
-            </Animated.View>
-          )}
-
-          {/* Fire emoji — pulsing */}
-          <Animated.Text style={{
-            fontSize: fireSize,
-            opacity: fireOpacity,
-            transform: [{ scale: pulseAnim }],
-          }}>🔥</Animated.Text>
-        </View>
-
-        {/* Count */}
-        <Text style={{ fontSize: 40, fontFamily: THEME.fonts.sansMedium, color: fireColor, lineHeight: 44 }}>
-          {perfectCount}/6
-        </Text>
-        <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
-          {perfectCount === 6
-            ? '🏆 Perfect week!'
-            : perfectCount === 0
-            ? 'No perfect days yet'
-            : `${6 - perfectCount} more for a perfect week`}
-        </Text>
+      {/* Stat row */}
+      <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+        <StatBlock icon="🔥" label="Perfect days" value={`${perfectCount}/6`} color={fireColor} pulse={isPerfect ? pulseAnim : undefined} />
+        <StatBlock icon="✅" label="Active days" value={`${activeDays}/6`} color={THEME.colors.teal} />
+        <StatBlock icon="📋" label="Tasks" value={total > 0 ? `${pct}%` : '—'} color={THEME.colors.amber} />
       </View>
 
       {/* Day dots row */}
-      <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
+      <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: msg && total > 0 ? 14 : 0 }}>
         {weekDays.map((d, i) => {
           const dotColor = d.score === null
             ? 'rgba(255,255,255,0.07)'
@@ -1327,28 +952,71 @@ function WeekPerfectCard({ planStartDate }: { planStartDate: string | null }) {
                    candidate.getFullYear() === today.getFullYear();
           })();
           return (
-            <View key={i} style={{ alignItems: 'center', gap: 5 }}>
+            <View key={i} style={{ alignItems: 'center', gap: 4 }}>
               <View style={{
-                width: 30, height: 30, borderRadius: 15,
+                width: 24, height: 24, borderRadius: 12,
                 backgroundColor: dotColor,
                 borderWidth: isToday ? 1.5 : 0,
                 borderColor: THEME.colors.teal,
                 alignItems: 'center', justifyContent: 'center',
               }}>
                 {d.score !== null && d.score > 0 && (
-                  <Text style={{ fontSize: 9, fontFamily: THEME.fonts.sansMedium, color: d.score >= 100 ? '#000' : '#fff' }}>
+                  <Text style={{ fontSize: 8, fontFamily: THEME.fonts.sansMedium, color: d.score >= 100 ? '#000' : '#fff' }}>
                     {d.score}
                   </Text>
                 )}
               </View>
-              <Text style={{ fontSize: 10, fontFamily: isToday ? THEME.fonts.sansMedium : THEME.fonts.sans, color: isToday ? THEME.colors.teal : THEME.colors.textMuted }}>
+              <Text style={{ fontSize: 9, fontFamily: isToday ? THEME.fonts.sansMedium : THEME.fonts.sans, color: isToday ? THEME.colors.teal : THEME.colors.textMuted }}>
                 {DAY_LABELS[i]}
               </Text>
             </View>
           );
         })}
       </View>
+
+      {/* Contextual message */}
+      {msg && total > 0 && (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: `${fireColor}0A`, borderRadius: 10, padding: 12 }}>
+          <Text style={{ fontSize: 14, lineHeight: 18 }}>{msg.emoji}</Text>
+          <Text style={{ flex: 1, fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary, lineHeight: 16 }}>
+            {msg.text}
+          </Text>
+        </View>
+      )}
     </View>
+  );
+}
+
+// ── Consistency preview — compact, non-interactive heatmap that teases the
+//    full Progress → Consistency card rather than duplicating it in full ─────
+function ConsistencyPreviewCard() {
+  const router = useRouter();
+  const { data: alignHistory84 = [] } = useAlignmentHistory(84);
+  const hasData = alignHistory84.some(d => d.score !== null);
+  if (!hasData) return null;
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/(client)/progress')}
+      activeOpacity={0.85}
+      style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          🔥 Consistency
+        </Text>
+        <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>Full view ›</Text>
+      </View>
+      <ConsistencyHeatmap
+        data={alignHistory84}
+        bare
+        weeks={12}
+        cellSize={10}
+        showLegend={false}
+        showMonthLabels={false}
+        scrollable={false}
+      />
+    </TouchableOpacity>
   );
 }
 
@@ -1521,20 +1189,17 @@ export default function ClientDashboard() {
           </View>
         </View>
 
+        {/* Consistency preview — compact heatmap, taps through to Progress */}
+        <ConsistencyPreviewCard />
+
         {!checkinDone && <CheckInNudge />}
         <CoachMessageBanner />
 
         {/* Daily tracker: alignment + vitality */}
         <DailyTrackerCard planStartDate={planStartDate} />
 
-        {/* Weekly perfect days card */}
-        <WeekPerfectCard planStartDate={planStartDate} />
-
-        {/* This week activity card */}
-        {user?.id && <WeeklyActivityCard clientId={user.id} />}
-
-        {/* This week task stats */}
-        {user?.id && <WeekStatsCard clientId={user.id} />}
+        {/* This week: perfect days + active days + task completion, merged */}
+        {user?.id && <ThisWeekCard clientId={user.id} planStartDate={planStartDate} />}
 
         {/* Milestones preview */}
         <MilestonesCard />
