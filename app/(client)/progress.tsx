@@ -53,12 +53,45 @@ function ScoreCard({ label, current, previous, color }: {
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
         <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 11 }}>{label}</Text>
       </View>
-      <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 28 }}>{val}</Text>
+      <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 36 }}>{val}</Text>
       {d != null && (
-        <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 12, marginTop: 4, color: deltaColor(d) }}>
+        <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13, marginTop: 4, color: deltaColor(d) }}>
           {d > 0 ? `+${d}` : d < 0 ? `${d}` : '—'} vs prev
         </Text>
       )}
+    </View>
+  );
+}
+
+// ── Section header — groups related widgets under one clear label ────────────
+function SectionHeader({ icon, title }: { icon: string; title: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 24, marginTop: 28, marginBottom: 12 }}>
+      <Text style={{ fontSize: 17 }}>{icon}</Text>
+      <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{title}</Text>
+    </View>
+  );
+}
+
+// ── Segmented control — small pill switcher used inside cards ────────────────
+function SegmentedControl<T extends string>({ options, value, onChange }: {
+  options: { key: T; label: string }[]; value: T; onChange: (v: T) => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', backgroundColor: THEME.colors.surface3, borderRadius: 20, padding: 3, gap: 2, marginBottom: 16, alignSelf: 'flex-start' }}>
+      {options.map(opt => {
+        const active = opt.key === value;
+        return (
+          <TouchableOpacity
+            key={opt.key}
+            onPress={() => onChange(opt.key)}
+            activeOpacity={0.8}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: active ? THEME.colors.teal : 'transparent' }}
+          >
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: active ? '#000' : THEME.colors.textMuted }}>{opt.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -95,7 +128,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const SCREEN_W = Dimensions.get('window').width;
 
-function AlignmentTrendLine({ data }: { data: DayScore[] }) {
+function AlignmentTrendLine({ data, bare = false }: { data: DayScore[]; bare?: boolean }) {
   const valid = data.filter(d => d.score !== null);
   if (valid.length < 2) return null;
 
@@ -153,10 +186,10 @@ function AlignmentTrendLine({ data }: { data: DayScore[] }) {
   // Y-axis tick labels
   const yTicks = [0, 25, 50, 75, 100];
 
-  return (
-    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingTop: 20, paddingHorizontal: 20, paddingBottom: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>14-Day Alignment Trend</Text>
+  const content = (
+    <>
+      <View style={{ flexDirection: 'row', justifyContent: bare ? 'flex-end' : 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        {!bare && <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>14-Day Alignment Trend</Text>}
         <View style={{ backgroundColor: 'rgba(0,196,180,0.12)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
           <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>{last.score}  today</Text>
         </View>
@@ -243,6 +276,14 @@ function AlignmentTrendLine({ data }: { data: DayScore[] }) {
           {new Date(valid[valid.length - 1].date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
         </Text>
       </View>
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingTop: 20, paddingHorizontal: 20, paddingBottom: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+      {content}
     </View>
   );
 }
@@ -253,7 +294,7 @@ const CELL_GAP = 2;
 const COL_W = CELL + CELL_GAP;
 const DAY_ROW_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-function ConsistencyHeatmap({ data }: { data: DayScore[] }) {
+function ConsistencyHeatmap({ data, bare = false }: { data: DayScore[]; bare?: boolean }) {
   // Build a date→score lookup
   const scoreMap = useMemo(() => {
     const m: Record<string, number | null> = {};
@@ -311,11 +352,13 @@ function ConsistencyHeatmap({ data }: { data: DayScore[] }) {
 
   const totalW = 12 * COL_W + 22; // 22px for day labels on left
 
-  return (
-    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingTop: 18, paddingHorizontal: 16, paddingBottom: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
-      <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
-        12-Week Consistency
-      </Text>
+  const content = (
+    <>
+      {!bare && (
+        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
+          12-Week Consistency
+        </Text>
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={{ width: totalW }}>
@@ -380,6 +423,14 @@ function ConsistencyHeatmap({ data }: { data: DayScore[] }) {
           </View>
         </View>
       </ScrollView>
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingTop: 18, paddingHorizontal: 16, paddingBottom: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+      {content}
     </View>
   );
 }
@@ -388,13 +439,14 @@ function ConsistencyHeatmap({ data }: { data: DayScore[] }) {
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function WeeklyAlignmentCard({
-  days, weekStart, onPrev, onNext, isCurrentWeek,
+  days, weekStart, onPrev, onNext, isCurrentWeek, bare = false,
 }: {
   days: { day: number; score: number | null; workoutPct: number; waterPct: number; foodPct: number }[];
   weekStart: string;
   onPrev: () => void;
   onNext: () => void;
   isCurrentWeek: boolean;
+  bare?: boolean;
 }) {
   // Compute today's day_number relative to weekStart (same logic as isToday in useManualLog.js)
   const todayDay = (() => {
@@ -432,13 +484,15 @@ function WeeklyAlignmentCard({
     { label: 'Food',    icon: '🥗', pct: foAvg, color: '#E8A44A' },
   ];
 
-  return (
-    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+  const content = (
+    <>
       {/* Header */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
-          Weekly Alignment
-        </Text>
+      <View style={{ flexDirection: 'row', justifyContent: bare ? 'flex-end' : 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        {!bare && (
+          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+            Weekly Alignment
+          </Text>
+        )}
         {weekAvg !== null && (
           <View style={{ backgroundColor: weekAvg >= 75 ? 'rgba(52,211,153,0.15)' : weekAvg >= 45 ? 'rgba(232,164,74,0.15)' : 'rgba(248,113,113,0.15)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
             <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13, color: weekAvg >= 75 ? '#34D399' : weekAvg >= 45 ? '#E8A44A' : '#F87171' }}>
@@ -476,7 +530,7 @@ function WeeklyAlignmentCard({
             <View key={d.day} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
               <View style={{ width: '100%', height: barH, borderRadius: 5, backgroundColor: barColor, borderWidth: isToday ? 1 : 0, borderColor: '#FFFFFF40' }} />
               {hasScore && (
-                <Text style={{ fontSize: 9, fontFamily: THEME.fonts.sansMedium, color: barColor, marginTop: 3 }}>
+                <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: barColor, marginTop: 3 }}>
                   {d.score}
                 </Text>
               )}
@@ -502,10 +556,10 @@ function WeeklyAlignmentCard({
         {CATS.map(c => (
           <View key={c.label}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
                 {c.icon} {c.label}
               </Text>
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: c.color }}>{c.pct}%</Text>
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: c.color }}>{c.pct}%</Text>
             </View>
             <View style={{ height: 5, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
               <View style={{ height: '100%', width: `${c.pct}%`, backgroundColor: c.color, borderRadius: 3 }} />
@@ -513,6 +567,63 @@ function WeeklyAlignmentCard({
           </View>
         ))}
       </View>
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+      {content}
+    </View>
+  );
+}
+
+// ── Consistency section — one card, one "did I show up" question, answered at
+//    3 zoom levels via a segmented switch instead of 3 permanently-stacked cards ─
+type ConsistencyView = 'week' | '14day' | '12week';
+
+function ConsistencySection({
+  weekAlignment, selectedWeekStart, onPrevWeek, onNextWeek, isCurrentWeek, alignHistory14, alignHistory84,
+}: {
+  weekAlignment: { day: number; score: number | null; workoutPct: number; waterPct: number; foodPct: number }[];
+  selectedWeekStart: string;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+  isCurrentWeek: boolean;
+  alignHistory14: DayScore[];
+  alignHistory84: DayScore[];
+}) {
+  const [view, setView] = useState<ConsistencyView>('week');
+  const has14Day = alignHistory14.filter(d => d.score !== null).length >= 2;
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
+      <SegmentedControl
+        options={[
+          { key: 'week' as const, label: 'This Week' },
+          { key: '14day' as const, label: '14 Days' },
+          { key: '12week' as const, label: '12 Weeks' },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === 'week' && (
+        <WeeklyAlignmentCard
+          bare
+          days={weekAlignment}
+          weekStart={selectedWeekStart}
+          onPrev={onPrevWeek}
+          onNext={onNextWeek}
+          isCurrentWeek={isCurrentWeek}
+        />
+      )}
+      {view === '14day' && (
+        has14Day
+          ? <AlignmentTrendLine bare data={alignHistory14} />
+          : <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13, textAlign: 'center', paddingVertical: 24 }}>Not enough logged days yet for a 14-day trend.</Text>
+      )}
+      {view === '12week' && <ConsistencyHeatmap bare data={alignHistory84} />}
     </View>
   );
 }
@@ -525,7 +636,7 @@ function getOffsetWeekStart(offset: number): string {
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
-function OverviewTab() {
+function OverviewTab({ onGoToMeasurements }: { onGoToMeasurements: () => void }) {
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week…
 
   const { user } = useAuth();
@@ -597,7 +708,8 @@ function OverviewTab() {
         </View>
       )}
 
-      {/* Score cards */}
+      {/* Your Scores — the 3 headline numbers, plus their trend over time */}
+      <SectionHeader icon="🎯" title="Your Scores" />
       <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 24, marginBottom: 20 }}>
         <ScoreCard label="Fitness"   current={latest?.fitness_score   ?? null} previous={previous?.fitness_score   ?? null} color={THEME.scoreColors.fitness} />
         <ScoreCard label="Recovery"  current={latest?.recovery_score  ?? null} previous={previous?.recovery_score  ?? null} color={THEME.scoreColors.recovery} />
@@ -647,32 +759,29 @@ function OverviewTab() {
           Distinct from the coach-administered 8-domain Fitness Assessment — this updates
           automatically every time a workout is logged. */}
       {trainingLoad && (
-        <View style={{ marginHorizontal: 24, marginBottom: 6 }}>
-          <TrainingLoadSection data={trainingLoad} />
-        </View>
+        <>
+          <SectionHeader icon="💪" title="Training Load" />
+          <View style={{ marginHorizontal: 24, marginBottom: 6 }}>
+            <TrainingLoadSection data={trainingLoad} />
+          </View>
+        </>
       )}
 
-      {/* Weekly Alignment */}
-      <WeeklyAlignmentCard
-        days={weekAlignment}
-        weekStart={selectedWeekStart}
-        onPrev={() => setWeekOffset(o => o - 1)}
-        onNext={() => setWeekOffset(o => o + 1)}
+      {/* Consistency — "did I show up" at 3 zoom levels (week / 14-day / 12-week),
+          one card with a switch instead of 3 permanently-stacked charts */}
+      <SectionHeader icon="🔥" title="Consistency" />
+      <ConsistencySection
+        weekAlignment={weekAlignment}
+        selectedWeekStart={selectedWeekStart}
+        onPrevWeek={() => setWeekOffset(o => o - 1)}
+        onNextWeek={() => setWeekOffset(o => o + 1)}
         isCurrentWeek={isCurrentWeek}
+        alignHistory14={alignHistory14}
+        alignHistory84={alignHistory84}
       />
 
-      {/* 14-day Alignment Trend Line */}
-      {alignHistory14.filter((d: DayScore) => d.score !== null).length >= 2 && (
-        <AlignmentTrendLine data={alignHistory14} />
-      )}
-
-      {/* 12-week Consistency Heatmap */}
-      <ConsistencyHeatmap data={alignHistory84} />
-
-      {/* Trend Analysis — pick any body metric (incl. weight), see it charted
-          across all logged weeks. Replaces the old standalone weight-only
-          chart that used to live here, to avoid showing the same data twice. */}
-      <TrendAnalysisCard history={bodyHistory} />
+      {/* Nutrition & Supplements */}
+      <SectionHeader icon="🥗" title="Nutrition & Supplements" />
 
       {/* Nutrition Trend — toggles between Total and Oops (confession booth) */}
       <View style={{
@@ -739,7 +848,13 @@ function OverviewTab() {
         </View>
       )}
 
-      {/* Posture score */}
+      {/* Body — posture score here since it's a computed score like Fitness/Recovery/
+          Longevity; detailed body metrics (weight, waist, etc.) live in Measurements —
+          this teaser just points there instead of repeating the same numbers a 3rd time */}
+      {(latest?.posture_score != null || latestBody) && (
+        <SectionHeader icon="📐" title="Body" />
+      )}
+
       {latest?.posture_score != null && (
         <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
           <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12 }}>Posture score</Text>
@@ -758,33 +873,33 @@ function OverviewTab() {
         </View>
       )}
 
-      {/* Body snapshot */}
-      {latestBody && (
-        <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border }}>
-          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 16 }}>Latest body snapshot</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {[
-              { label: 'Waist', value: latestBody.waist_cm, unit: 'cm', prev: previousBody?.waist_cm, invert: true },
-              { label: 'Hips',  value: latestBody.hips_cm,  unit: 'cm', prev: previousBody?.hips_cm,  invert: true },
-              { label: 'Chest', value: latestBody.chest_cm, unit: 'cm', prev: previousBody?.chest_cm },
-              { label: 'Push-ups', value: latestBody.pushup_count, unit: 'reps', prev: previousBody?.pushup_count },
-              { label: 'Plank',    value: latestBody.plank_seconds, unit: 'sec', prev: previousBody?.plank_seconds },
-            ].filter(m => m.value != null).map(m => {
-              const d = delta(m.value!, m.prev ?? null, m.invert);
-              return (
-                <View key={m.label} style={{ backgroundColor: '#1A1A1E', borderRadius: 10, padding: 12, minWidth: 90 }}>
-                  <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 4 }}>{m.label}</Text>
-                  <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{m.value} <Text style={{ fontSize: 11, color: THEME.colors.textMuted }}>{m.unit}</Text></Text>
-                  {d != null && d !== 0 && (
-                    <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: deltaColor(d, m.invert), marginTop: 2 }}>
-                      {d > 0 ? '+' : ''}{d}
-                    </Text>
-                  )}
-                </View>
-              );
-            })}
+      {/* Lightweight current-weight teaser — full body metrics (weight, waist, hips,
+          chest, push-ups, plank, squats) and their trend already live in Measurements;
+          this just surfaces the latest weight + a direct link instead of repeating the
+          full picker/chart and body-snapshot grid a 2nd and 3rd time */}
+      {latestBody?.weight_kg != null && (
+        <TouchableOpacity
+          onPress={onGoToMeasurements}
+          activeOpacity={0.8}
+          style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <View>
+            <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 }}>Current weight</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+              <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 32 }}>{latestBody.weight_kg}</Text>
+              <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 14 }}>kg</Text>
+              {(() => {
+                const d = delta(latestBody.weight_kg, previousBody?.weight_kg ?? null, true);
+                return d != null && d !== 0 ? (
+                  <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: deltaColor(d, true), marginLeft: 4 }}>
+                    {d > 0 ? '+' : ''}{Math.round(d * 10) / 10} vs prev
+                  </Text>
+                ) : null;
+              })()}
+            </View>
           </View>
-        </View>
+          <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>Measurements ›</Text>
+        </TouchableOpacity>
       )}
     </ScrollView>
   );
@@ -1944,7 +2059,7 @@ export default function ProgressScreen() {
 
       {/* Tab content */}
       <View style={{ flex: 1 }}>
-        {activeTab === 'overview'     && <OverviewTab />}
+        {activeTab === 'overview'     && <OverviewTab onGoToMeasurements={() => setActiveTab('measurements')} />}
         {activeTab === 'measurements' && <MeasurementsTab />}
         {activeTab === 'photos'       && <PhotosTab />}
       </View>
