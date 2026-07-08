@@ -826,6 +826,28 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
 
 type RoutineScope = 'today' | 'week' | 'month' | 'custom';
 
+const WORKOUT_SECTION_LABELS: Record<string, string> = { warmup: 'Warm-up', workout: 'Workout', cooldown: 'Cool-down' };
+const MEAL_SLOT_ORDER = ['morning_drink', 'breakfast', 'lunch', 'evening_snacks', 'dinner'];
+const MEAL_SLOT_LABELS: Record<string, string> = {
+  morning_drink: 'Morning Drink', breakfast: 'Breakfast', lunch: 'Lunch', evening_snacks: 'Evening Snacks', dinner: 'Dinner',
+};
+
+// Groups a routine's items for the preview — by section (Warm-up/Workout/
+// Cool-down) for workout routines, or by meal slot for nutrition/supplement
+// ones. Inferred straight from each item's own item_type/meal_slot rather
+// than needing a separate domain prop threaded through the modal.
+function groupRoutineItemsForPreview(items: RoutineTemplateItem[]): { label: string; items: RoutineTemplateItem[] }[] {
+  const isWorkout = items.some(i => i.item_type === 'warmup' || i.item_type === 'workout' || i.item_type === 'cooldown');
+  if (isWorkout) {
+    return (['warmup', 'workout', 'cooldown'] as const)
+      .map(type => ({ label: WORKOUT_SECTION_LABELS[type], items: items.filter(i => i.item_type === type) }))
+      .filter(g => g.items.length > 0);
+  }
+  return MEAL_SLOT_ORDER
+    .map(slot => ({ label: MEAL_SLOT_LABELS[slot], items: items.filter(i => i.meal_slot === slot) }))
+    .filter(g => g.items.length > 0);
+}
+
 // ── Add Routine modal ────────────────────────────────────────────────────
 // Step flow: pick a saved template -> pick a scope (today / week / month /
 // custom dates) -> confirm -> apply. "Today" here means whichever day is
@@ -922,7 +944,7 @@ function AddRoutineModal({
           </View>
           <View style={wg.divider} />
 
-          <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ padding: 18 }}>
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ padding: 18 }} nestedScrollEnabled>
             {step === 'list' && (
               loadingTemplates ? (
                 <ActivityIndicator color={THEME.colors.teal} style={{ marginVertical: 20 }} />
@@ -976,28 +998,38 @@ function AddRoutineModal({
                               <Text style={{ color: THEME.colors.textMuted, fontSize: 13, fontFamily: THEME.fonts.sans, paddingVertical: 10 }}>
                                 No {itemLabel}s in this routine.
                               </Text>
-                            ) : t.items.map((item, idx) => {
-                              const detail = exerciseDetailLine(item);
-                              return (
-                                <View
-                                  key={item.id ?? idx}
-                                  style={{
-                                    paddingVertical: 10,
-                                    borderTopWidth: idx > 0 ? 1 : 0,
-                                    borderTopColor: 'rgba(255,255,255,0.05)',
-                                  }}
-                                >
-                                  <Text style={{ color: THEME.colors.textPrimary, fontSize: 14.5, fontFamily: THEME.fonts.sansMedium, lineHeight: 20 }}>
-                                    {idx + 1}. {item.item_name?.trim() ? item.item_name : '(no name saved)'}
-                                  </Text>
-                                  {detail && (
-                                    <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, marginTop: 3, lineHeight: 17 }}>
-                                      {detail}
-                                    </Text>
-                                  )}
-                                </View>
-                              );
-                            })}
+                            ) : groupRoutineItemsForPreview(t.items).map((group, gIdx) => (
+                              <View key={group.label}>
+                                <Text style={{
+                                  color: THEME.colors.teal, fontSize: 10.5, fontFamily: THEME.fonts.sansMedium,
+                                  letterSpacing: 0.8, textTransform: 'uppercase', marginTop: gIdx === 0 ? 6 : 16, marginBottom: 4,
+                                }}>
+                                  {group.label}
+                                </Text>
+                                {group.items.map((item, idx) => {
+                                  const detail = exerciseDetailLine(item);
+                                  return (
+                                    <View
+                                      key={item.id ?? idx}
+                                      style={{
+                                        paddingVertical: 8,
+                                        borderTopWidth: idx > 0 ? 1 : 0,
+                                        borderTopColor: 'rgba(255,255,255,0.05)',
+                                      }}
+                                    >
+                                      <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium, lineHeight: 19 }}>
+                                        {item.item_name?.trim() ? item.item_name : '(no name saved)'}
+                                      </Text>
+                                      {detail && (
+                                        <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, marginTop: 3, lineHeight: 17 }}>
+                                          {detail}
+                                        </Text>
+                                      )}
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            ))}
                           </View>
                         )}
                       </View>
