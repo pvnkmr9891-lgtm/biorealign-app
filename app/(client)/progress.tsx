@@ -1166,11 +1166,6 @@ function MeasurementsTab() {
           />
         </View>
 
-        {/* Since-you-started + trend chart — visible right where the numbers
-            are logged, not just on the separate Overview tab */}
-        <SinceStartSummary history={history} />
-        <TrendAnalysisCard history={history} />
-
         {/* Pre-fill notice */}
         {isPrefilled && (
           <View style={{ backgroundColor: `${THEME.colors.amber}15`, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.amber}35`, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1242,10 +1237,21 @@ function MeasurementsTab() {
               placeholderTextColor={THEME.colors.textMuted}
               multiline
             />
-
-            {/* Weekly Log — full history, same as the coach/admin view */}
-            <WeeklyLogSection history={history} />
           </React.Fragment>
+        )}
+
+        {/* Trends — since-you-started, the metric-picker chart, and the full
+            weekly log. Moved below the entry form: the week picker up top
+            signals "you're editing this week", so the form for that week
+            should be the very next thing, not an all-time chart unrelated
+            to whichever week you just navigated to. */}
+        {!loadingThis && (
+          <>
+            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 8, marginBottom: 12 }}>Trends</Text>
+            <SinceStartSummary history={history} />
+            <TrendAnalysisCard history={history} />
+            <WeeklyLogSection history={history} />
+          </>
         )}
 
       </ScrollView>
