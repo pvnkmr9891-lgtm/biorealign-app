@@ -26,7 +26,7 @@ import { getWeekStart } from '@/hooks/useManualLog';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { ConsistencyHeatmap } from '@/components/ui/ConsistencyHeatmap';
+import { MonthlyConsistencyHeatmap } from '@/components/ui/MonthlyConsistencyHeatmap';
 
 // ── Local date string helper (YYYY-MM-DD in local time) ───────────────────────
 function localDateStr(date: Date): string {
@@ -939,36 +939,64 @@ function ThisWeekCard({ clientId, planStartDate }: { clientId: string; planStart
   );
 }
 
-// ── Consistency preview — compact, non-interactive heatmap that teases the
-//    full Progress → Consistency card rather than duplicating it in full ─────
+// ── Consistency card — one calendar month at a time, bigger cells, with
+//    prev/next month navigation. Replaces the old compact 12-week strip;
+//    "Full view" still links to Progress → Consistency for the week/14-day
+//    zoom levels, which this monthly calendar doesn't cover ─────────────────
+const MONTH_NAV_MIN_OFFSET = -12; // don't browse back further than a year
+
 function ConsistencyPreviewCard() {
   const router = useRouter();
-  const { data: alignHistory84 = [] } = useAlignmentHistory(84);
-  const hasData = alignHistory84.some(d => d.score !== null);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const { data: alignHistory = [] } = useAlignmentHistory(400);
+  const hasData = alignHistory.some(d => d.score !== null);
+
+  const viewedDate = (() => {
+    const d = new Date();
+    d.setDate(1); // avoid month-length overflow when shifting months
+    d.setMonth(d.getMonth() + monthOffset);
+    return d;
+  })();
+  const year  = viewedDate.getFullYear();
+  const month = viewedDate.getMonth();
+  const monthLabel = viewedDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const isCurrentMonth = monthOffset === 0;
+
   if (!hasData) return null;
 
   return (
-    <TouchableOpacity
-      onPress={() => router.push('/(client)/progress')}
-      activeOpacity={0.85}
-      style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+    <View style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
           🔥 Consistency
         </Text>
-        <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>Full view ›</Text>
+        <TouchableOpacity onPress={() => router.push('/(client)/progress')} activeOpacity={0.8}>
+          <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>Full view ›</Text>
+        </TouchableOpacity>
       </View>
-      <ConsistencyHeatmap
-        data={alignHistory84}
-        bare
-        weeks={12}
-        cellSize={10}
-        showLegend={false}
-        showMonthLabels={false}
-        scrollable={false}
-      />
-    </TouchableOpacity>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <TouchableOpacity
+          onPress={() => setMonthOffset(o => Math.max(MONTH_NAV_MIN_OFFSET, o - 1))}
+          disabled={monthOffset <= MONTH_NAV_MIN_OFFSET}
+          style={{ padding: 6, opacity: monthOffset <= MONTH_NAV_MIN_OFFSET ? 0.3 : 1 }}
+        >
+          <Text style={{ fontSize: 20, color: THEME.colors.teal }}>‹</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+          {monthLabel}
+        </Text>
+        <TouchableOpacity
+          onPress={() => setMonthOffset(o => Math.min(0, o + 1))}
+          disabled={isCurrentMonth}
+          style={{ padding: 6, opacity: isCurrentMonth ? 0.3 : 1 }}
+        >
+          <Text style={{ fontSize: 20, color: THEME.colors.teal }}>›</Text>
+        </TouchableOpacity>
+      </View>
+
+      <MonthlyConsistencyHeatmap data={alignHistory} year={year} month={month} cellSize={25} />
+    </View>
   );
 }
 
