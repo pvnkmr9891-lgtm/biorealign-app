@@ -286,8 +286,15 @@ export function useManualLog(userId, profile, weekStartOverride) {
       const failed  = results.find(r => r.error);
       if (failed) throw failed.error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qKey });
+    onSuccess: async () => {
+      // Await the primary log query specifically — handleSave (workout-plan.tsx)
+      // clears its local optimistic `pending` overrides right after this mutation
+      // resolves. If that happens before `qKey`'s refetch lands, the day tabs
+      // briefly render the stale pre-save data (flicker back to the old color)
+      // before the background refetch catches up (the "turns green late"
+      // delay). Awaiting it here closes that race — the other invalidations
+      // below feed other screens, not the day tabs, so they stay fire-and-forget.
+      await queryClient.invalidateQueries({ queryKey: qKey });
       queryClient.invalidateQueries({ queryKey: ['alignment', userId] });
       queryClient.invalidateQueries({ queryKey: ['client_streaks', userId] });
       queryClient.invalidateQueries({ queryKey: ['client', userId, 'week_activity'] });
