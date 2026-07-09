@@ -19,7 +19,6 @@ import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
 import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
 import { SupplementCalendarTracker } from '@/components/supplements/SupplementCalendarTracker';
 import { THEME } from '@/constants/theme';
-import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 import { getWeekStart } from '@/hooks/useManualLog';
 import { CalendarGrid } from '@/components/ui/CalendarGrid';
 import { WeekStatusStrip } from '@/components/ui/WeekStatusStrip';
@@ -1246,8 +1245,13 @@ function MeasurementsTab() {
 
       </ScrollView>
 
-      {/* Save button */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: THEME.colors.background, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, paddingHorizontal: 24, paddingVertical: 16, paddingBottom: TAB_BAR_CLEARANCE }}>
+      {/* Save button — this screen's route already reserves ~100px of bottom
+          clearance for the floating dock (see the default Stack.Screen
+          contentStyle in _layout.tsx), so `bottom: 0` here already sits just
+          above the dock. Adding TAB_BAR_CLEARANCE (~104-116px) again on top
+          of that double-reserved the gap, pushing the button much higher
+          than needed — this is just a small aesthetic gap now. */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: THEME.colors.background, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, paddingHorizontal: 24, paddingVertical: 16, paddingBottom: 20 }}>
         <TouchableOpacity
           onPress={handleSave}
           disabled={saveMetrics.isPending || loadingThis}
