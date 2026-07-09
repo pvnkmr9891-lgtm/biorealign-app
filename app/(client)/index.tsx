@@ -947,26 +947,25 @@ const MONTH_NAV_MIN_OFFSET = -12; // don't browse back further than a year
 
 function ConsistencyPreviewCard() {
   const router = useRouter();
-  const [monthOffset, setMonthOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0); // offset of the LATER (rightmost) of the 2 shown months
   const { data: alignHistory = [] } = useAlignmentHistory(400);
   const hasData = alignHistory.some(d => d.score !== null);
 
-  const viewedDate = (() => {
+  const laterDate = (() => {
     const d = new Date();
     d.setDate(1); // avoid month-length overflow when shifting months
     d.setMonth(d.getMonth() + monthOffset);
     return d;
   })();
-  const year  = viewedDate.getFullYear();
-  const month = viewedDate.getMonth();
-  const monthLabel = viewedDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const laterYear  = laterDate.getFullYear();
+  const laterMonth = laterDate.getMonth();
   const isCurrentMonth = monthOffset === 0;
 
   if (!hasData) return null;
 
   return (
     <View style={{ marginHorizontal: 24, marginBottom: 16, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
           🔥 Consistency
         </Text>
@@ -975,27 +974,15 @@ function ConsistencyPreviewCard() {
         </TouchableOpacity>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <TouchableOpacity
-          onPress={() => setMonthOffset(o => Math.max(MONTH_NAV_MIN_OFFSET, o - 1))}
-          disabled={monthOffset <= MONTH_NAV_MIN_OFFSET}
-          style={{ padding: 6, opacity: monthOffset <= MONTH_NAV_MIN_OFFSET ? 0.3 : 1 }}
-        >
-          <Text style={{ fontSize: 20, color: THEME.colors.teal }}>‹</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
-          {monthLabel}
-        </Text>
-        <TouchableOpacity
-          onPress={() => setMonthOffset(o => Math.min(0, o + 1))}
-          disabled={isCurrentMonth}
-          style={{ padding: 6, opacity: isCurrentMonth ? 0.3 : 1 }}
-        >
-          <Text style={{ fontSize: 20, color: THEME.colors.teal }}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      <MonthlyConsistencyHeatmap data={alignHistory} year={year} month={month} cellSize={25} />
+      <MonthlyConsistencyHeatmap
+        data={alignHistory}
+        laterYear={laterYear}
+        laterMonth={laterMonth}
+        onPrev={() => setMonthOffset(o => Math.max(MONTH_NAV_MIN_OFFSET, o - 1))}
+        onNext={() => setMonthOffset(o => Math.min(0, o + 1))}
+        canPrev={monthOffset > MONTH_NAV_MIN_OFFSET}
+        canNext={!isCurrentMonth}
+      />
     </View>
   );
 }
