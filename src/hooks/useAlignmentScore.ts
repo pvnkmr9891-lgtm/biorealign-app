@@ -239,3 +239,55 @@ export function scoreToTier(avg: number): Tier {
   if (avg >= 40) return 'momentum';
   return 'foundation';
 }
+
+// ── Total distinct days logged with alignment score ≥ 45% (amber or better) ──
+// Two corrections applied beyond simple (week_start_date, day_number) counting:
+// 1. Map to actual calendar date and deduplicate — the IST timezone bug sometimes
+//    seeds the same physical day under two different week_start_dates (e.g. the
+//    same Monday appears as day 3 of a "Saturday" week AND day 2 of a "Sunday"
+//    week). Deduplicating by calendar date merges these.
+// 2. Exclude Sundays — Sunday is a rest day; no workout plan runs on Sunday, so
+//    any data that lands on a Sunday is a timezone artifact and must not count.
+export function useTotalDaysLogged(clientId: string | undefined, planStartDate: string | null) {
+  return useQuery({
+    queryKey: ['client', clientId, 'total_days_logged'],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('manual_workout_logs')
+        .select('week_start_date, day_number, item_type, completed')
+        .eq('client_id', clientId!)
+        .not('day_number', 'is', null);
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as {
+        week_start_date: string;
+        day_number: number;
+        item_type: string;
+        completed: boolean;
+      }[];
+
+      // Group items by the actual calendar date they represent
+      const dateMap = new Map<string, { item_type: string; completed: boolean }[]>();
+      for (const row of rows) {
+        if (row.day_number < 1 || row.day_number > 6) continue;
+        const [wsY, wsM, wsD] = row.week_start_date.split('-').map(Number);
+        const d = new Date(wsY, wsM - 1, wsD + row.day_number - 1);
+        if (d.getDay() === 0) continue; // skip Sundays — rest day, timezone artifact
+        const dateKey = localDateStr(d);
+        if (!dateMap.has(dateKey)) dateMap.set(dateKey, []);
+        dateMap.get(dateKey)!.push({ item_type: row.item_type, completed: row.completed });
+      }
+
+      // Count only dates where computed alignment score ≥ 45 (amber or green)
+      let count = 0;
+      for (const logs of dateMap.values()) {
+        const { score } = computeDay(logs);
+        if (score !== null && score >= 45) count++;
+      }
+      return count;
+    },
+    staleTime: 60_000,
+  });
+}

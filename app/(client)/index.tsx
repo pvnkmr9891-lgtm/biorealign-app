@@ -17,10 +17,11 @@ import { THEME } from '@/constants/theme';
 import { TAB_BAR_CLEARANCE } from '@/components/ui/SlidingTabBar';
 import { PROGRAMS } from '@/constants/programs';
 import { PROGRAMS_ENABLED } from '@/constants/featureFlags';
-import { useAlignmentForDate, useWeeklyAlignment, computeDay, useAlignmentHistory, scoreToTier, TIER_META } from '@/hooks/useAlignmentScore';
+import { useAlignmentForDate, useWeeklyAlignment, useAlignmentHistory, scoreToTier, TIER_META, useTotalDaysLogged } from '@/hooks/useAlignmentScore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRebuildStreak, useStreak } from '@/hooks/useStreakSystem';
-import { useAchievements, useRecordAchievement } from '@/hooks/useAchievements';
+import { useRecordAchievement } from '@/hooks/useAchievements';
+import { useBadgeProgress } from '@/hooks/useBadgeProgress';
 import { getWeekStart } from '@/hooks/useManualLog';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -69,58 +70,6 @@ function useScoreForDate(dateStr: string) {
       const energyPct = Math.round((checkin.energy / 12) * 100);
       return { fitnessScore, recoveryScore, longevityScore, energyPct, hasCheckin: true };
     },
-  });
-}
-
-// ── Total distinct days logged with alignment score ≥ 45% (amber or better) ──
-// Two corrections applied beyond simple (week_start_date, day_number) counting:
-// 1. Map to actual calendar date and deduplicate — the IST timezone bug sometimes
-//    seeds the same physical day under two different week_start_dates (e.g. the
-//    same Monday appears as day 3 of a "Saturday" week AND day 2 of a "Sunday"
-//    week). Deduplicating by calendar date merges these.
-// 2. Exclude Sundays — Sunday is a rest day; no workout plan runs on Sunday, so
-//    any data that lands on a Sunday is a timezone artifact and must not count.
-function useTotalDaysLogged(clientId: string | undefined, planStartDate: string | null) {
-  return useQuery({
-    queryKey: ['client', clientId, 'total_days_logged'],
-    enabled: !!clientId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('manual_workout_logs')
-        .select('week_start_date, day_number, item_type, completed')
-        .eq('client_id', clientId!)
-        .not('day_number', 'is', null);
-
-      if (error) throw error;
-
-      const rows = (data ?? []) as {
-        week_start_date: string;
-        day_number: number;
-        item_type: string;
-        completed: boolean;
-      }[];
-
-      // Group items by the actual calendar date they represent
-      const dateMap = new Map<string, { item_type: string; completed: boolean }[]>();
-      for (const row of rows) {
-        if (row.day_number < 1 || row.day_number > 6) continue;
-        const [wsY, wsM, wsD] = row.week_start_date.split('-').map(Number);
-        const d = new Date(wsY, wsM - 1, wsD + row.day_number - 1);
-        if (d.getDay() === 0) continue; // skip Sundays — rest day, timezone artifact
-        const dateKey = localDateStr(d);
-        if (!dateMap.has(dateKey)) dateMap.set(dateKey, []);
-        dateMap.get(dateKey)!.push({ item_type: row.item_type, completed: row.completed });
-      }
-
-      // Count only dates where computed alignment score ≥ 45 (amber or green)
-      let count = 0;
-      for (const logs of dateMap.values()) {
-        const { score } = computeDay(logs);
-        if (score !== null && score >= 45) count++;
-      }
-      return count;
-    },
-    staleTime: 60_000,
   });
 }
 
@@ -667,8 +616,11 @@ function CoachMessageBanner() {
 // ── Milestones preview — last 3 achievements, tap through for full history ──
 function MilestonesCard() {
   const router = useRouter();
-  const { data: achievements = [] } = useAchievements();
-  if (achievements.length === 0) return null;
+  const { phases, totalEarned, totalBadges } = useBadgeProgress();
+  if (totalEarned === 0) return null;
+
+  // Most-advanced 3 earned badges, in catalog order (phase 1 → 4)
+  const earnedBadges = phases.flatMap((p) => p.badges.filter((b) => b.earned)).slice(-3);
 
   return (
     <TouchableOpacity
@@ -680,13 +632,13 @@ function MilestonesCard() {
         <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
           🏆 Milestones
         </Text>
-        <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>View all ({achievements.length}) ›</Text>
+        <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 12 }}>{totalEarned}/{totalBadges} ›</Text>
       </View>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        {achievements.slice(0, 3).map((a) => (
-          <View key={a.id} style={{ flex: 1, alignItems: 'center', backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 10 }}>
-            <Text style={{ fontSize: 20, marginBottom: 4 }}>{a.icon}</Text>
-            <Text numberOfLines={1} style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textAlign: 'center' }}>{a.label}</Text>
+        {earnedBadges.map((b) => (
+          <View key={b.id} style={{ flex: 1, alignItems: 'center', backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 10 }}>
+            <Text style={{ fontSize: 20, marginBottom: 4 }}>{b.icon}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, textAlign: 'center' }}>{b.label}</Text>
           </View>
         ))}
       </View>
