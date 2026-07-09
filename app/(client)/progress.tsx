@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, Image, Modal,
-  KeyboardAvoidingView, Platform, Animated, Dimensions,
+  KeyboardAvoidingView, Platform, Animated, Dimensions, Keyboard,
 } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -1133,7 +1133,7 @@ function MeasurementsTab() {
 
         {/* Week navigator */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <TouchableOpacity onPress={() => setWeekOffset(w => w - 1)} activeOpacity={0.7}
+          <TouchableOpacity onPress={() => { Keyboard.dismiss(); setWeekOffset(w => w - 1); }} activeOpacity={0.7}
             style={{ padding: 8, backgroundColor: THEME.colors.surface2, borderRadius: 10, borderWidth: 0.5, borderColor: THEME.colors.border }}>
             <Text style={{ fontSize: 18, color: THEME.colors.textSecondary }}>‹</Text>
           </TouchableOpacity>
@@ -1148,7 +1148,7 @@ function MeasurementsTab() {
           </View>
 
           <TouchableOpacity
-            onPress={() => setWeekOffset(w => w + 1)}
+            onPress={() => { Keyboard.dismiss(); setWeekOffset(w => w + 1); }}
             disabled={isCurrentWeek}
             activeOpacity={isCurrentWeek ? 1 : 0.7}
             style={{ padding: 8, backgroundColor: THEME.colors.surface2, borderRadius: 10, borderWidth: 0.5, borderColor: THEME.colors.border, opacity: isCurrentWeek ? 0.3 : 1 }}>
@@ -1162,7 +1162,7 @@ function MeasurementsTab() {
             weeks={recentWeeks}
             loggedWeeks={loggedWeeks}
             selectedWeek={selectedWeekStart}
-            onSelect={onSelectWeek}
+            onSelect={(wk) => { Keyboard.dismiss(); onSelectWeek(wk); }}
           />
         </View>
 
@@ -1199,7 +1199,12 @@ function MeasurementsTab() {
             <ActivityIndicator color={THEME.colors.teal} />
           </View>
         ) : (
-          <>
+          // Keyed by week so every TextInput below fully remounts on
+          // navigation instead of reusing its native EditText — Android's
+          // controlled TextInput can silently stop syncing to a new `value`
+          // prop while still focused, which is what made the fields look
+          // "stuck" when navigating weeks with the keyboard still up.
+          <React.Fragment key={selectedWeekStart}>
             {/* Weight & composition */}
             <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>Weight & Composition</Text>
             <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingHorizontal: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 20 }}>
@@ -1240,7 +1245,7 @@ function MeasurementsTab() {
 
             {/* Weekly Log — full history, same as the coach/admin view */}
             <WeeklyLogSection history={history} />
-          </>
+          </React.Fragment>
         )}
 
       </ScrollView>
