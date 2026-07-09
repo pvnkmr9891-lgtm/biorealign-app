@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, Animated, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useBadgeProgress, BadgeState, PhaseState } from '@/hooks/useBadgeProgress';
@@ -84,12 +84,105 @@ function PhaseCard({ phase, index, width }: { phase: PhaseState; index: number; 
   );
 }
 
+// ── Swipe hint — a small pulsing chevron near the card's right edge, only
+//    shown on the first phase before the user has ever swiped ─────────────
+function SwipeHintChevron() {
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 700, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  const translateX = pulse.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+  const opacity     = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] });
+  return (
+    <Animated.View pointerEvents="none" style={{
+      position: 'absolute', right: 8, top: '50%', marginTop: -14,
+      opacity, transform: [{ translateX }],
+    }}>
+      <Text style={{ fontSize: 26, color: THEME.colors.teal }}>›</Text>
+    </Animated.View>
+  );
+}
+
+// ── Next Badge spotlight — the single closest-to-earning badge across every
+//    unlocked phase, filling the space below the phase pager with something
+//    actionable instead of empty background ─────────────────────────────────
+function findSpotlight(phases: PhaseState[]): BadgeState | null {
+  let best: BadgeState | null = null;
+  let bestPct = -1;
+  for (const phase of phases) {
+    if (phase.locked) continue;
+    for (const b of phase.badges) {
+      if (b.earned) continue;
+      const pct = b.progress / b.threshold;
+      if (pct > bestPct) { bestPct = pct; best = b; }
+    }
+  }
+  return best;
+}
+
+function SpotlightCard({ phases }: { phases: PhaseState[] }) {
+  const spotlight = useMemo(() => findSpotlight(phases), [phases]);
+
+  if (!spotlight) {
+    return (
+      <View style={{ marginHorizontal: 24, alignItems: 'center', paddingVertical: 8 }}>
+        <Text style={{ fontSize: 32, marginBottom: 8 }}>🎉</Text>
+        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 18, textAlign: 'center' }}>
+          Every badge earned!
+        </Text>
+        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12.5, textAlign: 'center', marginTop: 4 }}>
+          You've cleared all 4 phases. Legendary.
+        </Text>
+      </View>
+    );
+  }
+
+  const remaining = Math.max(0, spotlight.threshold - spotlight.progress);
+  const pct = Math.min(1, spotlight.progress / spotlight.threshold);
+
+  return (
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 16, padding: 18, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: `${THEME.colors.teal}18`, borderWidth: 0.5, borderColor: `${THEME.colors.teal}35`, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 22 }}>{spotlight.icon}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 10.5, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 3 }}>
+          Next Badge
+        </Text>
+        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 14.5 }}>
+          {remaining} {remaining === 1 ? 'to go' : 'away'}: {spotlight.label}
+        </Text>
+        <View style={{ height: 5, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden', marginTop: 8 }}>
+          <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: THEME.colors.teal, borderRadius: 3 }} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function AchievementsScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const { phases, totalEarned, totalBadges } = useBadgeProgress();
   const [pageIndex, setPageIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+
+  // One-time "wiggle" nudge — peeks toward Phase 2 briefly on first load so
+  // it's obvious the page swipes, then eases back. Only worth doing when
+  // there's more than one phase to reveal.
+  useEffect(() => {
+    if (phases.length < 2) return;
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo({ x: 40, animated: true });
+      setTimeout(() => scrollRef.current?.scrollTo({ x: 0, animated: true }), 380);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [phases.length]);
 
   const onMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -113,22 +206,25 @@ export default function AchievementsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumEnd}
-        style={{ marginTop: 20 }}
-        contentContainerStyle={{ paddingBottom: 4 }}
-      >
-        {phases.map((phase, i) => (
-          <PhaseCard key={phase.id} phase={phase} index={i} width={width} />
-        ))}
-      </ScrollView>
+      <View style={{ position: 'relative' }}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onMomentumEnd}
+          style={{ marginTop: 20 }}
+          contentContainerStyle={{ paddingBottom: 4 }}
+        >
+          {phases.map((phase, i) => (
+            <PhaseCard key={phase.id} phase={phase} index={i} width={width} />
+          ))}
+        </ScrollView>
+        {pageIndex === 0 && phases.length > 1 && <SwipeHintChevron />}
+      </View>
 
       {/* Page dots */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 20 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 14 }}>
         {phases.map((_, i) => (
           <TouchableOpacity
             key={i}
@@ -141,6 +237,17 @@ export default function AchievementsScreen() {
             }} />
           </TouchableOpacity>
         ))}
+      </View>
+
+      {pageIndex === 0 && phases.length > 1 && (
+        <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11.5, textAlign: 'center', marginBottom: 16 }}>
+          Swipe for Phase 2 →
+        </Text>
+      )}
+
+      {/* Fills the remaining space with something actionable instead of empty background */}
+      <View style={{ flex: 1, justifyContent: 'center', paddingBottom: 24 }}>
+        <SpotlightCard phases={phases} />
       </View>
     </SafeAreaView>
   );
