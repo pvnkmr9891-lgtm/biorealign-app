@@ -792,9 +792,17 @@ const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S'];
 function StatBlock({ icon, label, value, color, pulse }: {
   icon: string; label: string; value: string; color: string; pulse?: Animated.Value;
 }) {
+  // `transform` must never toggle between an array and undefined across
+  // renders on an Animated component — React Native's Animated diffing
+  // resolves that transition to a literal `transform: null` on the native
+  // side, and processTransform.js crashes on `null.forEach`. Always keep a
+  // stable Animated.Value here (this component's own static one when no
+  // `pulse` prop is given) so `transform` is always present.
+  const staticScale = useRef(new Animated.Value(1)).current;
+  const scale = pulse ?? staticScale;
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
-      <Animated.Text style={{ fontSize: 18, marginBottom: 4, transform: pulse ? [{ scale: pulse }] : undefined }}>{icon}</Animated.Text>
+      <Animated.Text style={{ fontSize: 18, marginBottom: 4, transform: [{ scale }] }}>{icon}</Animated.Text>
       <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansMedium, color }}>{value}</Text>
       <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>{label}</Text>
     </View>
@@ -881,7 +889,7 @@ function ThisWeekCard({ clientId, planStartDate }: { clientId: string; planStart
 
       {/* Stat row */}
       <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-        <StatBlock icon="🔥" label="Perfect days" value={`${perfectCount}/6`} color={fireColor} pulse={isPerfect ? pulseAnim : undefined} />
+        <StatBlock icon="🔥" label="Perfect days" value={`${perfectCount}/6`} color={fireColor} pulse={pulseAnim} />
         <StatBlock icon="✅" label="Active days" value={`${activeDays}/6`} color={THEME.colors.teal} />
         <StatBlock icon="📋" label="Tasks" value={total > 0 ? `${pct}%` : '—'} color={THEME.colors.amber} />
       </View>
