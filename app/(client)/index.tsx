@@ -1156,17 +1156,17 @@ export default function ClientDashboard() {
           </View>
         </View>
 
-        {/* Consistency preview — compact heatmap, taps through to Progress */}
-        <ConsistencyPreviewCard />
+        {/* Daily tracker: alignment + vitality */}
+        <DailyTrackerCard planStartDate={planStartDate} />
 
         {!checkinDone && <CheckInNudge />}
         <CoachMessageBanner />
 
-        {/* Daily tracker: alignment + vitality */}
-        <DailyTrackerCard planStartDate={planStartDate} />
-
         {/* This week: perfect days + active days + task completion, merged */}
         {user?.id && <ThisWeekCard clientId={user.id} planStartDate={planStartDate} />}
+
+        {/* Consistency preview — compact heatmap, taps through to Progress */}
+        <ConsistencyPreviewCard />
 
         {/* Milestones preview */}
         <MilestonesCard />
