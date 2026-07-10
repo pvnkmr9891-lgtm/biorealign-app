@@ -150,6 +150,31 @@ export function useRequestCoach() {
   });
 }
 
+// ── Unassign the client's current coach (the "Change my coach" flow) ─────
+// Clients own their own profile row (profiles_own_update RLS), so this can
+// write directly rather than needing coach/admin approval — unlike getting
+// a NEW coach assigned, which does require the coach to approve.
+export function useUnassignMyCoach() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ assigned_coach_id: null })
+        .eq('id', user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: coachDirectoryKeys.myStatus(user.id) });
+      qc.invalidateQueries({ queryKey: ['client', user.id, 'coach_info'] });
+      useAuthStore.getState().fetchProfile(user.id);
+    },
+  });
+}
+
 // ── Cancel a pending request ──────────────────────────────────────────────
 export function useCancelCoachRequest() {
   const { user } = useAuth();
