@@ -83,42 +83,56 @@ export default function MyCoachScreen() {
         </View>
       ) : coach ? (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
-          <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 18, padding: 22, borderWidth: 1, borderColor: `${THEME.colors.success ?? '#4CC986'}40`, alignItems: 'center', marginBottom: 20 }}>
-            <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 1, borderColor: `${THEME.colors.teal}35`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-              <Text style={{ fontSize: 26, fontFamily: THEME.fonts.serif, color: THEME.colors.teal }}>
-                {coach.full_name?.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
+          {/* One merged card: compact identity + actions up top, then the
+              full profile (same CoachProfileView used on the coach-browsing
+              detail screen, so it never drifts out of sync) below —
+              showHeader=false there so the avatar/name aren't repeated. */}
+          <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 18, borderWidth: 1, borderColor: `${THEME.colors.success ?? '#4CC986'}40`, paddingHorizontal: 20, paddingBottom: 20 }}>
+            <View style={{ alignItems: 'center', paddingTop: 22 }}>
+              <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 1, borderColor: `${THEME.colors.teal}35`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Text style={{ fontSize: 26, fontFamily: THEME.fonts.serif, color: THEME.colors.teal }}>
+                  {coach.full_name?.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 19, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+                {coach.full_name}
               </Text>
-            </View>
-            <Text style={{ fontSize: 19, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
-              {coach.full_name}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${THEME.colors.success ?? '#4CC986'}18`, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, marginTop: 10 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: THEME.colors.success ?? '#4CC986' }} />
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.success ?? '#4CC986' }}>Assigned to you</Text>
+              {coachProfile?.tagline ? (
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, marginTop: 5, textAlign: 'center' }}>
+                  {coachProfile.tagline}
+                </Text>
+              ) : coachProfile?.years_experience != null ? (
+                <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>
+                  {coachProfile.years_experience} years of coaching experience
+                </Text>
+              ) : null}
+              {coachProfile?.location && (
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>📍 {coachProfile.location}</Text>
+              )}
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${THEME.colors.success ?? '#4CC986'}18`, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, marginTop: 10 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: THEME.colors.success ?? '#4CC986' }} />
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.success ?? '#4CC986' }}>Assigned to you</Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => router.push('/(client)/messages')}
+                activeOpacity={0.85}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 14, alignSelf: 'stretch', marginTop: 20, marginBottom: 6 }}
+              >
+                <Text style={{ fontSize: 16 }}>💬</Text>
+                <Text style={{ color: '#000', fontSize: 14, fontFamily: THEME.fonts.sansMedium }}>Message {coach.full_name?.split(' ')[0]}</Text>
+              </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              onPress={() => router.push('/(client)/messages')}
-              activeOpacity={0.85}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 14, alignSelf: 'stretch', marginTop: 20 }}
-            >
-              <Text style={{ fontSize: 16 }}>💬</Text>
-              <Text style={{ color: '#000', fontSize: 14, fontFamily: THEME.fonts.sansMedium }}>Message {coach.full_name?.split(' ')[0]}</Text>
-            </TouchableOpacity>
-          </View>
+            <View style={{ height: 0.5, backgroundColor: THEME.colors.border, marginVertical: 20 }} />
 
-          {/* About — the same resume view used on the coach-browsing detail
-              screen, so it never drifts out of sync with that one. */}
-          <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 18, borderWidth: 0.5, borderColor: THEME.colors.border, paddingHorizontal: 20, paddingBottom: 20 }}>
-            <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', paddingTop: 18, paddingBottom: 4 }}>
-              About your coach
-            </Text>
             {profileLoading || !coachProfile ? (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <ActivityIndicator color={THEME.colors.teal} />
               </View>
             ) : (
-              <CoachProfileView coach={coachProfile} />
+              <CoachProfileView coach={coachProfile} showHeader={false} />
             )}
           </View>
         </ScrollView>

@@ -4,50 +4,54 @@ import { CoachListing } from '@/hooks/useCoachDirectory';
 
 // Shared resume rendering for a coach — used both on the client-facing
 // coach-detail screen and the coach's own "view my public profile" screen,
-// so the two never drift out of sync.
-export function CoachProfileView({ coach }: { coach: CoachListing }) {
+// so the two never drift out of sync. `showHeader` defaults to true; pass
+// false when the caller already renders its own avatar/name/status block
+// (e.g. My Coach page) to avoid showing the coach's name and photo twice.
+export function CoachProfileView({ coach, showHeader = true }: { coach: CoachListing; showHeader?: boolean }) {
   return (
     <>
-      <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-        <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 2, borderColor: `${THEME.colors.teal}40`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-          <Text style={{ fontSize: 30, fontFamily: THEME.fonts.serif, color: THEME.colors.teal }}>
-            {coach.full_name?.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-          </Text>
-        </View>
-        <Text style={{ fontSize: 24, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>{coach.full_name}</Text>
-        {coach.tagline ? (
-          <Text style={{ fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, marginTop: 5, textAlign: 'center', paddingHorizontal: 20 }}>
-            {coach.tagline}
-          </Text>
-        ) : (
-          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>
-            {coach.years_experience ?? '—'} years of coaching experience
-          </Text>
-        )}
-        {coach.location && (
-          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>📍 {coach.location}</Text>
-        )}
-
-        {!!(coach.social_links && Object.keys(coach.social_links).length) && (
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-            {[
-              { key: 'instagram', icon: '📷', url: coach.social_links.instagram },
-              { key: 'linkedin', icon: '💼', url: coach.social_links.linkedin },
-              { key: 'youtube', icon: '▶️', url: coach.social_links.youtube },
-              { key: 'twitter', icon: '🐦', url: coach.social_links.twitter },
-              { key: 'website', icon: '🌐', url: coach.social_links.website },
-            ].filter((s) => s.url).map((s) => (
-              <TouchableOpacity
-                key={s.key}
-                onPress={() => Linking.openURL(s.url!)}
-                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
-              >
-                <Text style={{ fontSize: 15 }}>{s.icon}</Text>
-              </TouchableOpacity>
-            ))}
+      {showHeader && (
+        <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+          <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 2, borderColor: `${THEME.colors.teal}40`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <Text style={{ fontSize: 30, fontFamily: THEME.fonts.serif, color: THEME.colors.teal }}>
+              {coach.full_name?.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+            </Text>
           </View>
-        )}
-      </View>
+          <Text style={{ fontSize: 24, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>{coach.full_name}</Text>
+          {coach.tagline ? (
+            <Text style={{ fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, marginTop: 5, textAlign: 'center', paddingHorizontal: 20 }}>
+              {coach.tagline}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>
+              {coach.years_experience ?? '—'} years of coaching experience
+            </Text>
+          )}
+          {coach.location && (
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 4 }}>📍 {coach.location}</Text>
+          )}
+
+          {!!(coach.social_links && Object.keys(coach.social_links).length) && (
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              {[
+                { key: 'instagram', icon: '📷', url: coach.social_links.instagram },
+                { key: 'linkedin', icon: '💼', url: coach.social_links.linkedin },
+                { key: 'youtube', icon: '▶️', url: coach.social_links.youtube },
+                { key: 'twitter', icon: '🐦', url: coach.social_links.twitter },
+                { key: 'website', icon: '🌐', url: coach.social_links.website },
+              ].filter((s) => s.url).map((s) => (
+                <TouchableOpacity
+                  key={s.key}
+                  onPress={() => Linking.openURL(s.url!)}
+                  style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+                >
+                  <Text style={{ fontSize: 15 }}>{s.icon}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
         <View style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}>
