@@ -47,13 +47,16 @@ function groupByDate(messages: any[]) {
 export default function MessagingScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { coachId, clientId, clientName } = useLocalSearchParams<{
+  const { coachId, clientId, clientName, prefill } = useLocalSearchParams<{
     coachId: string;
     clientId: string;
     clientName: string;
+    prefill?: string;
   }>();
 
-  const [text, setText] = useState('');
+  // Prefill (kudos / check-in nudge from the dashboard) — editable, not
+  // auto-sent, so the coach can personalize before hitting send.
+  const [text, setText] = useState(typeof prefill === 'string' ? prefill : '');
   const scrollRef = useRef<ScrollView>(null);
 
   const { data: messages = [], isLoading } = useMessages(coachId, clientId);

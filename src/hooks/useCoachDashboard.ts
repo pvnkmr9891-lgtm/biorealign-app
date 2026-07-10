@@ -2,11 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { getSupplementInteractionWarning } from '@/constants/supplementItems';
+import { THEME } from '@/constants/theme';
 
 export const coachDashboardKeys = {
   attentionItems:       (uid: string) => ['coach', uid, 'attention_items'] as const,
   clientPulse:          (uid: string) => ['coach', uid, 'client_pulse'] as const,
   medicalOpinionReqs:   (uid: string) => ['coach', uid, 'medical_opinion_requests'] as const,
+  todayCheckins:        (uid: string) => ['coach', uid, 'today_checkins'] as const,
+  clientWins:           (uid: string) => ['coach', uid, 'client_wins'] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -34,6 +37,31 @@ const SEVERITY_RANK: Record<AttentionItemType, number> = {
   declining_adherence: 3,
   assessment_due:      4,
 };
+
+// Shared by the home "Needs attention" panel and the full attention-items
+// screen so both render and route identically.
+export const ATTENTION_META: Record<AttentionItemType, { icon: string; color: string; groupLabel: string }> = {
+  supplement_flag:     { icon: '⚠️', color: THEME.colors.error,  groupLabel: 'Supplement flags' },
+  unviewed_analysis:   { icon: '🩺', color: THEME.colors.amber,  groupLabel: 'Unviewed AI analyses' },
+  no_log:              { icon: '📅', color: THEME.colors.teal,   groupLabel: 'Inactive clients' },
+  declining_adherence: { icon: '📉', color: THEME.colors.amber,  groupLabel: 'Adherence dropping' },
+  assessment_due:      { icon: '🏋️', color: '#34D399',           groupLabel: 'Assessments due' },
+};
+
+export function attentionItemRoute(item: AttentionItem, coachId: string | undefined) {
+  switch (item.type) {
+    case 'supplement_flag':
+      return { pathname: '/(coach)/client-workouts', params: { clientId: item.clientId, clientName: item.clientName } } as const;
+    case 'unviewed_analysis':
+      return { pathname: '/(coach)/client-overview', params: { clientId: item.clientId, clientName: item.clientName, tab: 'medical' } } as const;
+    case 'no_log':
+      return { pathname: '/(coach)/messaging', params: { coachId, clientId: item.clientId, clientName: item.clientName } } as const;
+    case 'declining_adherence':
+      return { pathname: '/(coach)/client-overview', params: { clientId: item.clientId, clientName: item.clientName } } as const;
+    case 'assessment_due':
+      return { pathname: '/(coach)/client-overview', params: { clientId: item.clientId, clientName: item.clientName, tab: 'fitness' } } as const;
+  }
+}
 
 // Re-assess every ~8-12 weeks; nudge at 60 days so the coach books it in time.
 const REASSESSMENT_DUE_DAYS = 60;
@@ -213,12 +241,123 @@ export function useCoachAttentionItems() {
 }
 
 // ---------------------------------------------------------------------------
+// Today's check-ins — each assigned client's daily readiness (mood / energy /
+// sleep / pain from today's check-in), plus who hasn't checked in yet.
+// ---------------------------------------------------------------------------
+export interface TodayCheckinRow {
+  clientId: string;
+  clientName: string;
+  checkin: { mood: number; energy: number; sleep_hrs: number; pain_level: number } | null;
+}
+
+function todayLocalDateStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function useCoachTodayCheckins() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: coachDashboardKeys.todayCheckins(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async (): Promise<TodayCheckinRow[]> => {
+      const { data: clients, error: clientsErr } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('assigned_coach_id', user!.id)
+        .order('full_name');
+      if (clientsErr) throw clientsErr;
+      if (!clients?.length) return [];
+
+      const clientIds = clients.map((c) => c.id);
+      const { data: checkins, error: checkinsErr } = await supabase
+        .from('daily_checkins')
+        .select('client_id, mood, energy, sleep_hrs, pain_level')
+        .in('client_id', clientIds)
+        .eq('date', todayLocalDateStr());
+      if (checkinsErr) throw checkinsErr;
+
+      const checkinByClient = new Map((checkins ?? []).map((c: any) => [c.client_id, c]));
+
+      return clients
+        .map((c) => {
+          const ci = checkinByClient.get(c.id);
+          return {
+            clientId: c.id,
+            clientName: c.full_name ?? 'Client',
+            checkin: ci ? { mood: ci.mood, energy: ci.energy, sleep_hrs: ci.sleep_hrs, pain_level: ci.pain_level } : null,
+          };
+        })
+        // checked-in first, then alphabetical within each group
+        .sort((a, b) => Number(!!b.checkin) - Number(!!a.checkin) || a.clientName.localeCompare(b.clientName));
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Client wins — achievements earned by assigned clients in the last 7 days
+// (streak milestones, perfect weeks, tier promotions). Coaches can read these
+// via the coach_read_assigned_client_achievements RLS policy.
+// ---------------------------------------------------------------------------
+export interface ClientWin {
+  id: string;
+  clientId: string;
+  clientName: string;
+  kind: string;
+  label: string;
+  icon: string;
+  achievedOn: string;
+}
+
+export function useCoachClientWins() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: coachDashboardKeys.clientWins(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async (): Promise<ClientWin[]> => {
+      const { data: clients, error: clientsErr } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('assigned_coach_id', user!.id);
+      if (clientsErr) throw clientsErr;
+      if (!clients?.length) return [];
+
+      const clientById = new Map(clients.map((c) => [c.id, c]));
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+      const sinceDateStr = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`;
+
+      const { data: wins, error } = await supabase
+        .from('client_achievements')
+        .select('id, client_id, kind, label, icon, achieved_on')
+        .in('client_id', clients.map((c) => c.id))
+        .gte('achieved_on', sinceDateStr)
+        .order('achieved_on', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+
+      return (wins ?? []).map((w: any) => ({
+        id: w.id,
+        clientId: w.client_id,
+        clientName: clientById.get(w.client_id)?.full_name ?? 'Client',
+        kind: w.kind,
+        label: w.label,
+        icon: w.icon,
+        achievedOn: w.achieved_on,
+      }));
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Client pulse — 7-day adherence per assigned client, worst-first.
 // ---------------------------------------------------------------------------
 export interface ClientPulseRow {
   clientId: string;
   clientName: string;
   adherencePct: number | null;
+  lastActiveAt: string | null;
 }
 
 export function useCoachClientPulse() {
@@ -238,17 +377,31 @@ export function useCoachClientPulse() {
       const clientIds = clients.map((c) => c.id);
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 86400000).toISOString();
 
-      const { data: logs7d } = await supabase
-        .from('manual_workout_logs')
-        .select('client_id, completed')
-        .in('client_id', clientIds)
-        .gte('completed_at', sevenDaysAgoIso);
+      const [{ data: logs7d }, { data: lastCompleted }] = await Promise.all([
+        supabase
+          .from('manual_workout_logs')
+          .select('client_id, completed')
+          .in('client_id', clientIds)
+          .gte('completed_at', sevenDaysAgoIso),
+        supabase
+          .from('manual_workout_logs')
+          .select('client_id, completed_at')
+          .in('client_id', clientIds)
+          .eq('completed', true)
+          .order('completed_at', { ascending: false })
+          .limit(2000),
+      ]);
 
       const adherenceTotals: Record<string, { total: number; done: number }> = {};
       (logs7d ?? []).forEach((l: any) => {
         if (!adherenceTotals[l.client_id]) adherenceTotals[l.client_id] = { total: 0, done: 0 };
         adherenceTotals[l.client_id].total++;
         if (l.completed) adherenceTotals[l.client_id].done++;
+      });
+
+      const lastActiveMap: Record<string, string> = {};
+      (lastCompleted ?? []).forEach((l: any) => {
+        if (!lastActiveMap[l.client_id]) lastActiveMap[l.client_id] = l.completed_at; // ordered desc
       });
 
       return clients
@@ -258,6 +411,7 @@ export function useCoachClientPulse() {
             clientId: c.id,
             clientName: c.full_name ?? 'Client',
             adherencePct: adherence && adherence.total > 0 ? Math.round((adherence.done / adherence.total) * 100) : null,
+            lastActiveAt: lastActiveMap[c.id] ?? null,
           };
         })
         .sort((a, b) => (a.adherencePct ?? 101) - (b.adherencePct ?? 101));
