@@ -239,8 +239,19 @@ export function useMessages(coachId: string, clientId: string) {
   useEffect(() => {
     if (!coachId || !clientId) return;
 
+    // Unique per effect-run, not just per conversation. React Navigation
+    // can "reconnect" (not cleanly remount) a screen that was frozen while
+    // off-focus, re-running this effect before the previous run's
+    // removeChannel() (async) has actually finished unsubscribing on the
+    // wire. Supabase's realtime client reuses/collides on a channel with a
+    // topic string it still considers active, which is what threw "cannot
+    // add postgres_changes callbacks after subscribe()" even after the
+    // user?.id dependency fix. A genuinely unique topic per run sidesteps
+    // the collision entirely regardless of what re-triggers the effect.
+    const channelId = `messages:${coachId}:${clientId}:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     const channel = supabase
-      .channel(`messages:${coachId}:${clientId}`)
+      .channel(channelId)
       .on(
         'postgres_changes',
         {
