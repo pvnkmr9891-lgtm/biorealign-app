@@ -121,7 +121,7 @@ function DrawerMenu({
   const pathname  = usePathname();
   const { width } = useWindowDimensions();
   const DRAWER_W  = Math.min(300, width * 0.80);
-  const { data: coachInfo } = useClientCoachInfo();
+  const { data: coachInfo, refetch: refetchCoachInfo } = useClientCoachInfo();
   const items = getVisibleDrawerItems(!!coachInfo);
 
   // Internal modal visibility so close animation can complete
@@ -131,6 +131,13 @@ function DrawerMenu({
 
   useEffect(() => {
     if (visible) {
+      // This component stays mounted for the whole app session (it's part
+      // of the persistent layout), so its 1-min global staleTime otherwise
+      // only refreshes on app backgrounding. Coach assignment happens from
+      // a coach/admin's own session — the client's app has no way to know
+      // it changed — so re-check every time the menu is actually opened,
+      // the moment this decision is visually shown.
+      refetchCoachInfo();
       setModalVisible(true);
       Animated.parallel([
         Animated.spring(slideAnim, {
