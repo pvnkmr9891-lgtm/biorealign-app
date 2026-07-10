@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { THEME } from '@/constants/theme';
-import { useClientUnreadCount } from '@/hooks/useCoach';
+import { useClientUnreadCount, useClientCoachInfo } from '@/hooks/useCoach';
 import { TAB_ICON_MAP } from '@/components/ui/NeonTabIcons';
 import { PROGRAMS_ENABLED, COACH_REQUEST_ENABLED } from '@/constants/featureFlags';
 
@@ -27,21 +27,37 @@ const BOTTOM_TABS = [
 const TAB_W  = 76;
 const DOCK_H = 72;
 
-/** Items inside the hamburger drawer */
+/** Full set of drawer items — used as-is for the "is Menu active" pathname
+ * check (see BottomBar), and filtered per-user by getVisibleDrawerItems
+ * for what actually renders in the drawer. Messages and Fitness Assessment
+ * only make sense once a coach is assigned; "Need a Coach?" (browse/request)
+ * and "My Coach" (status + message shortcut) are mutually exclusive states
+ * of the same slot, never shown together. */
 const DRAWER_ITEMS = [
   { name: 'checkin',  label: 'Daily Pulse', icon: '💓', route: '/(client)/checkin' },
   ...(PROGRAMS_ENABLED
     ? [{ name: 'programs', label: 'Programs', icon: '🎯', route: '/(client)/programs' }]
     : []),
-  { name: 'messages', label: 'Messages', icon: '💬', route: '/(client)/messages', badge: true },
+  { name: 'messages', label: 'Messages', icon: '💬', route: '/(client)/messages', badge: true, requiresCoach: true },
   ...(COACH_REQUEST_ENABLED
-    ? [{ name: 'coach-list', label: 'Need a Coach?', icon: '🧑‍🏫', route: '/(client)/coach-list' }]
+    ? [
+        { name: 'coach-list', label: 'Need a Coach?', icon: '🧑‍🏫', route: '/(client)/coach-list', requiresCoach: false, hideIfCoach: true },
+        { name: 'my-coach',   label: 'My Coach',       icon: '🧑‍🏫', route: '/(client)/my-coach',   requiresCoach: true },
+      ]
     : []),
   { name: 'medical-records', label: 'Medical Records', icon: '🩺', route: '/(client)/medical-records' },
   { name: 'recovery', label: 'Recovery', icon: '🩹', route: '/(client)/recovery' },
-  { name: 'fitness-assessment', label: 'Fitness Assessment', icon: '🏋️', route: '/(client)/fitness-assessment' },
+  { name: 'fitness-assessment', label: 'Fitness Assessment', icon: '🏋️', route: '/(client)/fitness-assessment', requiresCoach: true },
   { name: 'profile',  label: 'Profile',  icon: '👤', route: '/(client)/profile' },
-];
+] as { name: string; label: string; icon: string; route: string; badge?: boolean; requiresCoach?: boolean; hideIfCoach?: boolean }[];
+
+function getVisibleDrawerItems(hasCoach: boolean) {
+  return DRAWER_ITEMS.filter((item) => {
+    if (item.requiresCoach && !hasCoach) return false;
+    if (item.hideIfCoach && hasCoach) return false;
+    return true;
+  });
+}
 
 /** Screens where the tab bar should be hidden entirely — focused, single-task
  * flows where a fixed bottom action bar already owns that space, so the
@@ -105,6 +121,8 @@ function DrawerMenu({
   const pathname  = usePathname();
   const { width } = useWindowDimensions();
   const DRAWER_W  = Math.min(300, width * 0.80);
+  const { data: coachInfo } = useClientCoachInfo();
+  const items = getVisibleDrawerItems(!!coachInfo);
 
   // Internal modal visibility so close animation can complete
   const [modalVisible, setModalVisible] = useState(visible);
@@ -188,7 +206,7 @@ function DrawerMenu({
 
         {/* Navigation items */}
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          {DRAWER_ITEMS.map((item) => {
+          {items.map((item) => {
             const active   = isActive(item.name);
             const hasBadge = item.badge && unreadCount > 0;
 
