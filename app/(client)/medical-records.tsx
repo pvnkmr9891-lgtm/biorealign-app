@@ -9,8 +9,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useMyCoachStatus, useCoachProfile } from '@/hooks/useCoachDirectory';
 import {
   useMedicalDocuments, useUploadMedicalDocument, useRecategorizeMedicalDocument, useDeleteMedicalDocument, useSetDocumentSharing,
-  useAcknowledgeDisclaimer, useRunMedicalAnalysis, useLatestMedicalAnalysis, useMyMedicalAnalyses, useSendAnalysisToCoach, useSendAnalysisToExpert,
-  validateMedicalFile, DocumentCategory, MedicalDocument, AnalysisDocResult,
+  useAcknowledgeDisclaimer, useRunMedicalAnalysis, useMyMedicalAnalyses, useSendAnalysisToCoach, useSendAnalysisToExpert,
+  validateMedicalFile, DocumentCategory, MedicalDocument, AnalysisDocResult, MedicalAnalysis,
 } from '@/hooks/useMedicalDocuments';
 import { SUPPORT_EMAIL, SUPPORT_WHATSAPP_DISPLAY, SUPPORT_WHATSAPP_NUMBER } from '@/constants/contact';
 import { THEME } from '@/constants/theme';
@@ -177,16 +177,23 @@ function DocumentListRow({ doc, onPress }: { doc: MedicalDocument; onPress: () =
 
 // ── Document detail view — View / Summary / Analyze / Coach Feedback ─────
 function DocumentDetail({
-  doc, analysisDoc, onBack, onView, onSummary, onFeedback, onAnalyze, analyzing, onRecategorize, onDelete, onToggleShare,
+  doc, analysisDoc, docAnalysis, assignedCoachId, coachName, onBack, onView, onSummary, onFeedback, onAnalyze, analyzing,
+  onSendToCoach, sendingToCoach, onNeedExpertOpinion, onRecategorize, onDelete, onToggleShare,
 }: {
   doc: MedicalDocument;
   analysisDoc: AnalysisDocResult | undefined;
+  docAnalysis: MedicalAnalysis | null;
+  assignedCoachId: string | null;
+  coachName?: string;
   onBack: () => void;
   onView: () => void;
   onSummary: () => void;
   onFeedback: () => void;
   onAnalyze: () => void;
   analyzing: boolean;
+  onSendToCoach: () => void;
+  sendingToCoach: boolean;
+  onNeedExpertOpinion: () => void;
   onRecategorize: () => void;
   onDelete: () => void;
   onToggleShare: () => void;
@@ -278,6 +285,41 @@ function DocumentDetail({
           {doc.client_has_unread_feedback && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: THEME.colors.amber, marginRight: 4 }} />}
           <Text style={{ color: THEME.colors.textMuted, fontSize: 16 }}>›</Text>
         </TouchableOpacity>
+
+        {/* Send to Coach / Need Expert Opinion — scoped to this document's
+            own analysis now that analysis itself is per-document. Only
+            meaningful once this document has been analyzed. */}
+        {isAnalyzed && (
+          assignedCoachId ? (
+            docAnalysis?.sent_to_coach_at ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: `${SUCCESS}15`, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: `${SUCCESS}30` }}>
+                <Text style={{ fontSize: 16 }}>✓</Text>
+                <Text style={{ flex: 1, fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>Sent to {coachName ?? 'your coach'}</Text>
+              </View>
+            ) : (
+              <TouchableOpacity testID="send-to-coach-button" onPress={onSendToCoach} disabled={sendingToCoach} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: THEME.colors.teal, borderRadius: 12, padding: 14 }}>
+                {sendingToCoach ? <ActivityIndicator color={THEME.colors.background} /> : (
+                  <>
+                    <Text style={{ fontSize: 16 }}>📤</Text>
+                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Send to Coach</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )
+          ) : (
+            docAnalysis?.sent_to_expert_at ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: `${SUCCESS}15`, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: `${SUCCESS}30` }}>
+                <Text style={{ fontSize: 16 }}>✓</Text>
+                <Text style={{ flex: 1, fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>Shared with BioRealign's team</Text>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={onNeedExpertOpinion} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: THEME.colors.teal, borderRadius: 12, padding: 14 }}>
+                <Text style={{ fontSize: 16 }}>🎓</Text>
+                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Need Expert Opinion?</Text>
+              </TouchableOpacity>
+            )
+          )
+        )}
       </View>
 
       {/* Secondary management actions */}
@@ -305,7 +347,6 @@ export default function MedicalRecordsScreen() {
   const { data: coachStatus } = useMyCoachStatus();
   const assignedCoachId = coachStatus?.state === 'assigned' ? coachStatus.coachId : null;
   const { data: coach } = useCoachProfile(assignedCoachId ?? '');
-  const { data: analysis, isLoading: analysisLoading } = useLatestMedicalAnalysis();
   const { data: allAnalyses = [] } = useMyMedicalAnalyses();
 
   const { mutateAsync: upload, isPending: uploading } = useUploadMedicalDocument();
@@ -323,8 +364,6 @@ export default function MedicalRecordsScreen() {
   const [pendingAnalyzeDocId, setPendingAnalyzeDocId] = useState<string | null>(null);
   const [recategorizeTarget, setRecategorizeTarget] = useState<MedicalDocument | null>(null);
   const [showExpertModal, setShowExpertModal] = useState(false);
-  const [showExpertConfirmation, setShowExpertConfirmation] = useState(false);
-  const [coachSentConfirmation, setCoachSentConfirmation] = useState(false);
   const [summaryDoc, setSummaryDoc] = useState<AnalysisDocResult | null>(null);
   const [feedbackDoc, setFeedbackDoc] = useState<MedicalDocument | null>(null);
 
@@ -336,11 +375,14 @@ export default function MedicalRecordsScreen() {
   // A document's analysis lives in whichever specific analysis row its own
   // analysis_id points to — with per-document analysis, that's no longer
   // necessarily "the latest" analysis overall.
-  function findAnalysisDocFor(doc: MedicalDocument): AnalysisDocResult | undefined {
-    if (!doc.analysis_id) return undefined;
-    const row = allAnalyses.find((a) => a.id === doc.analysis_id);
-    return row?.result?.documents?.find((d) => d.filename === doc.original_filename);
+  function analysisRowFor(doc: MedicalDocument | null): MedicalAnalysis | null {
+    if (!doc?.analysis_id) return null;
+    return allAnalyses.find((a) => a.id === doc.analysis_id) ?? null;
   }
+  function findAnalysisDocFor(doc: MedicalDocument): AnalysisDocResult | undefined {
+    return analysisRowFor(doc)?.result?.documents?.find((d) => d.filename === doc.original_filename);
+  }
+  const activeDocAnalysis = analysisRowFor(activeDoc);
 
   async function onViewDocument(doc: MedicalDocument) {
     const { data, error } = await supabase.storage.from('medical-documents').createSignedUrl(doc.storage_path, 60 * 5);
@@ -436,21 +478,19 @@ export default function MedicalRecordsScreen() {
   }
 
   async function onSendToCoach() {
-    if (!analysis || !assignedCoachId) return;
+    if (!activeDocAnalysis || !assignedCoachId) return;
     try {
-      await sendToCoach({ analysisId: analysis.id, coachId: assignedCoachId });
-      setCoachSentConfirmation(true);
+      await sendToCoach({ analysisId: activeDocAnalysis.id, coachId: assignedCoachId });
     } catch (e: any) {
       Alert.alert('Could not send', e.message ?? 'Please try again.');
     }
   }
 
   async function onConfirmSendToExpert() {
-    if (!analysis) return;
+    if (!activeDocAnalysis) return;
     try {
-      await sendToExpert({ analysisId: analysis.id });
+      await sendToExpert({ analysisId: activeDocAnalysis.id });
       setShowExpertModal(false);
-      setShowExpertConfirmation(true);
     } catch (e: any) {
       Alert.alert('Could not send', e.message ?? 'Please try again.');
     }
@@ -480,12 +520,18 @@ export default function MedicalRecordsScreen() {
         <DocumentDetail
           doc={activeDoc}
           analysisDoc={findAnalysisDocFor(activeDoc)}
+          docAnalysis={activeDocAnalysis}
+          assignedCoachId={assignedCoachId}
+          coachName={coach?.full_name}
           onBack={() => setActiveDocId(null)}
           onView={() => onViewDocument(activeDoc)}
           onSummary={() => setSummaryDoc(findAnalysisDocFor(activeDoc) ?? null)}
           onFeedback={() => setFeedbackDoc(activeDoc)}
           onAnalyze={() => onAnalyzePress(activeDoc)}
           analyzing={analyzing}
+          onSendToCoach={onSendToCoach}
+          sendingToCoach={sendingToCoach}
+          onNeedExpertOpinion={() => setShowExpertModal(true)}
           onRecategorize={() => setRecategorizeTarget(activeDoc)}
           onDelete={() => onDeletePress(activeDoc)}
           onToggleShare={() => setSharing({ id: activeDoc.id, shared: !activeDoc.shared_with_coach })}
@@ -531,37 +577,6 @@ export default function MedicalRecordsScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Send to coach / expert opinion — operates on whichever document
-              was most recently analyzed, unchanged from before. */}
-          {analysisLoading ? null : analysis && (
-            <View style={{ marginBottom: 24 }}>
-              {assignedCoachId ? (
-                analysis.sent_to_coach_at || coachSentConfirmation ? (
-                  <View testID="sent-to-coach-confirmation" style={{ backgroundColor: `${SUCCESS}15`, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: `${SUCCESS}30` }}>
-                    <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: SUCCESS }}>✓ Sent to {coach?.full_name ?? 'your coach'}</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity testID="send-to-coach-button" onPress={onSendToCoach} disabled={sendingToCoach} activeOpacity={0.85} style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}>
-                    {sendingToCoach ? <ActivityIndicator color={THEME.colors.background} /> : <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Send to Coach</Text>}
-                  </TouchableOpacity>
-                )
-              ) : (
-                analysis.sent_to_expert_at || showExpertConfirmation ? (
-                  <View style={{ backgroundColor: `${SUCCESS}15`, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: `${SUCCESS}30` }}>
-                    <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: SUCCESS, marginBottom: 6 }}>✓ Shared with BioRealign's team</Text>
-                    <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 18 }}>
-                      Your documents and summary are handled securely and confidentially.{' '}
-                      <Text style={{ color: THEME.colors.teal }} onPress={() => router.push('/(client)/privacy-policy')}>Read our Privacy Policy</Text>.
-                    </Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity onPress={() => setShowExpertModal(true)} activeOpacity={0.85} style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>Need Expert Opinion?</Text>
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
-          )}
         </ScrollView>
       )}
 
