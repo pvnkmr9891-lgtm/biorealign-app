@@ -36,7 +36,9 @@ export interface Profile {
   health_goals: string[];
   conditions: string[];
   avatar_url: string | null;
-  push_token: string | null;           
+  mood_status: string | null;
+  mood_status_updated_at: string | null;
+  push_token: string | null;
   assigned_coach_id: string | null;    
   onboarding_completed: boolean;       
   onboarding_completed_at: string | null; 

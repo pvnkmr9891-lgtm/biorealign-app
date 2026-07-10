@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/hooks/useAuth';
 import { useClientAssessment } from '@/hooks/useClientAssessment';
 import { useUpdateProfile } from '@/hooks/useClient';
@@ -16,91 +17,13 @@ import { useMyCoachStatus, useCoachProfile } from '@/hooks/useCoachDirectory';
 import { useMyDetailedAssessment, useSaveAssessmentStage, AssessmentStageKey } from '@/hooks/useDetailedAssessment';
 import { DETAILED_ASSESSMENT_STAGES } from '@/constants/detailedAssessmentQuestions';
 import { INTENSITY_META, TYPE_META } from '@/store/onboardingStore';
-import { SUPPORT_EMAIL } from '@/constants/contact';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { THEME } from '@/constants/theme';
 import {
   DetailedStageEditor, ProfileOverviewCard,
 } from '@/components/profile/ClientProfileView';
-
-// ── Privacy Policy Modal ──────────────────────────────────────────────────────
-function PrivacyPolicyModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
-        <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 0.5, borderBottomColor: THEME.colors.border }}>
-          <Text style={{ fontSize: 20, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>Privacy Policy</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Close</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, marginBottom: 4 }}>
-            Last updated: June 2026
-          </Text>
-
-          {[
-            {
-              title: '1. Information We Collect',
-              body: 'BioRealign collects information you provide directly, including your name, email address, phone number, and health-related data such as energy levels, sleep hours, pain scores, mood, body metrics, nutrition habits, and fitness history. We also collect app usage data such as check-in timestamps and feature interactions.',
-            },
-            {
-              title: '2. How We Use Your Information',
-              body: 'Your data is used to:\n• Personalise your transformation programme\n• Track your daily wellness and progress scores\n• Enable your coach to build and monitor your plan\n• Send push notifications relevant to your goals\n• Improve app features and performance',
-            },
-            {
-              title: '3. Data Storage & Security',
-              body: 'Your data is stored securely on Supabase (PostgreSQL), which is hosted on AWS infrastructure with encryption at rest and in transit. We implement row-level security policies ensuring you can only access your own data. Authentication is managed via Supabase Auth with secure token handling.',
-            },
-            {
-              title: '4. Health Data',
-              body: 'Health and wellness data you provide (including energy, pain, sleep, mood, body weight, and medical conditions) is used solely within BioRealign to deliver your personalised programme. This data is never sold to third parties. It may be shared with your assigned coach to facilitate professional guidance.',
-            },
-            {
-              title: '5. Third-Party Services',
-              body: 'BioRealign uses the following third-party services:\n• Supabase — database and authentication\n• Expo / EAS — app delivery and over-the-air updates\n• Anthropic Claude API — AI-powered wellness suggestions (anonymised prompts only)\n• Expo Notifications — push notification delivery\n\nEach provider has their own privacy policy and data processing agreements.',
-            },
-            {
-              title: '6. Push Notifications',
-              body: 'With your permission, BioRealign sends push notifications to remind you of daily check-ins, upcoming sessions, and programme milestones. You may disable notifications at any time from your device settings.',
-            },
-            {
-              title: '7. Your Rights',
-              body: `You have the right to:\n• Access the personal data we hold about you\n• Request correction of inaccurate data\n• Request deletion of your account and all associated data\n• Withdraw consent at any time\n\nTo exercise these rights, contact us at ${SUPPORT_EMAIL}.`,
-            },
-            {
-              title: '8. Data Retention',
-              body: 'We retain your personal data for as long as your account is active. If you delete your account, we will erase your data within 30 days, except where retention is required by law.',
-            },
-            {
-              title: '9. Children\'s Privacy',
-              body: 'BioRealign is not intended for users under 16 years of age. We do not knowingly collect personal information from children.',
-            },
-            {
-              title: '10. Changes to This Policy',
-              body: 'We may update this Privacy Policy from time to time. We will notify you of significant changes via in-app notification. Continued use of the app after changes constitutes acceptance of the updated policy.',
-            },
-            {
-              title: '11. Contact',
-              body: `For privacy-related questions or requests, contact:\nBioRealign Support\n${SUPPORT_EMAIL}`,
-            },
-          ].map(section => (
-            <View key={section.title} style={{ marginBottom: 22 }}>
-              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 6 }}>
-                {section.title}
-              </Text>
-              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary, lineHeight: 21 }}>
-                {section.body}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
 
 // ── Assessment completion % helper ────────────────────────────────────────────
 // Helper: read a value from new answers JSONB or fall back to old flat columns
@@ -757,19 +680,102 @@ function EnrollmentCard() {
   );
 }
 
+// ── Mood Status Modal ─────────────────────────────────────────────────────────
+const MOOD_SUGGESTIONS = [
+  '😊 Feeling great',
+  '💪 Crushing it today',
+  '😴 Resting up',
+  '🎯 Locked in & focused',
+  '🤕 Recovering',
+  '🌱 New week, new me',
+];
+
+function MoodStatusModal({ visible, initialValue, onClose, onSave, saving }: {
+  visible: boolean; initialValue: string; onClose: () => void;
+  onSave: (text: string) => void; saving: boolean;
+}) {
+  const [text, setText] = useState(initialValue);
+
+  useEffect(() => {
+    if (visible) setText(initialValue);
+  }, [visible, initialValue]);
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: THEME.colors.surface2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 }}>
+          <Text style={{ fontSize: 18, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginBottom: 6 }}>Set your status</Text>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 16 }}>
+            Visible to your coach — a quick way to share how you're feeling.
+          </Text>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder="What's on your mind?"
+            placeholderTextColor={THEME.colors.textMuted}
+            maxLength={60}
+            style={{ backgroundColor: THEME.colors.surface3 ?? '#1A1A1E', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 14 }}
+          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
+            {MOOD_SUGGESTIONS.map((s) => (
+              <TouchableOpacity
+                key={s}
+                onPress={() => setText(s)}
+                activeOpacity={0.7}
+                style={{ backgroundColor: `${THEME.colors.teal}15`, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}
+              >
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {initialValue.length > 0 && (
+              <TouchableOpacity
+                onPress={() => onSave('')}
+                disabled={saving}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: THEME.colors.surface3 ?? '#1A1A1E', borderWidth: 0.5, borderColor: THEME.colors.border }}
+              >
+                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Clear</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={onClose} disabled={saving} style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: THEME.colors.surface3 ?? '#1A1A1E', borderWidth: 0.5, borderColor: THEME.colors.border }}>
+              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onSave(text.trim())} disabled={saving} style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: THEME.colors.teal }}>
+              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>{saving ? 'Saving…' : 'Save'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Main Info tile grid ───────────────────────────────────────────────────────
+function InfoTile({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
+  return (
+    <View style={{ width: '48%', backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+      <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: `${color}20`, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+        <Text style={{ fontSize: 14 }}>{icon}</Text>
+      </View>
+      <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 3 }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
 // ── Main Profile Screen ───────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const { profile, signOut, user } = useAuth();
-  const router = useRouter();
-  const qc = useQueryClient();
   const [showEdit, setShowEdit]           = useState(false);
-  const [showPrivacy, setShowPrivacy]     = useState(false);
+  const [showMoodModal, setShowMoodModal] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [activeSection, setActiveSection] = useState<'overview' | 'detailedAssessment' | 'assessment' | 'enrollments'>('overview');
 
   const initials = profile?.full_name
     ?.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() ?? '?';
 
-  const { mutateAsync: updateProfile } = useUpdateProfile();
+  const { mutateAsync: updateProfile, isPending: isSavingMood } = useUpdateProfile();
 
   const handleSaveProfile = async (data: { full_name: string; phone: string }) => {
     try {
@@ -787,8 +793,76 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleSaveMood = async (text: string) => {
+    try {
+      await updateProfile({ data: { mood_status: text || null, mood_status_updated_at: new Date().toISOString() } });
+      setShowMoodModal(false);
+    } catch {
+      Alert.alert('Error', 'Failed to update status. Please try again.');
+    }
+  };
+
+  const uploadAvatar = async (uri: string) => {
+    if (!user?.id) return;
+    setUploadingAvatar(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
+      const path = `${user.id}/avatar_${Date.now()}.${ext}`;
+
+      const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, blob, { contentType: `image/${ext}` });
+      if (uploadErr) throw uploadErr;
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      await updateProfile({ data: { avatar_url: data.publicUrl } });
+    } catch {
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleAvatarPress = () => {
+    const options: any[] = [
+      {
+        text: 'Take Photo',
+        onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) { Alert.alert('Permission needed', 'Please allow camera access to take a photo.'); return; }
+          const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+          if (!result.canceled) uploadAvatar(result.assets[0].uri);
+        },
+      },
+      {
+        text: 'Choose from Library',
+        onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) { Alert.alert('Permission needed', 'Please allow photo access to choose a photo.'); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+          if (!result.canceled) uploadAvatar(result.assets[0].uri);
+        },
+      },
+    ];
+    if (profile?.avatar_url) {
+      options.push({
+        text: 'Remove Photo',
+        style: 'destructive',
+        onPress: () => updateProfile({ data: { avatar_url: null } }),
+      });
+    }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Profile Photo', undefined, options);
+  };
+
   const memberSince = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    : '—';
+  const dobDisplay = profile?.dob
+    ? new Date(profile.dob + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
+  const genderDisplay = profile?.gender
+    ? profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)
     : '—';
 
   return (
@@ -797,15 +871,35 @@ export default function ProfileScreen() {
 
         {/* Header */}
         <View style={{ alignItems: 'center', paddingTop: 32, paddingBottom: 24, paddingHorizontal: 24 }}>
-          <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 2, borderColor: `${THEME.colors.teal}40`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-            <Text style={{ fontSize: 30, fontFamily: THEME.fonts.serif, color: THEME.colors.teal }}>{initials}</Text>
-          </View>
-          <Text style={{ fontSize: 24, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginBottom: 4 }}>
+          <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85} disabled={uploadingAvatar} style={{ marginBottom: 14 }}>
+            <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 2, borderColor: `${THEME.colors.teal}40`, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              {uploadingAvatar ? (
+                <ActivityIndicator color={THEME.colors.teal} />
+              ) : profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              ) : (
+                <Text style={{ fontSize: 30, fontFamily: THEME.fonts.serif, color: THEME.colors.teal }}>{initials}</Text>
+              )}
+            </View>
+            <View style={{ position: 'absolute', right: -2, bottom: -2, width: 28, height: 28, borderRadius: 14, backgroundColor: THEME.colors.teal, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: THEME.colors.background }}>
+              <Text style={{ fontSize: 12 }}>📷</Text>
+            </View>
+          </TouchableOpacity>
+
+          <Text style={{ fontSize: 24, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginBottom: 8 }}>
             {profile?.full_name}
           </Text>
-          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 16 }}>
-            Member since {memberSince}
-          </Text>
+
+          <TouchableOpacity
+            onPress={() => setShowMoodModal(true)}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${THEME.colors.teal}12`, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, marginBottom: 16, maxWidth: '90%', borderWidth: 0.5, borderColor: `${THEME.colors.teal}25` }}
+          >
+            <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: profile?.mood_status ? THEME.colors.textSecondary : THEME.colors.teal }} numberOfLines={1}>
+              {profile?.mood_status || '+ Add a status'}
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => setShowEdit(true)}
             style={{ backgroundColor: THEME.colors.surface2, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 8, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 6 }}
@@ -814,18 +908,13 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Info row */}
-        <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 24, overflow: 'hidden' }}>
-          {[
-            { label: 'Phone', value: profile?.phone ?? '—' },
-            { label: 'Role', value: profile?.role ?? '—' },
-            { label: 'Member since', value: memberSince },
-          ].map((row, i, arr) => (
-            <View key={row.label} style={{ paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: i < arr.length - 1 ? 0.5 : 0, borderBottomColor: THEME.colors.border }}>
-              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>{row.label}</Text>
-              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, textTransform: 'capitalize' }}>{row.value}</Text>
-            </View>
-          ))}
+        {/* Main info */}
+        <View style={{ marginHorizontal: 24, marginBottom: 24, flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          <InfoTile icon="📞" label="Phone" value={profile?.phone ?? '—'} color={THEME.colors.teal} />
+          <InfoTile icon="⚧" label="Gender" value={genderDisplay} color="#A78BFA" />
+          <InfoTile icon="🎂" label="Date of Birth" value={dobDisplay} color={THEME.colors.amber} />
+          <InfoTile icon="✉️" label="Email" value={user?.email ?? '—'} color="#60A5FA" />
+          <InfoTile icon="🗓️" label="Member Since" value={memberSince} color="#34D399" />
         </View>
 
         {/* Section tabs */}
@@ -855,24 +944,6 @@ export default function ProfileScreen() {
               {COACH_REQUEST_ENABLED && <CoachStatusCard />}
 
               {user?.id && <ProfileOverviewCard clientId={user.id} profile={profile} color={THEME.colors.teal} />}
-
-              {/* Links */}
-              <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, borderWidth: 0.5, borderColor: THEME.colors.border, overflow: 'hidden' }}>
-                {[
-                  { label: '🔒 Privacy Policy', action: () => setShowPrivacy(true) },
-                  { label: '💬 Support', action: () => router.push('/(client)/support' as any) },
-                ].map((item, i) => (
-                  <TouchableOpacity
-                    key={item.label}
-                    onPress={item.action}
-                    activeOpacity={0.7}
-                    style={{ paddingHorizontal: 16, paddingVertical: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: i > 0 ? 0.5 : 0, borderTopColor: THEME.colors.border }}
-                  >
-                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{item.label}</Text>
-                    <Text style={{ color: THEME.colors.textMuted, fontSize: 16 }}>›</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </View>
           )}
 
@@ -917,9 +988,12 @@ export default function ProfileScreen() {
         onSave={handleSaveProfile}
       />
 
-      <PrivacyPolicyModal
-        visible={showPrivacy}
-        onClose={() => setShowPrivacy(false)}
+      <MoodStatusModal
+        visible={showMoodModal}
+        initialValue={profile?.mood_status ?? ''}
+        onClose={() => setShowMoodModal(false)}
+        onSave={handleSaveMood}
+        saving={isSavingMood}
       />
     </SafeAreaView>
   );

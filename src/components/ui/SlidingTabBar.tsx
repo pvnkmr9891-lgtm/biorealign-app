@@ -49,6 +49,8 @@ const DRAWER_ITEMS = [
   { name: 'recovery', label: 'Recovery', icon: '🩹', route: '/(client)/recovery' },
   { name: 'fitness-assessment', label: 'Fitness Assessment', icon: '🏋️', route: '/(client)/fitness-assessment', requiresCoach: true },
   { name: 'profile',  label: 'Profile',  icon: '👤', route: '/(client)/profile' },
+  { name: 'privacy-policy', label: 'Privacy Policy', icon: '🔒', route: '/(client)/privacy-policy' },
+  { name: 'support', label: 'Support', icon: '💬', route: '/(client)/support' },
 ] as { name: string; label: string; icon: string; route: string; badge?: boolean; requiresCoach?: boolean; hideIfCoach?: boolean }[];
 
 function getVisibleDrawerItems(hasCoach: boolean) {
