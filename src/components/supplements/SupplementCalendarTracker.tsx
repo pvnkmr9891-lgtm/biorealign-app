@@ -239,6 +239,7 @@ interface Props { clientId: string }
 export function SupplementCalendarTracker({ clientId }: Props) {
   const { data: supplements = [], isLoading } = useSupplementCalendarData(clientId);
   const [idx, setIdx] = useState(0);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -262,20 +263,20 @@ export function SupplementCalendarTracker({ clientId }: Props) {
 
   return (
     <View>
-      {/* Supplement switcher — pill tabs if few, arrows if many */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-        {/* Prev arrow */}
-        <TouchableOpacity
-          onPress={() => setIdx(i => Math.max(0, i - 1))}
-          disabled={idx === 0}
-          style={{ padding: 6, opacity: idx === 0 ? 0.3 : 1 }}
-          hitSlop={10}
-        >
-          <Text style={{ fontSize: 22, color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium }}>‹</Text>
-        </TouchableOpacity>
-
-        {/* Name + counter */}
-        <View style={{ flex: 1, alignItems: 'center' }}>
+      {/* Supplement picker — a dropdown instead of paging through every
+          supplement one at a time with arrows, which got tedious once there
+          were more than a couple assigned. */}
+      <TouchableOpacity
+        onPress={() => setDropdownOpen((o) => !o)}
+        activeOpacity={0.8}
+        disabled={supplements.length <= 1}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          backgroundColor: THEME.colors.surface3, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+          borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: dropdownOpen ? 8 : 14,
+        }}
+      >
+        <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }} numberOfLines={1}>
             {current.name}
           </Text>
@@ -285,33 +286,35 @@ export function SupplementCalendarTracker({ clientId }: Props) {
             </Text>
           )}
         </View>
+        {supplements.length > 1 && (
+          <Text style={{ fontSize: 13, color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, transform: [{ rotate: dropdownOpen ? '180deg' : '0deg' }] }}>▾</Text>
+        )}
+      </TouchableOpacity>
 
-        {/* Next arrow */}
-        <TouchableOpacity
-          onPress={() => setIdx(i => Math.min(supplements.length - 1, i + 1))}
-          disabled={idx === supplements.length - 1}
-          style={{ padding: 6, opacity: idx === supplements.length - 1 ? 0.3 : 1 }}
-          hitSlop={10}
-        >
-          <Text style={{ fontSize: 22, color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium }}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      <OneSupplementCalendar key={current.name} data={current} />
-
-      {/* Dot navigation if multiple supplements */}
-      {supplements.length > 1 && (
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 14 }}>
-          {supplements.map((_, i) => (
-            <TouchableOpacity key={i} onPress={() => setIdx(i)} hitSlop={6}>
-              <View style={{
-                width: i === idx ? 18 : 6, height: 6, borderRadius: 3,
-                backgroundColor: i === idx ? THEME.colors.teal : THEME.colors.border,
-              }} />
+      {dropdownOpen && supplements.length > 1 && (
+        <View style={{ backgroundColor: THEME.colors.surface3, borderRadius: 12, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 14, overflow: 'hidden' }}>
+          {supplements.map((s, i) => (
+            <TouchableOpacity
+              key={s.name}
+              onPress={() => { setIdx(i); setDropdownOpen(false); }}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                paddingHorizontal: 14, paddingVertical: 12,
+                borderTopWidth: i > 0 ? 0.5 : 0, borderTopColor: THEME.colors.border,
+                backgroundColor: i === idx ? `${THEME.colors.teal}12` : 'transparent',
+              }}
+            >
+              <Text numberOfLines={1} style={{ flex: 1, fontSize: 13.5, fontFamily: THEME.fonts.sans, color: i === idx ? THEME.colors.teal : THEME.colors.textPrimary }}>
+                {s.name}
+              </Text>
+              {i === idx && <Text style={{ fontSize: 14, color: THEME.colors.teal }}>✓</Text>}
             </TouchableOpacity>
           ))}
         </View>
       )}
+
+      <OneSupplementCalendar key={current.name} data={current} />
     </View>
   );
 }
