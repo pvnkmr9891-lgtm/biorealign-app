@@ -52,6 +52,7 @@ export const rehabKeys = {
   myRequests:    (clientId: string) => ['rehab', clientId, 'requests'] as const,
   windows:       ['rehab', 'windows'] as const,
   appointments:  (requestId: string) => ['rehab', 'appointments', requestId] as const,
+  myAppointments: (clientId: string) => ['rehab', clientId, 'all_appointments'] as const,
   bookedSlots:   (startDate: string, endDate: string) => ['rehab', 'booked_slots', startDate, endDate] as const,
 };
 
@@ -189,6 +190,25 @@ export function useRehabAppointments(requestId: string) {
         .from('rehab_appointments')
         .select('*')
         .eq('rehab_request_id', requestId)
+        .order('scheduled_at');
+      if (error) throw error;
+      return (data ?? []) as RehabAppointment[];
+    },
+  });
+}
+
+// ── Every appointment across all of the client's requests — used for the
+//    dashboard's Upcoming Sessions list, not scoped to a single request. ──
+export function useMyRehabAppointments() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: rehabKeys.myAppointments(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rehab_appointments')
+        .select('*')
+        .eq('client_id', user!.id)
         .order('scheduled_at');
       if (error) throw error;
       return (data ?? []) as RehabAppointment[];
