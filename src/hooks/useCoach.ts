@@ -387,19 +387,33 @@ export function useClientCoachInfo() {
     staleTime: 0,
     refetchOnMount: 'always',
     queryFn: async () => {
-      const { data: profile, error } = await supabase
+      // Two plain selects instead of one embedded-join select. PostgREST's
+      // schema cache can go stale on the self-referencing FK relationship
+      // (profiles.assigned_coach_id -> profiles.id) independently of any
+      // app-side caching -- confirmed via direct REST calls returning
+      // PGRST200 "Could not find a relationship between 'profiles' and
+      // 'profiles' in the schema cache" even though the constraint exists
+      // in the database. A `NOTIFY pgrst, 'reload schema'` should normally
+      // fix that, but didn't take effect here, so this avoids depending on
+      // PostgREST's relationship detection for this query at all.
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select(`
-          assigned_coach_id,
-          coach:profiles!profiles_assigned_coach_id_fkey(id, full_name, avatar_url)
-        `)
+        .select('assigned_coach_id')
         .eq('id', user!.id)
         .maybeSingle();
 
-      if (error) throw error;
+      if (profileError) throw profileError;
       if (!profile?.assigned_coach_id) return null;
 
-      return { coachId: profile.assigned_coach_id, coach: profile.coach };
+      const { data: coach, error: coachError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('id', profile.assigned_coach_id)
+        .maybeSingle();
+
+      if (coachError) throw coachError;
+
+      return { coachId: profile.assigned_coach_id, coach };
     },
   });
 }
