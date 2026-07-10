@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/authStore';
 import { toLocalDateStr, addDaysToDateStr } from '@/lib/dateHelpers';
 import type { DailyCheckin, Enrollment, ProgressMetric, ProgramContent, Session } from '@/types';
 
@@ -45,6 +46,10 @@ export function useUpdateProfile() {
       qc.invalidateQueries({ queryKey: ['admin', 'clients'] });
       qc.invalidateQueries({ queryKey: ['admin', 'coaches'] });
       qc.invalidateQueries({ queryKey: ['coach_client', id, 'profile'] });
+      // useAuth().profile is a plain Zustand snapshot, not React Query — the
+      // invalidations above don't touch it, so self-edits (avatar, mood
+      // status, edit-profile) silently wouldn't show until next login.
+      if (id === user?.id) useAuthStore.getState().fetchProfile(id);
     },
   });
 }

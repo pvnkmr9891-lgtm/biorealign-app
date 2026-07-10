@@ -6,10 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { File as FSFile } from 'expo-file-system';
 import { useAuth } from '@/hooks/useAuth';
 import { useClientAssessment } from '@/hooks/useClientAssessment';
 import { useUpdateProfile } from '@/hooks/useClient';
-import { EditProfileModal } from '@/components/profile/EditProfileModal';
 import { useClientEnrollments, PROGRAM_CATALOGUE } from '@/hooks/usePrograms';
 import { PROGRAMS } from '@/constants/programs';
 import { PROGRAMS_ENABLED, COACH_REQUEST_ENABLED } from '@/constants/featureFlags';
@@ -767,7 +767,6 @@ function InfoTile({ icon, label, value, color }: { icon: string; label: string; 
 // ── Main Profile Screen ───────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const { profile, signOut, user } = useAuth();
-  const [showEdit, setShowEdit]           = useState(false);
   const [showMoodModal, setShowMoodModal] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [activeSection, setActiveSection] = useState<'overview' | 'detailedAssessment' | 'assessment' | 'enrollments'>('overview');
@@ -776,15 +775,6 @@ export default function ProfileScreen() {
     ?.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() ?? '?';
 
   const { mutateAsync: updateProfile, isPending: isSavingMood } = useUpdateProfile();
-
-  const handleSaveProfile = async (data: { full_name: string; phone: string }) => {
-    try {
-      await updateProfile({ data });
-      Alert.alert('Saved ✓', 'Your profile has been updated.');
-    } catch {
-      Alert.alert('Error', 'Failed to save profile. Please try again.');
-    }
-  };
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure?', [
@@ -806,17 +796,20 @@ export default function ProfileScreen() {
     if (!user?.id) return;
     setUploadingAvatar(true);
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      // RN's fetch().blob() upload to Supabase Storage is unreliable on
+      // Android (silently sends a malformed/truncated body → 400) — read
+      // the local file's bytes directly via expo-file-system instead.
+      const bytes = await new FSFile(uri).bytes();
       const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
       const path = `${user.id}/avatar_${Date.now()}.${ext}`;
 
-      const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, blob, { contentType: `image/${ext}` });
+      const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, bytes, { contentType: `image/${ext}` });
       if (uploadErr) throw uploadErr;
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       await updateProfile({ data: { avatar_url: data.publicUrl } });
-    } catch {
+    } catch (err) {
+      console.error('Avatar upload error:', err);
       Alert.alert('Error', 'Failed to upload photo. Please try again.');
     } finally {
       setUploadingAvatar(false);
@@ -893,18 +886,11 @@ export default function ProfileScreen() {
           <TouchableOpacity
             onPress={() => setShowMoodModal(true)}
             activeOpacity={0.7}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${THEME.colors.teal}12`, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, marginBottom: 16, maxWidth: '90%', borderWidth: 0.5, borderColor: `${THEME.colors.teal}25` }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${THEME.colors.teal}12`, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, maxWidth: '90%', borderWidth: 0.5, borderColor: `${THEME.colors.teal}25` }}
           >
             <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: profile?.mood_status ? THEME.colors.textSecondary : THEME.colors.teal }} numberOfLines={1}>
               {profile?.mood_status || '+ Add a status'}
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setShowEdit(true)}
-            style={{ backgroundColor: THEME.colors.surface2, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 8, borderWidth: 0.5, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', gap: 6 }}
-          >
-            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>✏️ Edit profile</Text>
           </TouchableOpacity>
         </View>
 
@@ -980,13 +966,6 @@ export default function ProfileScreen() {
         </View>
 
       </ScrollView>
-
-      <EditProfileModal
-        profile={profile}
-        visible={showEdit}
-        onClose={() => setShowEdit(false)}
-        onSave={handleSaveProfile}
-      />
 
       <MoodStatusModal
         visible={showMoodModal}
