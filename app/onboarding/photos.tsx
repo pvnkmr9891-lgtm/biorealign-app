@@ -85,16 +85,24 @@ export default function PhotosScreen() {
 
     try {
       for (const [type, uri] of Object.entries(photos)) {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const ext = uri.split('.').pop() ?? 'jpg';
+        // FormData + direct REST fetch — the upload pattern proven to work on
+        // this stack (see useUploadProgressPhoto). RN's fetch(uri).blob()
+        // sends a malformed body and the upload 400s.
+        const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
+        const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
         const path = `${user.id}/onboarding/${type}_${Date.now()}.${ext}`;
 
-        const { error } = await supabase.storage
-          .from('progress-photos')
-          .upload(path, blob, { contentType: `image/${ext}` });
+        const formData = new FormData();
+        formData.append('file', { uri, name: `photo.${ext}`, type: contentType } as any);
 
-        if (error) throw error;
+        const { data: { session } } = await supabase.auth.getSession();
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+        const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/progress-photos/${path}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session?.access_token}`, 'x-upsert': 'true' },
+          body: formData,
+        });
+        if (!uploadRes.ok) throw new Error(`Upload failed: ${await uploadRes.text()}`);
 
         // Record in DB
         await supabase.from('progress_photos').insert({

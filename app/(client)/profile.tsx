@@ -6,7 +6,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { File as FSFile } from 'expo-file-system';
 import { useAuth } from '@/hooks/useAuth';
 import { useClientAssessment } from '@/hooks/useClientAssessment';
 import { useUpdateProfile } from '@/hooks/useClient';
@@ -796,15 +795,24 @@ export default function ProfileScreen() {
     if (!user?.id) return;
     setUploadingAvatar(true);
     try {
-      // RN's fetch().blob() upload to Supabase Storage is unreliable on
-      // Android (silently sends a malformed/truncated body → 400) — read
-      // the local file's bytes directly via expo-file-system instead.
-      const bytes = await new FSFile(uri).bytes();
-      const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
+      // FormData + direct REST fetch — the one upload pattern proven to work
+      // on this stack (progress photos, medical docs, supplement images all
+      // use it). RN's fetch(uri).blob() sends a malformed body → 400.
+      const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
+      const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
       const path = `${user.id}/avatar_${Date.now()}.${ext}`;
 
-      const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, bytes, { contentType: `image/${ext}` });
-      if (uploadErr) throw uploadErr;
+      const formData = new FormData();
+      formData.append('file', { uri, name: `avatar.${ext}`, type: contentType } as any);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+      const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/avatars/${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'x-upsert': 'true' },
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error(`Upload failed: ${await uploadRes.text()}`);
 
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       await updateProfile({ data: { avatar_url: data.publicUrl } });

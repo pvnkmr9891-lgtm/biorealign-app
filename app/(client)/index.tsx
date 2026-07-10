@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated, Modal, Pressable } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Modal, Pressable, Image } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 const AnimatedArc = Animated.createAnimatedComponent(Circle);
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -91,15 +91,20 @@ function useWeekActivity(clientId: string | undefined, weekStart: string) {
         .gte('date', weekStart)
         .lte('date', weekEnd);
 
-      // Count days with any completed workout/water/food tasks (active days)
+      // Count days with any completed workout/water/food tasks (active days).
+      // Restrict to day_number 1-6 like useWeekStats does — rows with a null
+      // or out-of-range day_number would otherwise inflate the count.
       const { data: logs } = await supabase
         .from('manual_workout_logs')
         .select('week_start_date, day_number')
         .eq('client_id', clientId!)
         .eq('week_start_date', weekStart)
-        .eq('completed', true);
+        .eq('completed', true)
+        .not('day_number', 'is', null);
 
-      const activeDays = new Set((logs ?? []).map(r => r.day_number)).size;
+      const activeDays = new Set(
+        (logs ?? []).filter(r => r.day_number >= 1 && r.day_number <= 6).map(r => r.day_number)
+      ).size;
       const checkinCount = (checkins ?? []).length;
 
       return { activeDays, checkinCount, totalDays: 6 };
@@ -1124,12 +1129,16 @@ export default function ClientDashboard() {
               ) : null}
             </View>
 
-            {/* Profile avatar */}
+            {/* Profile avatar — uploaded photo when set, initial otherwise */}
             <TouchableOpacity onPress={() => router.push('/(client)/profile')} activeOpacity={0.8} style={{ marginTop: 6 }}>
-              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: `${THEME.colors.teal}18`, borderWidth: 1.5, borderColor: `${THEME.colors.teal}45`, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: THEME.colors.teal, fontSize: 20, fontFamily: THEME.fonts.sansMedium, lineHeight: 24 }}>
-                  {profile?.full_name?.charAt(0)?.toUpperCase() ?? '?'}
-                </Text>
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: `${THEME.colors.teal}18`, borderWidth: 1.5, borderColor: `${THEME.colors.teal}45`, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                ) : (
+                  <Text style={{ color: THEME.colors.teal, fontSize: 20, fontFamily: THEME.fonts.sansMedium, lineHeight: 24 }}>
+                    {profile?.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+                  </Text>
+                )}
               </View>
             </TouchableOpacity>
           </View>
