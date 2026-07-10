@@ -379,6 +379,13 @@ export function useClientCoachInfo() {
   return useQuery({
     queryKey: ['client', user?.id ?? '', 'coach_info'],
     enabled: !!user?.id,
+    // Overrides the global 1-min staleTime — this gates Messages/Fitness
+    // Assessment visibility, and coach assignment happens from a coach or
+    // admin's own session, which this client has no way to be pushed a
+    // notification about. Always worth a fresh, cheap single-row check
+    // rather than risk showing a stale "no coach" state.
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data: profile, error } = await supabase
         .from('profiles')
