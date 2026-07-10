@@ -68,6 +68,11 @@ const HIDDEN_SCREENS = [
   'routine-explore', 'routine-category',
   'workout-detail', 'plan-add-exercise',
   'checkin',
+  // _layout.tsx's contentStyle for these already assumes paddingBottom: 0
+  // (dock hidden) — they were never actually added here, so the dock has
+  // been floating over their content (e.g. Recovery's "Send Request"
+  // button peeking out from under it) despite the documented intent.
+  'recovery', 'recovery-request', 'fitness-assessment', 'achievements',
 ];
 
 // Total vertical space the floating dock occupies, measured from the very
