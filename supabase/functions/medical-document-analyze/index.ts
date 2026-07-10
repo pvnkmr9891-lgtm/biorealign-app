@@ -1,10 +1,16 @@
 // supabase/functions/medical-document-analyze/index.ts
 // Deploy: supabase functions deploy medical-document-analyze
 //
-// "Perform Analysis" — sends all of the client's uploaded documents to
-// Claude for a plain-language, strictly non-diagnostic organizational
-// summary. Runs with the client's own forwarded JWT (no service role) since
-// it only ever reads/writes that same client's own rows.
+// "Perform Analysis" — sends one (or, if no documentId is given, all) of the
+// client's uploaded documents to Claude for a plain-language, strictly
+// non-diagnostic organizational summary. Runs with the client's own
+// forwarded JWT (no service role) since it only ever reads/writes that same
+// client's own rows.
+//
+// Body: {} for the old all-documents batch behavior (kept for backward
+// compatibility), or { documentId } to analyze just that one document —
+// the client now shows a per-document "Analyze My Reports" button, so this
+// is the path actually used today.
 //
 // Requires secret: ANTHROPIC_API_KEY (server-side only).
 
@@ -85,14 +91,20 @@ Deno.serve(async (req) => {
     }
     const clientId = userRes.user.id;
 
-    const { data: docs, error: docsErr } = await supabase
+    const body = await req.json().catch(() => ({}));
+    const documentId: string | undefined = body?.documentId;
+
+    let docsQuery = supabase
       .from('medical_documents')
       .select('id, storage_path, file_type, original_filename, category')
       .eq('client_id', clientId)
       .order('uploaded_at', { ascending: true });
+    if (documentId) docsQuery = docsQuery.eq('id', documentId);
+
+    const { data: docs, error: docsErr } = await docsQuery;
     if (docsErr) throw docsErr;
     if (!docs || docs.length === 0) {
-      return new Response(JSON.stringify({ error: 'No documents to analyze' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: documentId ? 'Document not found' : 'No documents to analyze' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const contentBlocks: any[] = [];
@@ -133,7 +145,7 @@ Deno.serve(async (req) => {
         model: 'claude-sonnet-4-5',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: [...contentBlocks, { type: 'text', text: 'Analyze and organize all of the documents above per your instructions.' }] }],
+        messages: [{ role: 'user', content: [...contentBlocks, { type: 'text', text: docs.length === 1 ? 'Analyze and organize the document above per your instructions.' : 'Analyze and organize all of the documents above per your instructions.' }] }],
       }),
     });
 

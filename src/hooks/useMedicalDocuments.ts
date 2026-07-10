@@ -221,14 +221,16 @@ export function useAcknowledgeDisclaimer() {
   });
 }
 
-// ── Run the full analysis across all of this client's documents ─────────
+// ── Run analysis for one document (or, with no documentId, the old
+//    all-documents batch — kept for backward compatibility, not used by the
+//    client UI anymore now that each document has its own Analyze button) ──
 export function useRunMedicalAnalysis() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('medical-document-analyze', { body: {} });
+    mutationFn: async (args?: { documentId?: string }) => {
+      const { data, error } = await supabase.functions.invoke('medical-document-analyze', { body: { documentId: args?.documentId } });
       if (error) {
         const body = await (error as any)?.context?.json?.().catch(() => null);
         throw new Error(body?.debug ?? body?.detail ?? body?.error ?? error.message);
@@ -245,7 +247,9 @@ export function useRunMedicalAnalysis() {
   });
 }
 
-// ── Latest analysis for this client ───────────────────────────────────────
+// ── Latest analysis for this client — still used to gate the page-level
+//    Send to Coach / Need Expert Opinion actions, which operate on whichever
+//    document was most recently analyzed. ────────────────────────────────
 export function useLatestMedicalAnalysis() {
   const { user } = useAuth();
   return useQuery({
@@ -261,6 +265,26 @@ export function useLatestMedicalAnalysis() {
         .maybeSingle();
       if (error) throw error;
       return data as MedicalAnalysis | null;
+    },
+  });
+}
+
+// ── Every analysis this client has ever run — used to look up the specific
+//    analysis a given document belongs to (via doc.analysis_id), since with
+//    per-document analysis there's no longer one combined "the" analysis. ──
+export function useMyMedicalAnalyses() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [...medicalDocsKeys.analyses(user?.id ?? ''), 'all'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('medical_analyses')
+        .select('*')
+        .eq('client_id', user!.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as MedicalAnalysis[];
     },
   });
 }
