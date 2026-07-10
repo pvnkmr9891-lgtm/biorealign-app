@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useActiveEnrollment, useProgressHistory } from '@/hooks/useClient';
 import { useAuth } from '@/hooks/useAuth';
-import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useDeleteBodyMetric, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useSetPhotoVisibility, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
+import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useDeleteBodyMetric, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useSetPhotoVisibility, useSetAllPhotosVisibility, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
 import { useMyTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { useWeeklyAlignment, useAlignmentHistory, DayScore } from '@/hooks/useAlignmentScore';
 import { LineChart } from '@/components/ui/LineChart';
@@ -1636,8 +1636,30 @@ function shiftPhotoWeek(weekStart: string, delta: number) {
   return getWeekStart(d);
 }
 
+// ── Simple pill switch — matches the app's custom-toggle look rather than
+//    the OS-default <Switch/>, which clashes with the dark themed UI ────────
+function PillSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <TouchableOpacity
+      onPress={() => onChange(!value)}
+      activeOpacity={0.8}
+      style={{
+        width: 46, height: 26, borderRadius: 13, padding: 3,
+        backgroundColor: value ? THEME.colors.teal : 'rgba(255,255,255,0.12)',
+        justifyContent: 'center',
+      }}
+    >
+      <View style={{
+        width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+        alignSelf: value ? 'flex-end' : 'flex-start',
+      }} />
+    </TouchableOpacity>
+  );
+}
+
 function PhotosTab() {
   const { data: photos = [], isLoading } = useProgressPhotos();
+  const setAllVisibility = useSetAllPhotosVisibility();
   const [mode, setMode]           = useState<'timeline' | 'week' | 'compare'>('timeline');
   const [addVisible, setAddVisible] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -1680,13 +1702,31 @@ function PhotosTab() {
         <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Add Photos</Text>
       </TouchableOpacity>
 
-      {/* Privacy note */}
-      <View style={{ backgroundColor: `${THEME.colors.teal}10`, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.teal}25`, marginBottom: 18, flexDirection: 'row', gap: 10 }}>
-        <Text style={{ fontSize: 14 }}>🔒</Text>
-        <Text style={{ flex: 1, fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, lineHeight: 18 }}>
-          Photos are visible to you and your assigned coach. Open any photo to hide it from your coach — hidden photos show 🙈.
-        </Text>
-      </View>
+      {/* Privacy Mode — bulk switch. ON when every photo is currently hidden
+          from the coach; flipping it bulk-sets all photos at once. Individual
+          photos can still be toggled one by one afterward (see the "Coach can
+          see / Hidden from coach" control on each photo below), which is why
+          this reflects live data instead of being a separately stored flag. */}
+      {photos.length > 0 && (() => {
+        const allHidden = photos.every((p) => !p.visible_to_coach);
+        return (
+          <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Text style={{ fontSize: 18 }}>{allHidden ? '🔒' : '🔓'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Privacy Mode</Text>
+              <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2, lineHeight: 16 }}>
+                {allHidden
+                  ? 'All photos hidden from your coach.'
+                  : 'Your coach can see photos you haven\'t hidden individually.'}
+              </Text>
+            </View>
+            <PillSwitch
+              value={allHidden}
+              onChange={(turningPrivacyOn) => setAllVisibility.mutate(!turningPrivacyOn)}
+            />
+          </View>
+        );
+      })()}
 
       {/* Mode toggle */}
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>

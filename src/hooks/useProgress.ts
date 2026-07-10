@@ -448,6 +448,26 @@ export function useSetPhotoVisibility() {
   });
 }
 
+// ── Bulk-set visibility for every photo at once (the Privacy Mode switch) ───
+export function useSetAllPhotosVisibility() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (visible: boolean) => {
+      const { error } = await supabase
+        .from('progress_photos')
+        .update({ visible_to_coach: visible })
+        .eq('client_id', user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: progressKeys.photos(user.id) });
+    },
+  });
+}
+
 // ── Delete progress photo ───────────────────────────────────────────────────
 export function useDeleteProgressPhoto() {
   const { user } = useAuth();
