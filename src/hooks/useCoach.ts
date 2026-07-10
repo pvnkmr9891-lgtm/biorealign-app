@@ -223,6 +223,18 @@ export function useMessages(coachId: string, clientId: string) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
+  // Read inside the realtime callback via a ref rather than as an effect
+  // dependency — user?.id is only used inside the callback closure, not by
+  // the subscription itself, but including it in the deps array meant the
+  // effect re-ran the moment auth hydrated after mount (undefined -> real
+  // id), tearing down and recreating the channel before the previous
+  // teardown finished. Supabase's realtime-js throws "cannot add
+  // postgres_changes callbacks after subscribe()" when a new .on() lands on
+  // a channel that's still mid-unsubscribe from the old effect run — this
+  // hit on essentially every fresh open of Messages, not just as an edge case.
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
+
   // Realtime subscription
   useEffect(() => {
     if (!coachId || !clientId) return;
@@ -240,9 +252,10 @@ export function useMessages(coachId: string, clientId: string) {
         () => {
           // Invalidate on new message — triggers refetch
           qc.invalidateQueries({ queryKey: coachKeys.messages(coachId, clientId) });
-          if (user?.id) {
-            qc.invalidateQueries({ queryKey: coachKeys.inbox(user.id) });
-            qc.invalidateQueries({ queryKey: coachKeys.unreadCount(user.id) });
+          const uid = userIdRef.current;
+          if (uid) {
+            qc.invalidateQueries({ queryKey: coachKeys.inbox(uid) });
+            qc.invalidateQueries({ queryKey: coachKeys.unreadCount(uid) });
           }
         }
       )
@@ -251,7 +264,7 @@ export function useMessages(coachId: string, clientId: string) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [coachId, clientId, user?.id]);
+  }, [coachId, clientId]);
 
   return useQuery({
     queryKey: coachKeys.messages(coachId, clientId),

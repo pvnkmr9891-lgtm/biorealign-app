@@ -200,14 +200,6 @@ function DrawerMenu({
         <View style={drawerStyles.panelHeader}>
           <View>
             <Text style={drawerStyles.panelTitle}>Menu</Text>
-            {/* TEMP diagnostic — remove once coach-gating is confirmed working.
-                Shows exactly what this device's drawer sees right now: whether
-                the coach-info query resolved a coach, and the coach's name if
-                so, so we can tell apart "OTA didn't apply", "query still
-                returns no coach", and "filter logic bug" in one test. */}
-            <Text style={{ fontSize: 9, fontFamily: THEME.fonts.sans, color: THEME.colors.amber, marginTop: 2 }}>
-              debug: coach={coachInfo ? `yes (${(coachInfo as any)?.coach?.full_name ?? 'name?'})` : 'no'}
-            </Text>
           </View>
           <TouchableOpacity
             onPress={onClose}
