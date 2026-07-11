@@ -244,6 +244,17 @@ export function usePublishPlan() {
         .update({ status: 'active', published_at: new Date().toISOString() })
         .eq('id', planId);
       if (error) throw error;
+
+      // A client has exactly one live plan — retire any other still-active
+      // plan, otherwise stale "active" rows accumulate and pollute the admin
+      // funnel / coach views (the client screen only ever reads the latest
+      // published one, so the older row would just rot silently).
+      const { error: archiveErr } = await supabase.from('plans')
+        .update({ status: 'archived' })
+        .eq('client_id', clientId)
+        .eq('status', 'active')
+        .neq('id', planId);
+      if (archiveErr) throw archiveErr;
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: planKeys.planDetail(vars.planId) });
