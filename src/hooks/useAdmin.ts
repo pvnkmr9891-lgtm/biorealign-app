@@ -1085,6 +1085,10 @@ export interface RedFlagClient {
   date: string;
   painLevel: number | null;
   energy: number | null;
+  // Human-readable reason chip, e.g. "Pain 8/10", "Silent 4d", "Mood low 2 days".
+  // Older pain/energy flags fill painLevel/energy too; newer flag types only
+  // set this.
+  reason: string;
 }
 
 export interface CoachMessageBacklog {
@@ -1110,6 +1114,7 @@ export interface PendingPayment {
   clientId: string;
   clientName: string;
   requestId: string;
+  amount: number | null;
 }
 
 const STREAK_MILESTONES = [3, 7, 14, 21, 30, 60, 90, 180, 365];
@@ -1144,9 +1149,9 @@ export function useAdminDailyPulse() {
         { data: streaks },
         { data: pendingPayments },
       ] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, created_at').eq('role', 'client'),
+        supabase.from('profiles').select('id, full_name, created_at, assigned_coach_id').eq('role', 'client'),
         supabase.from('profiles').select('id, full_name, last_seen_at').eq('role', 'coach'),
-        supabase.from('daily_checkins').select('client_id, date, energy, pain_level').gte('date', eightDaysAgoStr),
+        supabase.from('daily_checkins').select('client_id, date, energy, pain_level, mood, sleep_hrs').gte('date', eightDaysAgoStr),
         supabase.from('manual_workout_logs').select('client_id, completed_at').eq('completed', true).gte('completed_at', sevenDaysAgoIso),
         supabase.from('messages').select('receiver_id, sent_at').is('read_at', null).lte('sent_at', dayAgoIso).order('sent_at', { ascending: true }).limit(1000),
         supabase.from('rehab_requests').select('id, client_id').eq('status', 'pending'),
@@ -1155,7 +1160,7 @@ export function useAdminDailyPulse() {
         supabase.from('assessments').select('client_id, submitted_at'),
         supabase.from('plans').select('client_id, status').eq('status', 'active'),
         supabase.from('client_streaks').select('client_id, current_streak, updated_at'),
-        supabase.from('rehab_requests').select('id, client_id').eq('status', 'accepted').eq('payment_status', 'pending'),
+        supabase.from('rehab_requests').select('id, client_id, quoted_price').eq('status', 'accepted').eq('payment_status', 'pending'),
       ]);
       if (clientsErr) throw clientsErr;
 
@@ -1175,9 +1180,12 @@ export function useAdminDailyPulse() {
         ? Math.round(priorDays.reduce((s, [, set]) => s + set.size, 0) / priorDays.length)
         : 0;
 
-      // ── Red flags: high pain or very low energy, today or yesterday ──
-      // One row per client, keeping the worst report.
+      // ── Red flags — one row per client, worst/first-matching reason wins.
+      // Priority: high pain / very low energy (acute, 48h) > silent 3+ days
+      // (has coach + plan, dropped off) > low mood streak > poor sleep streak.
       const flagged: Record<string, RedFlagClient> = {};
+
+      // 1. Acute: high pain or very low energy, today or yesterday.
       (checkins ?? []).forEach((c: any) => {
         if (c.date !== todayStr && c.date !== yesterdayStr) return;
         const isFlag = (c.pain_level ?? 0) >= 7 || (c.energy != null && c.energy <= 2);
@@ -1190,9 +1198,78 @@ export function useAdminDailyPulse() {
             date: c.date,
             painLevel: c.pain_level ?? null,
             energy: c.energy ?? null,
+            reason: (c.pain_level ?? 0) >= 7 ? `Pain ${c.pain_level}/10` : `Energy ${c.energy}/10`,
           };
         }
       });
+
+      // Per-client check-in history (newest first) for the streak-based flags,
+      // plus latest activity dates for the silence flag.
+      const checkinsByClient: Record<string, any[]> = {};
+      (checkins ?? []).forEach((c: any) => { (checkinsByClient[c.client_id] ??= []).push(c); });
+      Object.values(checkinsByClient).forEach((rows) => rows.sort((a, b) => b.date.localeCompare(a.date)));
+
+      const lastLogDate: Record<string, string> = {};
+      (logs7d ?? []).forEach((l: any) => {
+        const d = localDateStr(new Date(l.completed_at));
+        if (!lastLogDate[l.client_id] || d > lastLogDate[l.client_id]) lastLogDate[l.client_id] = d;
+      });
+
+      // 2. Silent 3+ days: assigned coach + active plan, but no completed log
+      // and no check-in in the last 3 days. (7-8 day query windows: anyone
+      // silent longer simply has no rows at all, which still flags — the
+      // shown day-count just caps at the window edge.)
+      const threeDaysAgoStr = localDateStr(new Date(now.getTime() - 3 * 86400000));
+      const activePlanIds = new Set((activePlans ?? []).map((p: any) => p.client_id));
+      (clients ?? []).forEach((c: any) => {
+        if (flagged[c.id]) return;
+        if (!c.assigned_coach_id || !activePlanIds.has(c.id)) return;
+        const lastCheckin = checkinsByClient[c.id]?.[0]?.date ?? null;
+        const lastLog = lastLogDate[c.id] ?? null;
+        const lastAny = [lastCheckin, lastLog].filter(Boolean).sort().pop() ?? null;
+        if (lastAny && lastAny > threeDaysAgoStr) return;
+        const days = lastAny
+          ? Math.floor((new Date(todayStr + 'T00:00:00').getTime() - new Date(lastAny + 'T00:00:00').getTime()) / 86400000)
+          : null;
+        flagged[c.id] = {
+          clientId: c.id,
+          clientName: c.full_name ?? 'Unknown',
+          date: todayStr,
+          painLevel: null,
+          energy: null,
+          reason: days != null ? `Silent ${days}d` : 'Silent 7d+',
+        };
+      });
+
+      // 3. Low mood streak: mood ≤3 on the two most recent check-ins.
+      // 4. Poor sleep streak: under 5h sleep on the three most recent.
+      Object.entries(checkinsByClient).forEach(([clientId, rows]) => {
+        if (flagged[clientId]) return;
+        const lastTwo = rows.slice(0, 2);
+        if (lastTwo.length === 2 && lastTwo.every((r) => r.mood != null && r.mood <= 3)) {
+          flagged[clientId] = {
+            clientId,
+            clientName: clientNameMap[clientId] ?? 'Unknown',
+            date: rows[0].date,
+            painLevel: null,
+            energy: null,
+            reason: 'Mood low 2 days',
+          };
+          return;
+        }
+        const lastThree = rows.slice(0, 3);
+        if (lastThree.length === 3 && lastThree.every((r) => r.sleep_hrs != null && r.sleep_hrs < 5)) {
+          flagged[clientId] = {
+            clientId,
+            clientName: clientNameMap[clientId] ?? 'Unknown',
+            date: rows[0].date,
+            painLevel: null,
+            energy: null,
+            reason: 'Sleep <5h × 3 days',
+          };
+        }
+      });
+
       const redFlags = Object.values(flagged).sort((a, b) => (b.painLevel ?? 0) - (a.painLevel ?? 0));
 
       // ── Activity: distinct clients logging today vs trailing-week norm ──
@@ -1267,6 +1344,7 @@ export function useAdminDailyPulse() {
       // ── Recovery payments pending: accepted quotes, not yet paid ──
       const paymentsPending: PendingPayment[] = (pendingPayments ?? []).map((r: any) => ({
         requestId: r.id, clientId: r.client_id, clientName: clientNameMap[r.client_id] ?? 'Unknown',
+        amount: r.quoted_price ?? null,
       }));
 
       return {
@@ -1373,6 +1451,20 @@ export function useAdminWeekly() {
       const checkinRateThisWeek = pct(thisWeekCheckins, totalClients * 7);
       const checkinRatePrevWeek = pct(prevWeekCheckins, totalClients * 7);
 
+      // ── 14-day daily trend: check-ins + distinct active clients per day ──
+      const checkinsByDay: Record<string, Set<string>> = {};
+      (checkins14d ?? []).forEach((c: any) => { (checkinsByDay[c.date] ??= new Set()).add(c.client_id); });
+      const activeByDay: Record<string, Set<string>> = {};
+      (logs14d ?? []).forEach((l: any) => {
+        if (!l.completed) return;
+        const d = localDateStr(new Date(l.completed_at));
+        (activeByDay[d] ??= new Set()).add(l.client_id);
+      });
+      const dailyTrend = Array.from({ length: 14 }, (_, i) => {
+        const d = localDateStr(new Date(now - (13 - i) * 86400000));
+        return { date: d, checkins: checkinsByDay[d]?.size ?? 0, active: activeByDay[d]?.size ?? 0 };
+      });
+
       // ── Churn risk: active last week, silent this week ──
       const activeThisWeek = new Set(thisWeekLogs.filter((l: any) => l.completed).map((l: any) => l.client_id));
       const activePrevWeek = new Set(prevWeekLogs.filter((l: any) => l.completed).map((l: any) => l.client_id));
@@ -1464,6 +1556,7 @@ export function useAdminWeekly() {
         engagementThisWeek, engagementPrevWeek,
         adherenceThisWeek, adherencePrevWeek,
         checkinRateThisWeek, checkinRatePrevWeek,
+        dailyTrend,
         churnRisk,
         topGainers, topDecliners,
         leaderboard,
@@ -1497,7 +1590,7 @@ export function useAdminMonthly() {
         supabase.from('profiles').select('id, created_at').eq('role', 'client'),
         supabase.from('manual_workout_logs').select('client_id, item_type, completed_at').eq('completed', true).gte('completed_at', sixtyDaysAgoIso).limit(5000),
         supabase.from('progress_metrics').select('fitness_score, recovery_score, longevity_score, recorded_at').gte('recorded_at', sixtyDaysAgoIso).limit(5000),
-        supabase.from('rehab_requests').select('status, created_at').gte('created_at', sixtyDaysAgoIso),
+        supabase.from('rehab_requests').select('status, created_at, quoted_price, payment_status').gte('created_at', sixtyDaysAgoIso),
         supabase.from('rehab_appointments').select('status, scheduled_at').gte('scheduled_at', sixtyDaysAgoIso),
       ]);
       if (clientsErr) throw clientsErr;
@@ -1538,6 +1631,13 @@ export function useAdminMonthly() {
       const count = (rows: any[], status: string) => rows.filter((r: any) => r.status === status).length;
       const completed = count(apptThis30, 'completed');
       const noShow = count(apptThis30, 'no_show');
+      // Revenue: paid = collected; accepted-but-unpaid = pending collections.
+      // quoted_price is the source of truth for the amount either way.
+      const sumPrice = (rows: any[]) => rows.reduce((s: number, r: any) => s + (r.quoted_price ?? 0), 0);
+      const paidThis30 = reqThis30.filter((r: any) => r.payment_status === 'paid');
+      const paidPrev30 = reqPrev30.filter((r: any) => r.payment_status === 'paid');
+      const pendingAll = (requests60d ?? []).filter((r: any) => r.status === 'accepted' && r.payment_status === 'pending');
+
       const rehab = {
         received: reqThis30.length,
         receivedPrev: reqPrev30.length,
@@ -1547,6 +1647,11 @@ export function useAdminMonthly() {
         noShow,
         acceptRate: reqThis30.length > 0 ? Math.round((count(reqThis30, 'accepted') / reqThis30.length) * 100) : null,
         noShowRate: completed + noShow > 0 ? Math.round((noShow / (completed + noShow)) * 100) : null,
+        revenueThis30: sumPrice(paidThis30),
+        revenuePrev30: sumPrice(paidPrev30),
+        pendingCollections: sumPrice(pendingAll),
+        pendingCollectionsCount: pendingAll.length,
+        avgTicket: paidThis30.length > 0 ? Math.round(sumPrice(paidThis30) / paidThis30.length) : null,
       };
 
       // ── Feature usage with deltas (distinct clients per item_type) ──

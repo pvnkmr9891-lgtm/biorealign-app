@@ -199,18 +199,20 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
               >
                 <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{p.clientName}</Text>
-                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>Awaiting payment</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+                  {p.amount != null ? `₹${p.amount.toLocaleString('en-IN')} pending` : 'Awaiting payment'}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </PanelCard>
       )}
 
-      {/* Red flags */}
+      {/* Red flags — pain/energy spikes, gone-silent, mood & sleep streaks */}
       {(pulse?.redFlags?.length ?? 0) > 0 && (
-        <PanelCard title="🚨 Red flags — high pain / very low energy (48h)">
+        <PanelCard title={`🚨 Red flags (${pulse!.redFlags.length})`}>
           <View style={{ gap: 8 }}>
-            {pulse!.redFlags.map((f) => (
+            {pulse!.redFlags.slice(0, 8).map((f) => (
               <TouchableOpacity
                 key={f.clientId}
                 onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: f.clientId, clientName: f.clientName } })}
@@ -218,11 +220,14 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
               >
                 <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{f.clientName}</Text>
-                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>
-                  {f.painLevel != null && f.painLevel >= 7 ? `Pain ${f.painLevel}/10` : `Energy ${f.energy}/10`}
-                </Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>{f.reason}</Text>
               </TouchableOpacity>
             ))}
+            {pulse!.redFlags.length > 8 && (
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+                +{pulse!.redFlags.length - 8} more
+              </Text>
+            )}
           </View>
         </PanelCard>
       )}
@@ -262,6 +267,38 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
           </View>
         </PanelCard>
       )}
+    </View>
+  );
+}
+
+// ── 14-day trend — paired daily bars: check-ins & distinct active clients ────
+function TrendChart({ data }: { data: { date: string; checkins: number; active: number }[] }) {
+  const max = Math.max(1, ...data.map((d) => Math.max(d.checkins, d.active)));
+  const BAR_AREA_H = 72;
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_AREA_H, gap: 4 }}>
+        {data.map((d) => (
+          <View key={d.date} style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5 }}>
+            <View style={{ flex: 1, height: Math.max(2, (d.checkins / max) * BAR_AREA_H), backgroundColor: '#93C5FD', borderTopLeftRadius: 2, borderTopRightRadius: 2, opacity: d.checkins === 0 ? 0.25 : 1 }} />
+            <View style={{ flex: 1, height: Math.max(2, (d.active / max) * BAR_AREA_H), backgroundColor: THEME.colors.teal, borderTopLeftRadius: 2, borderTopRightRadius: 2, opacity: d.active === 0 ? 0.25 : 1 }} />
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+        <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+          {new Date(data[0]?.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+        </Text>
+        <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>Today</Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+        {[{ label: 'Check-ins', color: '#93C5FD' }, { label: 'Active clients', color: THEME.colors.teal }].map((l) => (
+          <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: l.color }} />
+            <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>{l.label}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -322,6 +359,13 @@ function WeekTab({ analytics }: { analytics: any }) {
           <DeltaBadge now={weekly?.checkinRateThisWeek ?? 0} prev={weekly?.checkinRatePrevWeek ?? 0} />
         </View>
       </View>
+
+      {/* 14-day daily trend */}
+      {(weekly?.dailyTrend?.length ?? 0) > 0 && (
+        <PanelCard title="📊 Daily activity — last 14 days">
+          <TrendChart data={weekly!.dailyTrend} />
+        </PanelCard>
+      )}
 
       {/* Coach leaderboard */}
       {(weekly?.leaderboard?.length ?? 0) > 0 && (
@@ -505,6 +549,33 @@ function MonthTab({ analytics }: { analytics: any }) {
               <DeltaBadge now={o.current} prev={o.previous} suffix="" />
             </View>
           ))}
+        </View>
+      </PanelCard>
+
+      {/* Revenue */}
+      <PanelCard title="💰 Revenue — recovery sessions">
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
+            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: '#6EE7B7' }}>
+              ₹{(monthly?.rehab.revenueThis30 ?? 0).toLocaleString('en-IN')}
+            </Text>
+            <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3 }}>Collected (30d)</Text>
+            <DeltaBadge now={monthly?.rehab.revenueThis30 ?? 0} prev={monthly?.rehab.revenuePrev30 ?? 0} suffix=" vs prior" />
+          </View>
+          <View style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
+            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+              ₹{(monthly?.rehab.pendingCollections ?? 0).toLocaleString('en-IN')}
+            </Text>
+            <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3 }}>
+              Pending ({monthly?.rehab.pendingCollectionsCount ?? 0} quote{(monthly?.rehab.pendingCollectionsCount ?? 0) === 1 ? '' : 's'})
+            </Text>
+          </View>
+          <View style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
+            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+              {monthly?.rehab.avgTicket != null ? `₹${monthly.rehab.avgTicket.toLocaleString('en-IN')}` : '—'}
+            </Text>
+            <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3 }}>Avg ticket</Text>
+          </View>
         </View>
       </PanelCard>
 

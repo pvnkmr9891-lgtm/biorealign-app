@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
       { data: logsYesterday },
       { data: staleUnread },
       { data: admins },
+      { data: pendingPayments },
     ] = await Promise.all([
       supabase.from('profiles').select('id, full_name, created_at').eq('role', 'client'),
       supabase.from('profiles').select('id, last_seen_at').eq('role', 'coach'),
@@ -48,6 +49,7 @@ Deno.serve(async (req) => {
       supabase.from('manual_workout_logs').select('client_id').eq('completed', true).gte('completed_at', startOfYesterdayUtcIso),
       supabase.from('messages').select('id, receiver_id').is('read_at', null).lte('sent_at', dayAgoIso).limit(1000),
       supabase.from('profiles').select('id, push_token').eq('role', 'admin').not('push_token', 'is', null),
+      supabase.from('rehab_requests').select('quoted_price').eq('status', 'accepted').eq('payment_status', 'pending'),
     ]);
 
     const totalClients = (clients ?? []).length;
@@ -79,6 +81,8 @@ Deno.serve(async (req) => {
     if (unreadToCoaches > 0) parts.push(`💬 ${unreadToCoaches} msgs unread >24h`);
     if (coachesInactive > 0) parts.push(`🧑‍🏫 ${coachesInactive} coach${coachesInactive > 1 ? 'es' : ''} inactive`);
     if (signupsYesterday > 0) parts.push(`✨ +${signupsYesterday} signup${signupsYesterday > 1 ? 's' : ''}`);
+    const pendingTotal = (pendingPayments ?? []).reduce((s: number, r: any) => s + (r.quoted_price ?? 0), 0);
+    if (pendingTotal > 0) parts.push(`💳 ₹${pendingTotal.toLocaleString('en-IN')} pending (${pendingPayments!.length})`);
     const body = parts.join(' · ');
 
     const tokens = (admins ?? []).map((a: any) => a.push_token).filter(Boolean);
