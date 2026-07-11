@@ -596,6 +596,7 @@ export default function AdminDashboard() {
     { emoji: '🩺', title: 'Medical records', subtitle: 'Platform-wide upload & analysis stats', route: '/(admin)/medical-records', color: '#93C5FD' },
     { emoji: '🏋️', title: 'Fitness analytics', subtitle: 'Avg domain scores by athlete status & age band', route: '/(admin)/fitness-analytics', color: '#34D399' },
     { emoji: '📚', title: 'Clients by Goals', subtitle: 'Client distribution by selected goal', route: '/(admin)/clients-by-goals', color: '#FDE68A' },
+    { emoji: '🛡️', title: 'User roles', subtitle: 'Promote or change client / coach / admin roles', route: '/(admin)/users', color: '#8b78e8' },
     { emoji: '⚙️', title: 'Settings', subtitle: 'Contact info, rehab packages, supplements', route: '/(admin)/settings', color: THEME.colors.textSecondary },
   ];
 

@@ -248,7 +248,7 @@ export default function AssessmentDetailScreen() {
             <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
               Ideal outcome (client's words)
             </Text>
-            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.text, lineHeight: 22, fontStyle: 'italic' }}>
+            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, lineHeight: 22, fontStyle: 'italic' }}>
               "{assessment.ideal_outcome}"
             </Text>
           </View>
@@ -259,7 +259,7 @@ export default function AssessmentDetailScreen() {
             <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
               Note to coach
             </Text>
-            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.text, lineHeight: 22 }}>
+            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, lineHeight: 22 }}>
               {assessment.coach_notes_from_client}
             </Text>
           </View>
