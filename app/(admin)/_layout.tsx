@@ -20,6 +20,7 @@ export default function AdminLayout() {
       <Stack.Screen name="coach-profile" />
       <Stack.Screen name="clients" />
       <Stack.Screen name="coaches" />
+      <Stack.Screen name="add-coach" />
       <Stack.Screen name="rehab-queue" />
       <Stack.Screen name="clients-by-goals" />
       <Stack.Screen name="goal-clients" />

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,7 +6,7 @@ import { THEME } from '@/constants/theme';
 
 export default function CoachProfile() {
   const router = useRouter();
-  const { profile, signOut } = useAuth();
+  const { profile, user, signOut } = useAuth();
 
   const handleSignOut = () => {
     Alert.alert(
@@ -50,10 +50,14 @@ export default function CoachProfile() {
 
         {/* Avatar + name */}
         <View style={{ alignItems: 'center', paddingVertical: 24, marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 24 }}>
-          <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: `${THEME.colors.amber}20`, borderWidth: 2, borderColor: `${THEME.colors.amber}50`, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-            <Text style={{ fontSize: 28, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
-              {initials}
-            </Text>
+          <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: `${THEME.colors.amber}20`, borderWidth: 2, borderColor: `${THEME.colors.amber}50`, alignItems: 'center', justifyContent: 'center', marginBottom: 16, overflow: 'hidden' }}>
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            ) : (
+              <Text style={{ fontSize: 28, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+                {initials}
+              </Text>
+            )}
           </View>
           <Text style={{ fontSize: 22, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary, marginBottom: 4 }}>
             {profile?.full_name}
@@ -65,8 +69,24 @@ export default function CoachProfile() {
           </View>
         </View>
 
-        {/* Public profile link */}
-        <View style={{ marginHorizontal: 24, marginBottom: 24 }}>
+        {/* Edit + public profile links */}
+        <View style={{ marginHorizontal: 24, marginBottom: 24, gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => router.push('/(coach)/edit-profile' as any)}
+            activeOpacity={0.85}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: `${THEME.colors.amber}12`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.amber}30` }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ fontSize: 18 }}>✏️</Text>
+              <View>
+                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Edit my resume / portfolio</Text>
+                <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>
+                  Bio, certifications, education, experience & more
+                </Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 16, color: THEME.colors.amber }}>›</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.push('/(coach)/my-public-profile')}
             activeOpacity={0.85}
@@ -88,7 +108,7 @@ export default function CoachProfile() {
         {/* Info rows */}
         <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 24, overflow: 'hidden' }}>
           {[
-            { label: 'Email', value: '—' },
+            { label: 'Email', value: user?.email ?? '—' },
             { label: 'Phone', value: profile?.phone ?? '—' },
             { label: 'Member since', value: profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
           ].map((row, i, arr) => (

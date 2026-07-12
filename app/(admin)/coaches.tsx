@@ -29,7 +29,15 @@ export default function CoachesScreen() {
         >
           <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>←</Text>
         </TouchableOpacity>
-        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 28 }}>Coaches</Text>
+        <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 28, flex: 1 }}>Coaches</Text>
+        <TouchableOpacity
+          onPress={() => router.push('/(admin)/add-coach' as any)}
+          activeOpacity={0.85}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${THEME.colors.teal}18`, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: `${THEME.colors.teal}35` }}
+        >
+          <Text style={{ fontSize: 13, color: THEME.colors.teal }}>＋</Text>
+          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>Add</Text>
+        </TouchableOpacity>
       </View>
 
       {isLoading ? (

@@ -660,6 +660,7 @@ export default function AdminDashboard() {
   const ADMIN_ACTIONS = [
     { emoji: '🧑‍🤝‍🧑', title: 'Clients', subtitle: 'Filter & sort the full client roster', route: '/(admin)/clients', color: THEME.colors.teal },
     { emoji: '🧑‍🏫', title: 'Coaches', subtitle: 'Roster, client counts, adherence', route: '/(admin)/coaches', color: THEME.colors.amber },
+    { emoji: '➕', title: 'Add Coach', subtitle: 'Create a new coach account', route: '/(admin)/add-coach', color: THEME.colors.amber },
     { emoji: '🔗', title: 'Coach assignment', subtitle: 'Assign clients to coaches', route: '/(admin)/coach-assignment', color: THEME.colors.amber, badge: analytics?.clientsWithoutPlan },
     { emoji: '📋', title: 'Assessments', subtitle: 'View submitted client assessments', route: '/(admin)/assessments', color: '#C4B5FD' },
     { emoji: '📢', title: 'Broadcast notification', subtitle: 'Send push to all clients', route: '/(admin)/broadcast', color: '#93C5FD' },

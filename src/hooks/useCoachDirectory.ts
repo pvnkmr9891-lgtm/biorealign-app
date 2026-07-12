@@ -175,6 +175,44 @@ export function useUnassignMyCoach() {
   });
 }
 
+// ── Coach edits their own resume/portfolio ────────────────────────────────
+// A coach owns their own profile row (profiles_own_update RLS), so this
+// writes directly — same trust model as useUnassignMyCoach. Powers the new
+// edit-profile screen; the fields written are exactly what CoachProfileView
+// renders, so there's nothing shown to clients this can't reach.
+export interface CoachProfileEdits {
+  avatar_url?: string | null;
+  tagline: string | null;
+  location: string | null;
+  years_experience: number | null;
+  specialties: string[];
+  bio: string | null;
+  coaching_philosophy: string | null;
+  social_links: CoachSocialLinks;
+  certifications: CoachCertification[];
+  education: CoachEducation[];
+  experience_timeline: CoachExperience[];
+  achievements: CoachAchievement[];
+}
+
+export function useUpdateCoachProfile() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CoachProfileEdits) => {
+      const { error } = await supabase.from('profiles').update(data).eq('id', user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (!user?.id) return;
+      qc.invalidateQueries({ queryKey: coachDirectoryKeys.list });
+      qc.invalidateQueries({ queryKey: coachDirectoryKeys.detail(user.id) });
+      useAuthStore.getState().fetchProfile(user.id);
+    },
+  });
+}
+
 // ── Cancel a pending request ──────────────────────────────────────────────
 export function useCancelCoachRequest() {
   const { user } = useAuth();
