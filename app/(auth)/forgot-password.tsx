@@ -12,6 +12,17 @@ import { OtpInput } from '@/components/auth/OtpInput';
 import { usePhoneOtp, resetPasswordWithPhone } from '@/hooks/usePhoneOtp';
 import { isValidEmail, isValidPhone } from '@/utils/validation';
 
+// profiles.phone is always stored as "+91XXXXXXXXXX" — no spaces, no
+// leading-zero — and the lookup inside reset-password-with-phone is an
+// exact string match, so anything typed differently (missing country code,
+// spaces from the placeholder style "+91 98765 43210") silently matches
+// zero rows. Strip to digits first so any input shape normalizes the same.
+function normalizeIndianPhone(value: string): string {
+  const digits = value.trim().replace(/[^0-9]/g, '');
+  const withCountryCode = digits.length === 12 && digits.startsWith('91') ? digits : `91${digits}`;
+  return `+${withCountryCode}`;
+}
+
 type Method = 'email' | 'phone';
 type Step = 'identify' | 'otp' | 'newPassword' | 'done';
 
@@ -55,7 +66,11 @@ export default function ForgotPasswordScreen() {
         return;
       }
     } else {
-      const result = await sendOtp(identifier.trim());
+      // Normalize + persist so the final reset call (which re-reads
+      // `identifier`) uses the exact "+91XXXXXXXXXX" format stored in the DB.
+      const normalizedPhone = normalizeIndianPhone(identifier);
+      setIdentifier(normalizedPhone);
+      const result = await sendOtp(normalizedPhone);
       setLoading(false);
       if (!result.ok) {
         Alert.alert('Could not send code', result.error ?? 'Please try again.');

@@ -46,7 +46,13 @@ export function usePhoneOtp() {
 export async function resetPasswordWithPhone(phone: string, code: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const { data, error } = await supabase.functions.invoke('reset-password-with-phone', { body: { phone, code, newPassword } });
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      // supabase-js's default FunctionsHttpError.message is a generic
+      // "Edge Function returned a non-2xx status code" — the actual reason
+      // is JSON in the response body, not on the error itself.
+      const body = await (error as any)?.context?.json?.().catch(() => null);
+      return { ok: false, error: body?.error ?? error.message };
+    }
     if (data?.error) return { ok: false, error: data.error };
     return { ok: true };
   } catch (e: any) {

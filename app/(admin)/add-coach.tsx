@@ -49,8 +49,16 @@ export default function AddCoachScreen() {
     });
     setLoading(false);
 
-    if (error || data?.error) {
-      Alert.alert('Could not create coach', data?.error ?? error?.message ?? 'Please try again.');
+    if (error) {
+      // supabase-js's default FunctionsHttpError.message is a generic
+      // "Edge Function returned a non-2xx status code" — the actual reason
+      // (e.g. "That email is already registered.") is JSON in the body.
+      const body = await (error as any)?.context?.json?.().catch(() => null);
+      Alert.alert('Could not create coach', body?.error ?? error.message);
+      return;
+    }
+    if (data?.error) {
+      Alert.alert('Could not create coach', data.error);
       return;
     }
 
