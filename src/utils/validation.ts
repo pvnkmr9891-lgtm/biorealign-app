@@ -2,6 +2,7 @@
 
 export const MAX_LENGTHS = {
   personName: 80,
+  email: 254,
   username: 30,
   occupation: 80,
   location: 80,
@@ -43,6 +44,16 @@ export function isValidEmail(value: string): boolean {
 /** Strips everything except digits, spaces, +, - and () — use for phone-pad fields. */
 export function sanitizePhone(text: string): string {
   return text.replace(/[^0-9+\-() ]/g, '');
+}
+
+/** Strips everything except letters, spaces, apostrophes, hyphens and periods — use for person-name fields (blocks digits, currency symbols, punctuation). */
+export function sanitizeName(text: string): string {
+  return text.replace(/[^a-zA-Z '\-.]/g, '');
+}
+
+/** A name is valid once sanitized if it has at least one letter left after trimming. */
+export function isValidName(value: string): boolean {
+  return /[a-zA-Z]/.test(value.trim());
 }
 
 /** Loose phone check — 7 to 15 digits once formatting characters are stripped (E.164-ish). */

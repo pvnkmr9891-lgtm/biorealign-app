@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { THEME } from '@/constants/theme';
-import { MAX_LENGTHS, isValidEmail } from '@/utils/validation';
+import { MAX_LENGTHS, isValidEmail, sanitizeName, isValidName, sanitizePhone } from '@/utils/validation';
 
 const INPUT_STYLE = {
   backgroundColor: THEME.colors.surface2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13,
@@ -31,6 +31,10 @@ export default function AddCoachScreen() {
   const handleCreate = async () => {
     if (!fullName.trim() || !email.trim() || !phone.trim()) {
       Alert.alert('Missing fields', 'Please fill in name, email, and phone.');
+      return;
+    }
+    if (!isValidName(fullName)) {
+      Alert.alert('Invalid name', 'Please enter a name using letters only.');
       return;
     }
     if (!isValidEmail(email)) {
@@ -133,15 +137,15 @@ export default function AddCoachScreen() {
           <View style={{ gap: 16 }}>
             <View>
               <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7 }}>Full name</Text>
-              <TextInput value={fullName} onChangeText={setFullName} placeholder="e.g. Rohan Kapoor" placeholderTextColor={THEME.colors.textMuted} style={INPUT_STYLE} maxLength={MAX_LENGTHS.personName} />
+              <TextInput value={fullName} onChangeText={(t) => setFullName(sanitizeName(t))} placeholder="e.g. Rohan Kapoor" placeholderTextColor={THEME.colors.textMuted} style={INPUT_STYLE} autoCapitalize="words" maxLength={MAX_LENGTHS.personName} />
             </View>
             <View>
               <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7 }}>Email</Text>
-              <TextInput value={email} onChangeText={setEmail} placeholder="coach@example.com" placeholderTextColor={THEME.colors.textMuted} style={INPUT_STYLE} autoCapitalize="none" keyboardType="email-address" />
+              <TextInput value={email} onChangeText={setEmail} placeholder="coach@example.com" placeholderTextColor={THEME.colors.textMuted} style={INPUT_STYLE} autoCapitalize="none" keyboardType="email-address" maxLength={MAX_LENGTHS.email} />
             </View>
             <View>
               <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 7 }}>Phone number</Text>
-              <TextInput value={phone} onChangeText={setPhone} placeholder="+91 98765 43210" placeholderTextColor={THEME.colors.textMuted} style={INPUT_STYLE} keyboardType="phone-pad" />
+              <TextInput value={phone} onChangeText={(t) => setPhone(sanitizePhone(t))} placeholder="+91 98765 43210" placeholderTextColor={THEME.colors.textMuted} style={INPUT_STYLE} keyboardType="phone-pad" maxLength={16} />
             </View>
           </View>
 
