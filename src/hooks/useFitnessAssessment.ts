@@ -148,8 +148,17 @@ export interface SubmitFitnessAssessmentInput {
   isAthlete: boolean | null;
   notes?: string | null;
   domains: {
-    strength?: { chairStandReps: number; armCurlReps: number };
-    flexibility?: { sitAndReachInches: number; backScratchInches: number };
+    // Two protocols per domain: the original Rikli & Jones Senior Fitness
+    // Test (rigorously normed 60-94, unchanged) and, for younger clients,
+    // a genuinely different, separately-sourced test — the SFT's own
+    // protocols have no rigorous published norms below 60. See the
+    // add_adult_strength_flexibility_norms migration for exact sources.
+    strength?:
+      | { protocol: 'senior'; chairStandReps: number; armCurlReps: number }
+      | { protocol: 'adult'; pushUpReps: number };
+    flexibility?:
+      | { protocol: 'senior'; sitAndReachInches: number; backScratchInches: number }
+      | { protocol: 'adult'; sitAndReachCm: number };
     endurance?: { protocol: EnduranceProtocol; value: number };
     agility?: { upAndGoSeconds: number };
   };
@@ -179,49 +188,92 @@ export function useSubmitFitnessAssessment() {
       const rows: Omit<FitnessDomainResult, 'id' | 'created_at' | 'assessment_id'>[] = [];
 
       if (input.domains.strength) {
-        const { chairStandReps, armCurlReps } = input.domains.strength;
-        const { domainScore, scoreStatus } = await calculateTwoPartDomainScore({
-          domain: 'strength',
-          testProtocolPrimary: 'Chair Stand',
-          rawResultPrimary: chairStandReps,
-          testProtocolSecondary: 'Arm Curl',
-          rawResultSecondary: armCurlReps,
-          clientAge: input.clientAge,
-          clientGender: input.clientGender,
-        });
-        rows.push({
-          domain: 'strength',
-          raw_result_primary: chairStandReps,
-          raw_result_secondary: armCurlReps,
-          raw_result_unit: 'reps',
-          test_protocol_used: 'Chair Stand + Arm Curl',
-          domain_score: domainScore,
-          score_status: scoreStatus,
-          evidence_strength: 'strong',
-        });
+        const s = input.domains.strength;
+        if (s.protocol === 'senior') {
+          const { domainScore, scoreStatus } = await calculateTwoPartDomainScore({
+            domain: 'strength',
+            testProtocolPrimary: 'Chair Stand',
+            rawResultPrimary: s.chairStandReps,
+            testProtocolSecondary: 'Arm Curl',
+            rawResultSecondary: s.armCurlReps,
+            clientAge: input.clientAge,
+            clientGender: input.clientGender,
+          });
+          rows.push({
+            domain: 'strength',
+            raw_result_primary: s.chairStandReps,
+            raw_result_secondary: s.armCurlReps,
+            raw_result_unit: 'reps',
+            test_protocol_used: 'Chair Stand + Arm Curl',
+            domain_score: domainScore,
+            score_status: scoreStatus,
+            evidence_strength: 'strong',
+          });
+        } else {
+          const { domainScore, scoreStatus } = await calculateDomainScore({
+            domain: 'strength',
+            testProtocol: 'Push-Up Test',
+            rawResult: s.pushUpReps,
+            clientAge: input.clientAge,
+            clientGender: input.clientGender,
+          });
+          rows.push({
+            domain: 'strength',
+            raw_result_primary: s.pushUpReps,
+            raw_result_secondary: null,
+            raw_result_unit: 'reps',
+            test_protocol_used: 'Push-Up Test',
+            domain_score: domainScore,
+            score_status: scoreStatus,
+            // Category-boundary approximation (ACSM/NSCA 5-band table), not
+            // exact 5th/95th percentile data like the senior tests.
+            evidence_strength: 'moderate',
+          });
+        }
       }
 
       if (input.domains.flexibility) {
-        const { sitAndReachInches, backScratchInches } = input.domains.flexibility;
-        const { domainScore, scoreStatus } = await calculateTwoPartDomainScore({
-          domain: 'flexibility',
-          testProtocolPrimary: 'Chair Sit-and-Reach',
-          rawResultPrimary: sitAndReachInches,
-          testProtocolSecondary: 'Back Scratch',
-          rawResultSecondary: backScratchInches,
-          clientAge: input.clientAge,
-          clientGender: input.clientGender,
-        });
-        rows.push({
-          domain: 'flexibility',
-          raw_result_primary: sitAndReachInches,
-          raw_result_secondary: backScratchInches,
-          raw_result_unit: 'inches',
-          test_protocol_used: 'Chair Sit-and-Reach + Back Scratch',
-          domain_score: domainScore,
-          score_status: scoreStatus,
-          evidence_strength: 'strong',
-        });
+        const f = input.domains.flexibility;
+        if (f.protocol === 'senior') {
+          const { domainScore, scoreStatus } = await calculateTwoPartDomainScore({
+            domain: 'flexibility',
+            testProtocolPrimary: 'Chair Sit-and-Reach',
+            rawResultPrimary: f.sitAndReachInches,
+            testProtocolSecondary: 'Back Scratch',
+            rawResultSecondary: f.backScratchInches,
+            clientAge: input.clientAge,
+            clientGender: input.clientGender,
+          });
+          rows.push({
+            domain: 'flexibility',
+            raw_result_primary: f.sitAndReachInches,
+            raw_result_secondary: f.backScratchInches,
+            raw_result_unit: 'inches',
+            test_protocol_used: 'Chair Sit-and-Reach + Back Scratch',
+            domain_score: domainScore,
+            score_status: scoreStatus,
+            evidence_strength: 'strong',
+          });
+        } else {
+          const { domainScore, scoreStatus } = await calculateDomainScore({
+            domain: 'flexibility',
+            testProtocol: 'Sit-and-Reach (Standard)',
+            rawResult: f.sitAndReachCm,
+            clientAge: input.clientAge,
+            clientGender: input.clientGender,
+          });
+          rows.push({
+            domain: 'flexibility',
+            raw_result_primary: f.sitAndReachCm,
+            raw_result_secondary: null,
+            raw_result_unit: 'cm',
+            test_protocol_used: 'Sit-and-Reach (Standard)',
+            domain_score: domainScore,
+            score_status: scoreStatus,
+            // Canadian Health Measures Survey — exact 5th/95th percentile.
+            evidence_strength: 'strong',
+          });
+        }
       }
 
       if (input.domains.endurance) {

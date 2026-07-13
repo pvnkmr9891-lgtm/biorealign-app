@@ -156,6 +156,8 @@ export default function FitnessAssessmentNewScreen() {
   const [armCurl, setArmCurl] = useState('');
   const [sitAndReach, setSitAndReach] = useState('');
   const [backScratch, setBackScratch] = useState('');
+  const [pushUpReps, setPushUpReps] = useState('');
+  const [sitAndReachCm, setSitAndReachCm] = useState('');
   const [enduranceProtocol, setEnduranceProtocol] = useState<EnduranceProtocol>('6-Minute Walk');
   const [enduranceProtocolTouched, setEnduranceProtocolTouched] = useState(false);
   const [enduranceValue, setEnduranceValue] = useState('');
@@ -191,6 +193,12 @@ export default function FitnessAssessmentNewScreen() {
 
   const ageNumForPreview = Number(age);
   const canPreview = !!gender && ageNumForPreview > 0;
+  // Chair Stand/Arm Curl/Chair Sit-and-Reach/Back Scratch have no rigorous
+  // published norms below 60 (verified via research) — under 60, Strength
+  // and Flexibility switch to a genuinely different, separately-sourced
+  // test (Push-Up Test; standard cm Sit-and-Reach). Endurance and Agility
+  // stay senior-only for now — see the banner on those cards.
+  const useAdultProtocol = ageNumForPreview > 0 && ageNumForPreview < 60;
 
   // Debounced live scoring — waits for a pause in typing, then re-scores
   // every domain that has enough raw input, in parallel. Matches the exact
@@ -202,20 +210,34 @@ export default function FitnessAssessmentNewScreen() {
       setPreviewLoading(true);
       try {
         const results = await Promise.all([
-          chairStand && armCurl
-            ? calculateTwoPartDomainScore({
-                domain: 'strength', testProtocolPrimary: 'Chair Stand', rawResultPrimary: Number(chairStand),
-                testProtocolSecondary: 'Arm Curl', rawResultSecondary: Number(armCurl),
-                clientAge: ageNumForPreview, clientGender: gender!,
-              }).then((r) => ['strength', r] as const)
-            : null,
-          sitAndReach && backScratch
-            ? calculateTwoPartDomainScore({
-                domain: 'flexibility', testProtocolPrimary: 'Chair Sit-and-Reach', rawResultPrimary: Number(sitAndReach),
-                testProtocolSecondary: 'Back Scratch', rawResultSecondary: Number(backScratch),
-                clientAge: ageNumForPreview, clientGender: gender!,
-              }).then((r) => ['flexibility', r] as const)
-            : null,
+          useAdultProtocol
+            ? (pushUpReps
+                ? calculateDomainScore({
+                    domain: 'strength', testProtocol: 'Push-Up Test', rawResult: Number(pushUpReps),
+                    clientAge: ageNumForPreview, clientGender: gender!,
+                  }).then((r) => ['strength', r] as const)
+                : null)
+            : (chairStand && armCurl
+                ? calculateTwoPartDomainScore({
+                    domain: 'strength', testProtocolPrimary: 'Chair Stand', rawResultPrimary: Number(chairStand),
+                    testProtocolSecondary: 'Arm Curl', rawResultSecondary: Number(armCurl),
+                    clientAge: ageNumForPreview, clientGender: gender!,
+                  }).then((r) => ['strength', r] as const)
+                : null),
+          useAdultProtocol
+            ? (sitAndReachCm
+                ? calculateDomainScore({
+                    domain: 'flexibility', testProtocol: 'Sit-and-Reach (Standard)', rawResult: Number(sitAndReachCm),
+                    clientAge: ageNumForPreview, clientGender: gender!,
+                  }).then((r) => ['flexibility', r] as const)
+                : null)
+            : (sitAndReach && backScratch
+                ? calculateTwoPartDomainScore({
+                    domain: 'flexibility', testProtocolPrimary: 'Chair Sit-and-Reach', rawResultPrimary: Number(sitAndReach),
+                    testProtocolSecondary: 'Back Scratch', rawResultSecondary: Number(backScratch),
+                    clientAge: ageNumForPreview, clientGender: gender!,
+                  }).then((r) => ['flexibility', r] as const)
+                : null),
           enduranceValue
             ? calculateDomainScore({
                 domain: 'endurance', testProtocol: enduranceProtocol, rawResult: Number(enduranceValue),
@@ -247,7 +269,7 @@ export default function FitnessAssessmentNewScreen() {
     }, 450);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canPreview, ageNumForPreview, gender, chairStand, armCurl, sitAndReach, backScratch, enduranceProtocol, enduranceValue, upAndGo]);
+  }, [canPreview, useAdultProtocol, ageNumForPreview, gender, chairStand, armCurl, sitAndReach, backScratch, pushUpReps, sitAndReachCm, enduranceProtocol, enduranceValue, upAndGo]);
 
   if (profileLoading) {
     return (
@@ -271,11 +293,20 @@ export default function FitnessAssessmentNewScreen() {
     }
     const domains: Parameters<typeof submit>[0]['domains'] = {};
 
-    if (chairStand && armCurl) {
-      domains.strength = { chairStandReps: Number(chairStand), armCurlReps: Number(armCurl) };
-    }
-    if (sitAndReach && backScratch) {
-      domains.flexibility = { sitAndReachInches: Number(sitAndReach), backScratchInches: Number(backScratch) };
+    if (useAdultProtocol) {
+      if (pushUpReps) {
+        domains.strength = { protocol: 'adult', pushUpReps: Number(pushUpReps) };
+      }
+      if (sitAndReachCm) {
+        domains.flexibility = { protocol: 'adult', sitAndReachCm: Number(sitAndReachCm) };
+      }
+    } else {
+      if (chairStand && armCurl) {
+        domains.strength = { protocol: 'senior', chairStandReps: Number(chairStand), armCurlReps: Number(armCurl) };
+      }
+      if (sitAndReach && backScratch) {
+        domains.flexibility = { protocol: 'senior', sitAndReachInches: Number(sitAndReach), backScratchInches: Number(backScratch) };
+      }
     }
     if (enduranceValue) {
       domains.endurance = { protocol: enduranceProtocol, value: Number(enduranceValue) };
@@ -406,40 +437,92 @@ export default function FitnessAssessmentNewScreen() {
 
         <Card accent="#8b78e8">
           <SectionHeader icon="💪" title="Strength" color="#8b78e8" />
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>Chair Stand + Arm Curl (30-second reps each)</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <FieldLabel>Chair Stand (reps)</FieldLabel>
-              <NumberInput testID="assessment-chair-stand-input" value={chairStand} onChangeText={setChairStand} placeholder={lastStrength ? `last time: ${lastStrength.raw_result_primary}` : 'e.g. 14'} allowDecimal={false} />
-              <DeltaLine current={chairStand} last={lastStrength?.raw_result_primary} ago={lastAgo ?? undefined} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <FieldLabel>Arm Curl (reps)</FieldLabel>
-              <NumberInput testID="assessment-arm-curl-input" value={armCurl} onChangeText={setArmCurl} placeholder={lastStrength?.raw_result_secondary != null ? `last time: ${lastStrength.raw_result_secondary}` : 'e.g. 16'} allowDecimal={false} />
-              <DeltaLine current={armCurl} last={lastStrength?.raw_result_secondary} ago={lastAgo ?? undefined} />
-            </View>
-          </View>
+          {useAdultProtocol ? (
+            <>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>
+                Push-Up Test (max reps, good form) — ACSM/NSCA adult norms, ages 20-59
+              </Text>
+              <FieldLabel>Push-ups (reps)</FieldLabel>
+              <NumberInput
+                testID="assessment-pushup-input"
+                value={pushUpReps} onChangeText={setPushUpReps} allowDecimal={false}
+                placeholder={lastStrength?.test_protocol_used === 'Push-Up Test' ? `last time: ${lastStrength.raw_result_primary}` : 'e.g. 20'}
+              />
+              {lastStrength?.test_protocol_used === 'Push-Up Test' && (
+                <DeltaLine current={pushUpReps} last={lastStrength.raw_result_primary} ago={lastAgo ?? undefined} />
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>Chair Stand + Arm Curl (30-second reps each)</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Chair Stand (reps)</FieldLabel>
+                  <NumberInput testID="assessment-chair-stand-input" value={chairStand} onChangeText={setChairStand} placeholder={lastStrength?.test_protocol_used === 'Chair Stand + Arm Curl' ? `last time: ${lastStrength.raw_result_primary}` : 'e.g. 14'} allowDecimal={false} />
+                  {lastStrength?.test_protocol_used === 'Chair Stand + Arm Curl' && (
+                    <DeltaLine current={chairStand} last={lastStrength.raw_result_primary} ago={lastAgo ?? undefined} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Arm Curl (reps)</FieldLabel>
+                  <NumberInput testID="assessment-arm-curl-input" value={armCurl} onChangeText={setArmCurl} placeholder={lastStrength?.test_protocol_used === 'Chair Stand + Arm Curl' && lastStrength.raw_result_secondary != null ? `last time: ${lastStrength.raw_result_secondary}` : 'e.g. 16'} allowDecimal={false} />
+                  {lastStrength?.test_protocol_used === 'Chair Stand + Arm Curl' && (
+                    <DeltaLine current={armCurl} last={lastStrength.raw_result_secondary} ago={lastAgo ?? undefined} />
+                  )}
+                </View>
+              </View>
+            </>
+          )}
         </Card>
 
         <Card accent={THEME.colors.amber}>
           <SectionHeader icon="🤸" title="Flexibility" color={THEME.colors.amber} />
-          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>Chair Sit-and-Reach + Back Scratch, in inches (can be negative)</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}>
-              <FieldLabel>Sit-and-Reach (in)</FieldLabel>
-              <NumberInput value={sitAndReach} onChangeText={setSitAndReach} placeholder={lastFlexibility ? `last time: ${lastFlexibility.raw_result_primary}` : 'e.g. -1.5'} allowNegative />
-              <DeltaLine current={sitAndReach} last={lastFlexibility?.raw_result_primary} ago={lastAgo ?? undefined} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <FieldLabel>Back Scratch (in)</FieldLabel>
-              <NumberInput value={backScratch} onChangeText={setBackScratch} placeholder={lastFlexibility?.raw_result_secondary != null ? `last time: ${lastFlexibility.raw_result_secondary}` : 'e.g. -3.0'} allowNegative />
-              <DeltaLine current={backScratch} last={lastFlexibility?.raw_result_secondary} ago={lastAgo ?? undefined} />
-            </View>
-          </View>
+          {useAdultProtocol ? (
+            <>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>
+                Sit-and-Reach, standard box-and-ruler, in cm — Canadian Health Measures Survey norms, ages 20-59
+              </Text>
+              <FieldLabel>Sit-and-Reach (cm)</FieldLabel>
+              <NumberInput
+                value={sitAndReachCm} onChangeText={setSitAndReachCm}
+                placeholder={lastFlexibility?.test_protocol_used === 'Sit-and-Reach (Standard)' ? `last time: ${lastFlexibility.raw_result_primary}` : 'e.g. 24'}
+              />
+              {lastFlexibility?.test_protocol_used === 'Sit-and-Reach (Standard)' && (
+                <DeltaLine current={sitAndReachCm} last={lastFlexibility.raw_result_primary} ago={lastAgo ?? undefined} />
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>Chair Sit-and-Reach + Back Scratch, in inches (can be negative)</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Sit-and-Reach (in)</FieldLabel>
+                  <NumberInput value={sitAndReach} onChangeText={setSitAndReach} placeholder={lastFlexibility?.test_protocol_used === 'Chair Sit-and-Reach + Back Scratch' ? `last time: ${lastFlexibility.raw_result_primary}` : 'e.g. -1.5'} allowNegative />
+                  {lastFlexibility?.test_protocol_used === 'Chair Sit-and-Reach + Back Scratch' && (
+                    <DeltaLine current={sitAndReach} last={lastFlexibility.raw_result_primary} ago={lastAgo ?? undefined} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <FieldLabel>Back Scratch (in)</FieldLabel>
+                  <NumberInput value={backScratch} onChangeText={setBackScratch} placeholder={lastFlexibility?.test_protocol_used === 'Chair Sit-and-Reach + Back Scratch' && lastFlexibility.raw_result_secondary != null ? `last time: ${lastFlexibility.raw_result_secondary}` : 'e.g. -3.0'} allowNegative />
+                  {lastFlexibility?.test_protocol_used === 'Chair Sit-and-Reach + Back Scratch' && (
+                    <DeltaLine current={backScratch} last={lastFlexibility.raw_result_secondary} ago={lastAgo ?? undefined} />
+                  )}
+                </View>
+              </View>
+            </>
+          )}
         </Card>
 
         <Card accent="#60A5FA">
           <SectionHeader icon="🫁" title="Endurance" color="#60A5FA" />
+          {useAdultProtocol && (
+            <View style={{ marginBottom: 10, backgroundColor: `${THEME.colors.amber}10`, borderRadius: 10, padding: 10, borderWidth: 0.5, borderColor: `${THEME.colors.amber}30` }}>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.amber, lineHeight: 16 }}>
+                ℹ️ These protocols are only normed for ages 60+ — a result can still be recorded for your own tracking, but it won't get a percentile score for this client.
+              </Text>
+            </View>
+          )}
           <FieldLabel>Protocol used</FieldLabel>
           <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
             {(['6-Minute Walk', '2-Minute Step Test'] as const).map((p) => (
@@ -463,6 +546,13 @@ export default function FitnessAssessmentNewScreen() {
 
         <Card accent={THEME.colors.success ?? '#4CC986'}>
           <SectionHeader icon="🏃" title="Agility" color={THEME.colors.success ?? '#4CC986'} />
+          {useAdultProtocol && (
+            <View style={{ marginBottom: 10, backgroundColor: `${THEME.colors.amber}10`, borderRadius: 10, padding: 10, borderWidth: 0.5, borderColor: `${THEME.colors.amber}30` }}>
+              <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.amber, lineHeight: 16 }}>
+                ℹ️ This protocol is only normed for ages 60+ — a result can still be recorded for your own tracking, but it won't get a percentile score for this client.
+              </Text>
+            </View>
+          )}
           <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 10 }}>8-Foot Up-and-Go, in seconds (general population only)</Text>
           <FieldLabel>Time (seconds)</FieldLabel>
           <NumberInput value={upAndGo} onChangeText={setUpAndGo} placeholder={lastAgility ? `last time: ${lastAgility.raw_result_primary}` : 'e.g. 5.4'} />
