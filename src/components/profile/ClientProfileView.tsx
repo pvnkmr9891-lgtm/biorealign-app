@@ -1985,10 +1985,22 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
       testID="new-fitness-assessment-button"
       onPress={() => router.push({ pathname: isAdminContext ? '/(admin)/fitness-assessment-new' : '/(coach)/fitness-assessment-new', params: { clientId, clientName } })}
       activeOpacity={0.85}
-      style={{ backgroundColor: '#34D399', borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16 }}
+      style={{ backgroundColor: '#34D399', borderRadius: 14, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 10 }}
     >
       <Text style={{ fontSize: 16 }}>🏋️</Text>
       <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>New Fitness Assessment</Text>
+    </TouchableOpacity>
+  );
+
+  const activityTrendButton = (
+    <TouchableOpacity
+      testID="activity-trend-report-button"
+      onPress={() => router.push({ pathname: isAdminContext ? '/(admin)/activity-trend-report' : '/(coach)/activity-trend-report', params: { clientId, clientName } })}
+      activeOpacity={0.85}
+      style={{ backgroundColor: THEME.colors.surface2, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16, borderWidth: 0.5, borderColor: THEME.colors.border }}
+    >
+      <Text style={{ fontSize: 15 }}>📈</Text>
+      <Text style={{ fontSize: 13.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>Activity Trend Report</Text>
     </TouchableOpacity>
   );
 
@@ -1996,6 +2008,7 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
     return (
       <View>
         {newAssessmentButton}
+        {activityTrendButton}
         <EmptyState icon="🏋️" title="No assessments yet" subtitle="Run a fitness assessment to start tracking this client's domain scores." />
       </View>
     );
@@ -2015,6 +2028,7 @@ function FitnessAssessmentTab({ clientId, clientName, isAdminContext }: { client
   return (
     <View>
       {newAssessmentButton}
+      {activityTrendButton}
       {latestPoints.length > 0 && (
         <Card accent={THEME.colors.teal}>
           <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary, marginBottom: 2 }}>Domain profile</Text>

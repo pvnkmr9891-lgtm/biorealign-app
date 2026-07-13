@@ -1,14 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useClientProfile, useClientBodyMetrics } from '@/hooks/useCoachClientOverview';
 import { useClientDetailedAssessment } from '@/hooks/useDetailedAssessment';
 import { useAuth } from '@/hooks/useAuth';
-import { useSubmitFitnessAssessment, useClientFitnessAssessments, EnduranceProtocol } from '@/hooks/useFitnessAssessment';
+import {
+  useSubmitFitnessAssessment, useClientFitnessAssessments, EnduranceProtocol,
+  calculateDomainScore, calculateTwoPartDomainScore, FitnessDomain, ScoreStatus,
+} from '@/hooks/useFitnessAssessment';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
+import { scoreBand } from '@/components/ui/DomainRadarChart';
+import { DateField } from '@/components/ui/DateField';
 import { THEME } from '@/constants/theme';
 import { sanitizeInteger, sanitizeDecimal, sanitizeSignedDecimal, isWithinRange, NUMERIC_RANGES, MAX_LENGTHS } from '@/utils/validation';
+
+// Recommended minimum gap between assessments — a soft floor, not a hard
+// rule: real-world scheduling doesn't always land exactly on 4 weeks, so the
+// coach sees a warning but can proceed regardless.
+const MIN_ASSESSMENT_GAP_DAYS = 28;
+
+const DOMAIN_META: Record<FitnessDomain, { label: string; icon: string; color: string }> = {
+  strength:    { label: 'Strength',    icon: '💪', color: '#8b78e8' },
+  flexibility: { label: 'Flexibility', icon: '🤸', color: THEME.colors.amber },
+  endurance:   { label: 'Endurance',   icon: '🫁', color: '#60A5FA' },
+  agility:     { label: 'Agility',     icon: '🏃', color: THEME.colors.success ?? '#4CC986' },
+};
 
 function daysAgoLabel(dateStr: string): string {
   const days = Math.floor((Date.now() - new Date(dateStr + 'T00:00:00').getTime()) / 86400000);
@@ -144,6 +161,13 @@ export default function FitnessAssessmentNewScreen() {
   const [enduranceValue, setEnduranceValue] = useState('');
   const [upAndGo, setUpAndGo] = useState('');
   const [notes, setNotes] = useState('');
+  const [assessmentDate, setAssessmentDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Live, unsaved score preview — recomputed via the same normative-table
+  // RPCs the save mutation itself calls, so what the coach reviews here is
+  // exactly what gets stored, not a client-side approximation.
+  const [preview, setPreview] = useState<Partial<Record<FitnessDomain, { score: number | null; status: ScoreStatus }>>>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Initialize age/gender from profile once loaded, without clobbering
   // anything the coach has already typed/overridden.
@@ -159,6 +183,71 @@ export default function FitnessAssessmentNewScreen() {
   }
 
   const isAthlete = detailedAssessment?.is_athlete ?? null;
+
+  const daysSinceLast = lastAssessment
+    ? Math.floor((new Date(assessmentDate + 'T00:00:00').getTime() - new Date(lastAssessment.assessment_date + 'T00:00:00').getTime()) / 86400000)
+    : null;
+  const tooSoon = daysSinceLast != null && daysSinceLast >= 0 && daysSinceLast < MIN_ASSESSMENT_GAP_DAYS;
+
+  const ageNumForPreview = Number(age);
+  const canPreview = !!gender && ageNumForPreview > 0;
+
+  // Debounced live scoring — waits for a pause in typing, then re-scores
+  // every domain that has enough raw input, in parallel. Matches the exact
+  // RPC calls the save mutation makes (population left at its 'general'
+  // default, same as the save path), so this is a true preview, not a guess.
+  useEffect(() => {
+    if (!canPreview) { setPreview({}); return; }
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const results = await Promise.all([
+          chairStand && armCurl
+            ? calculateTwoPartDomainScore({
+                domain: 'strength', testProtocolPrimary: 'Chair Stand', rawResultPrimary: Number(chairStand),
+                testProtocolSecondary: 'Arm Curl', rawResultSecondary: Number(armCurl),
+                clientAge: ageNumForPreview, clientGender: gender!,
+              }).then((r) => ['strength', r] as const)
+            : null,
+          sitAndReach && backScratch
+            ? calculateTwoPartDomainScore({
+                domain: 'flexibility', testProtocolPrimary: 'Chair Sit-and-Reach', rawResultPrimary: Number(sitAndReach),
+                testProtocolSecondary: 'Back Scratch', rawResultSecondary: Number(backScratch),
+                clientAge: ageNumForPreview, clientGender: gender!,
+              }).then((r) => ['flexibility', r] as const)
+            : null,
+          enduranceValue
+            ? calculateDomainScore({
+                domain: 'endurance', testProtocol: enduranceProtocol, rawResult: Number(enduranceValue),
+                clientAge: ageNumForPreview, clientGender: gender!,
+              }).then((r) => ['endurance', r] as const)
+            : null,
+          upAndGo
+            ? calculateDomainScore({
+                domain: 'agility', testProtocol: '8-Foot Up-and-Go', rawResult: Number(upAndGo),
+                clientAge: ageNumForPreview, clientGender: gender!,
+              }).then((r) => ['agility', r] as const)
+            : null,
+        ]);
+        setPreview((prev) => {
+          const next = { ...prev };
+          for (const r of results) {
+            if (!r) continue;
+            const [domain, score] = r;
+            next[domain] = { score: score.domainScore, status: score.scoreStatus };
+          }
+          return next;
+        });
+      } catch {
+        // Non-fatal — this is a preview only; the save mutation independently
+        // recomputes and will surface a real error if something's actually wrong.
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canPreview, ageNumForPreview, gender, chairStand, armCurl, sitAndReach, backScratch, enduranceProtocol, enduranceValue, upAndGo]);
 
   if (profileLoading) {
     return (
@@ -204,7 +293,7 @@ export default function FitnessAssessmentNewScreen() {
       await submit({
         clientId,
         coachId: user!.id,
-        assessmentDate: new Date().toISOString().slice(0, 10),
+        assessmentDate,
         clientAge: ageNum,
         clientGender: gender,
         isAthlete,
@@ -233,6 +322,25 @@ export default function FitnessAssessmentNewScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+        <Card accent="#8b78e8">
+          <SectionHeader icon="🗓️" title="Timeline" color="#8b78e8" />
+          <FieldLabel>Assessment date</FieldLabel>
+          <DateField value={assessmentDate} onChange={setAssessmentDate} accentColor="#8b78e8" />
+          {lastAssessment && (
+            <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 8 }}>
+              Last assessment: {new Date(lastAssessment.assessment_date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} ({lastAgo})
+            </Text>
+          )}
+          {tooSoon && (
+            <View style={{ marginTop: 10, backgroundColor: `${THEME.colors.amber}12`, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.amber}35`, flexDirection: 'row', gap: 8 }}>
+              <Text style={{ fontSize: 14 }}>⚠️</Text>
+              <Text style={{ flex: 1, fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.amber, lineHeight: 17 }}>
+                Only {daysSinceLast}d since the last assessment — {MIN_ASSESSMENT_GAP_DAYS}d (4 weeks) is the recommended minimum gap for meaningful change. You can continue if this is intentional.
+              </Text>
+            </View>
+          )}
+        </Card>
+
         <Card accent={THEME.colors.teal}>
           <SectionHeader icon="🧍" title="Client Info" color={THEME.colors.teal} />
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
@@ -359,6 +467,56 @@ export default function FitnessAssessmentNewScreen() {
           <FieldLabel>Time (seconds)</FieldLabel>
           <NumberInput value={upAndGo} onChangeText={setUpAndGo} placeholder={lastAgility ? `last time: ${lastAgility.raw_result_primary}` : 'e.g. 5.4'} />
           <DeltaLine current={upAndGo} last={lastAgility?.raw_result_primary} ago={lastAgo ?? undefined} higherIsBetter={false} />
+        </Card>
+
+        <Card accent={THEME.colors.teal}>
+          <SectionHeader icon="📋" title="Report Preview" color={THEME.colors.teal} />
+          {!canPreview ? (
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, fontStyle: 'italic' }}>
+              Confirm age and gender above to see computed scores here.
+            </Text>
+          ) : Object.keys(preview).length === 0 ? (
+            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, fontStyle: 'italic' }}>
+              {previewLoading ? 'Calculating…' : 'Enter results for a domain above to see its computed score here — this is exactly what gets saved.'}
+            </Text>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {(Object.keys(preview) as FitnessDomain[]).map((domain) => {
+                const p = preview[domain];
+                if (!p) return null;
+                const meta = DOMAIN_META[domain];
+                const lastResult =
+                  domain === 'strength' ? lastStrength :
+                  domain === 'flexibility' ? lastFlexibility :
+                  domain === 'endurance' ? lastEndurance : lastAgility;
+                const lastScore = lastResult?.score_status === 'scored' ? lastResult.domain_score : null;
+                const delta = p.status === 'scored' && p.score != null && lastScore != null ? Math.round((p.score - lastScore) * 10) / 10 : null;
+                return (
+                  <View key={domain} style={{ backgroundColor: THEME.colors.surface3, borderRadius: 10, padding: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>{meta.icon} {meta.label}</Text>
+                    {p.status === 'age_out_of_range' ? (
+                      <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>Age out of range</Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {delta != null && delta !== 0 && (
+                          <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sansMedium, color: delta > 0 ? (THEME.colors.success ?? '#4CC986') : THEME.colors.amber }}>
+                            {delta > 0 ? '▲' : '▼'}{Math.abs(delta)}
+                          </Text>
+                        )}
+                        {p.score != null && (
+                          <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: scoreBand(p.score).color }}>{scoreBand(p.score).label}</Text>
+                        )}
+                        <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: meta.color }}>{p.score != null ? Math.round(p.score) : '—'}</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+              {previewLoading && (
+                <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textAlign: 'center' }}>Recalculating…</Text>
+              )}
+            </View>
+          )}
         </Card>
 
         <Card>

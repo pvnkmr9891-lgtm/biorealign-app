@@ -23,6 +23,7 @@ export default function CoachLayout() {
       <Stack.Screen name="client-workouts" />
       <Stack.Screen name="medical-opinion-requests" />
       <Stack.Screen name="fitness-assessment-new" />
+      <Stack.Screen name="activity-trend-report" />
       <Stack.Screen name="edit-profile" />
       <Stack.Screen name="attention-items" />
     </Stack>
