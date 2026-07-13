@@ -1,12 +1,15 @@
-import { View, Text, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { useCoachProfile } from '@/hooks/useCoachDirectory';
+import { CoachProfileView } from '@/components/coach/CoachProfileView';
 import { THEME } from '@/constants/theme';
 
 export default function CoachProfile() {
   const router = useRouter();
   const { profile, user, signOut } = useAuth();
+  const { data: coach, isLoading: coachLoading } = useCoachProfile(user?.id ?? '');
 
   const handleSignOut = () => {
     Alert.alert(
@@ -69,8 +72,8 @@ export default function CoachProfile() {
           </View>
         </View>
 
-        {/* Edit + public profile links */}
-        <View style={{ marginHorizontal: 24, marginBottom: 24, gap: 10 }}>
+        {/* Edit resume link */}
+        <View style={{ marginHorizontal: 24, marginBottom: 24 }}>
           <TouchableOpacity
             onPress={() => router.push('/(coach)/edit-profile' as any)}
             activeOpacity={0.85}
@@ -86,22 +89,6 @@ export default function CoachProfile() {
               </View>
             </View>
             <Text style={{ fontSize: 16, color: THEME.colors.amber }}>›</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push('/(coach)/my-public-profile')}
-            activeOpacity={0.85}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: `${THEME.colors.teal}12`, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: `${THEME.colors.teal}30` }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ fontSize: 18 }}>📄</Text>
-              <View>
-                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>View my public profile</Text>
-                <Text style={{ fontSize: 11.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>
-                  See your resume, achievements & testimonials as clients see them
-                </Text>
-              </View>
-            </View>
-            <Text style={{ fontSize: 16, color: THEME.colors.teal }}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -124,6 +111,19 @@ export default function CoachProfile() {
               </Text>
             </View>
           ))}
+        </View>
+
+        {/* Resume / portfolio — exactly what clients see on your public
+            profile, updates live as you save edits above */}
+        <View style={{ marginHorizontal: 24, marginBottom: 24 }}>
+          <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12 }}>
+            My resume — as clients see it
+          </Text>
+          {coachLoading ? (
+            <ActivityIndicator color={THEME.colors.amber} style={{ marginTop: 20 }} />
+          ) : coach ? (
+            <CoachProfileView coach={coach} showHeader={false} />
+          ) : null}
         </View>
 
         {/* Sign out */}
