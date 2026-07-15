@@ -33,6 +33,7 @@ import {
   useMyRoutineTemplates, useSaveRoutineTemplate, useApplyRoutineTemplate, useDeleteRoutineTemplate,
   type RoutineTemplate, type RoutineTemplateItem, type RoutineDomain,
 } from '@/hooks/useWorkoutRoutineTemplates';
+import { useMyCustomExercises, useSaveCustomExercise, type CustomExercise } from '@/hooks/useCustomExercises';
 
 const DAY_NAMES  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_ABBRS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1590,7 +1591,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
   // Confession Booth opens directly in grouped/craving mode; others start at 'choice'
   const initialStep = kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice';
-  const [step, setStep] = useState<'scope' | 'choice' | 'grouped' | 'review' | 'list' | 'detail'>(initialStep);
+  const [step, setStep] = useState<'scope' | 'choice' | 'grouped' | 'review' | 'list' | 'mylist' | 'detail'>(initialStep);
   // craving mode: set by ConfessionBoothSection, uses CRAVING_GROUPS and stores as meal_slot='craving'
   const [cravingMode, setCravingMode] = useState(initialCravingMode);
   const activeGroups = cravingMode ? CRAVING_GROUPS : isDinner ? DINNER_GROUPS : isLunch ? LUNCH_GROUPS : BREAKFAST_GROUPS;
@@ -1623,6 +1624,17 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const [fat, setFat]           = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // "My List" — a client's own remembered manual exercises (shared across
+  // Warmup/Workout/Cooldown). enteredManually distinguishes a fresh manual
+  // entry (which gets saved to My List on submit) from picking an existing
+  // item off a list (curated or My List), which shouldn't re-save itself.
+  const { data: myCustomExercises = [] } = useMyCustomExercises(kind === 'exercise');
+  const { mutate: saveCustomExercise } = useSaveCustomExercise();
+  const [enteredManually, setEnteredManually] = useState(false);
+  // Multi-select — checked items on the 'list'/'mylist' steps, added in one
+  // batch with their library/My-List defaults rather than one at a time.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // ── Grouped breakfast state ─────────────────────────────────────────────────
   // Per group: selected item + its inline quantity (editable before review)
   // All sections start collapsed — nothing pre-expanded by default.
@@ -1650,6 +1662,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setGroupQty({});
     setReviewItems([]);
     setGroupSearch('');
+    setEnteredManually(false);
+    setSelectedIds(new Set());
   }
 
   // Reset fully whenever modal becomes visible so stale selections don't persist
@@ -1682,6 +1696,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
 
   function pickFromLibrary(ex: WarmupExerciseDefault | FoodItemDefault | SupplementItemDefault) {
+    setEnteredManually(false);
     setName(kind === 'food' ? cleanFoodName(ex.name) : ex.name);
     if (kind === 'food') {
       const f = ex as FoodItemDefault;
@@ -1716,12 +1731,65 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setStep('detail');
   }
 
+  // Picking a saved item off "My List" — same idea as pickFromLibrary, just
+  // sourced from the client's own remembered exercises instead of the
+  // curated library. Doesn't re-trigger a My List save (enteredManually
+  // stays false), since it's already on the list.
+  function pickFromMyList(ce: CustomExercise) {
+    setEnteredManually(false);
+    setName(ce.name);
+    setSetsIdx(Math.max(0, Math.min(9, ce.default_sets - 1)));
+    setRepsIdx(ce.default_reps != null ? Math.max(0, Math.min(50, ce.default_reps)) : 0);
+    setSide(ce.default_side);
+    setAllowRotation(ce.default_side === 'rotation');
+    setHoldIdx(ce.default_hold_secs != null ? Math.max(0, Math.min(51, ce.default_hold_secs - 9)) : 0);
+    setRestIdx(Math.max(0, Math.min(50, ce.default_rest_secs - 10)));
+    setStep('detail');
+  }
+
   function startManual() {
+    setEnteredManually(true);
     setName(''); setSetsIdx(0); setRepsIdx(0); setSide('na'); setAllowRotation(false); setHoldIdx(0); setRestIdx(0);
     setQuantity(''); setQtyCountRaw(1); setQtyUnit(''); setQtyBase(1);
     setBaseCalories(0); setBaseProtein(0); setBaseCarbs(0); setBaseFat(0);
     setCalories(''); setProtein(''); setCarbs(''); setFat('');
     setStep('detail');
+  }
+
+  // Toggle a row's checkbox on the 'list'/'mylist' steps — independent of
+  // tapping the row itself, which still jumps straight into single-item
+  // detail (pickFromLibrary/pickFromMyList). Both affordances coexist.
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // Batch-add every checked item at once, using each one's own default
+  // sets/reps/side/hold/rest — no per-item review screen (can still be
+  // tweaked afterward in the day's checklist), matching "instead of opening
+  // each and every exercise."
+  async function handleBatchAdd(items: { name: string; sets: number; reps: number | null; side: ExerciseSide; holdSecs: number | null; restSecs: number }[]) {
+    setSubmitting(true);
+    try {
+      for (const item of items) {
+        await onAdd({
+          itemName: item.name,
+          sets: item.sets,
+          reps: item.reps,
+          side: item.side === 'na' ? null : item.side,
+          holdSecs: item.holdSecs,
+          restSecs: item.restSecs,
+        });
+      }
+      reset(); onAddDone?.();
+    } catch (err: any) {
+      Alert.alert('Could not add', err?.message ?? 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // ── Grouped meal helpers (shared by Breakfast + Lunch) ─────────────────────
@@ -1797,14 +1865,25 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           scope,
         });
       } else {
+        const reps     = repsIdx > 0 ? repsIdx : null;          // idx 0 = '—' = not set
+        const holdSecs = holdIdx > 0 ? holdIdx + 9 : null;      // idx 0 = '—'; idx k → k+9 secs
+        const restSecs = restIdx + 10;                          // always 10–60s
         await onAdd({
           itemName: name.trim(),
           sets:     setsIdx + 1,
-          reps:     repsIdx > 0 ? repsIdx : null,          // idx 0 = '—' = not set
+          reps,
           side:     side === 'na' ? null : side,
-          holdSecs: holdIdx > 0 ? holdIdx + 9 : null,      // idx 0 = '—'; idx k → k+9 secs
-          restSecs: restIdx + 10,                           // always 10–60s
+          holdSecs,
+          restSecs,
         });
+        // A fresh manual entry gets remembered in "My List" for next time —
+        // best-effort, shouldn't block or fail today's log if it errors.
+        if (enteredManually) {
+          saveCustomExercise(
+            { name: name.trim(), sets: setsIdx + 1, reps, side, holdSecs, restSecs },
+            { onError: () => {} }
+          );
+        }
       }
       reset(); onAddDone?.();
     } catch (err: any) {
@@ -1845,6 +1924,10 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     return true;
   });
 
+  const filteredMyList = myCustomExercises.filter((ce) =>
+    !search.trim() || ce.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
+
   const noun = kind === 'food' ? 'food' : kind === 'supplement' ? 'supplement' : 'exercise';
   const nounPlural = noun === 'food' ? 'foods' : noun === 'supplement' ? 'supplements' : 'exercises';
   const nounTitleCase = noun === 'food' ? 'Food' : noun === 'supplement' ? 'Supplement' : 'Exercise';
@@ -1858,6 +1941,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
     if (step === 'choice')  return `Add to ${sectionLabel}`;
     if (step === 'list')    return `Choose a ${noun}`;
+    if (step === 'mylist')  return 'My List';
     return name || `${nounTitleCase} details`;
   }
 
@@ -1948,6 +2032,20 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   <View style={{ flex: 1 }}>
                     <Text style={aem.choiceTitle}>Select from list</Text>
                     <Text style={aem.choiceSub}>Choose from {library.length} curated {sectionLabel.toLowerCase()} {noun === 'exercise' ? 'exercises' : 'items'}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {kind === 'exercise' && (
+                <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('mylist')} activeOpacity={0.85}>
+                  <Text style={aem.choiceIcon}>⭐</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={aem.choiceTitle}>My List</Text>
+                    <Text style={aem.choiceSub}>
+                      {myCustomExercises.length > 0
+                        ? `${myCustomExercises.length} exercise${myCustomExercises.length > 1 ? 's' : ''} you've added before`
+                        : "Exercises you type manually will be saved here"}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               )}
@@ -2311,10 +2409,18 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   </View>
                 </View>
               )}
+              {kind === 'exercise' && filtered.length > 0 && (
+                <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 6 }}>
+                  Tick to multi-select, or tap a name to view & add it alone
+                </Text>
+              )}
               <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
                 {filtered.map(ex => (
                   <TouchableOpacity key={ex.id} style={aem.listRow} onPress={() => pickFromLibrary(ex)} activeOpacity={0.7}>
-                    <Text style={aem.listRowText}>{ex.name}</Text>
+                    {kind === 'exercise' && (
+                      <Checkbox checked={selectedIds.has(ex.id)} onPress={() => toggleSelect(ex.id)} color={sectionColor} />
+                    )}
+                    <Text style={[aem.listRowText, kind === 'exercise' && { marginLeft: 10 }]}>{ex.name}</Text>
                     <Text style={aem.listRowChevron}>›</Text>
                   </TouchableOpacity>
                 ))}
@@ -2322,6 +2428,80 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   <Text style={aem.emptyText}>No matches — try "Write manually" instead.</Text>
                 )}
               </ScrollView>
+              {kind === 'exercise' && selectedIds.size > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    const items = (library as WarmupExerciseDefault[])
+                      .filter((ex) => selectedIds.has(ex.id))
+                      .map((ex) => ({
+                        name: ex.name, sets: ex.defaultSets, reps: ex.defaultReps,
+                        side: ex.defaultSide, holdSecs: ex.defaultHoldSecs, restSecs: ex.defaultRestSecs,
+                      }));
+                    handleBatchAdd(items);
+                  }}
+                  disabled={submitting}
+                  activeOpacity={0.85}
+                  style={{ marginTop: 10, backgroundColor: sectionColor, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: submitting ? 0.7 : 1 }}
+                >
+                  {submitting ? <ActivityIndicator color="#000" /> : (
+                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Add {selectedIds.size} selected</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* ── My List — a client's own remembered manual exercises ────────── */}
+          {step === 'mylist' && (
+            <View style={{ flex: 1 }}>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search my list…"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                style={aem.searchInput}
+              />
+              {filteredMyList.length > 0 && (
+                <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 6 }}>
+                  Tick to multi-select, or tap a name to view & add it alone
+                </Text>
+              )}
+              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+                {filteredMyList.map((ce) => (
+                  <TouchableOpacity key={ce.id} style={aem.listRow} onPress={() => pickFromMyList(ce)} activeOpacity={0.7}>
+                    <Checkbox checked={selectedIds.has(ce.id)} onPress={() => toggleSelect(ce.id)} color={sectionColor} />
+                    <Text style={[aem.listRowText, { marginLeft: 10 }]}>{ce.name}</Text>
+                    <Text style={aem.listRowChevron}>›</Text>
+                  </TouchableOpacity>
+                ))}
+                {!filteredMyList.length && (
+                  <Text style={aem.emptyText}>
+                    {myCustomExercises.length === 0
+                      ? 'Nothing here yet — exercises you type manually will show up here.'
+                      : 'No matches.'}
+                  </Text>
+                )}
+              </ScrollView>
+              {selectedIds.size > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    const items = myCustomExercises
+                      .filter((ce) => selectedIds.has(ce.id))
+                      .map((ce) => ({
+                        name: ce.name, sets: ce.default_sets, reps: ce.default_reps,
+                        side: ce.default_side, holdSecs: ce.default_hold_secs, restSecs: ce.default_rest_secs,
+                      }));
+                    handleBatchAdd(items);
+                  }}
+                  disabled={submitting}
+                  activeOpacity={0.85}
+                  style={{ marginTop: 10, backgroundColor: sectionColor, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: submitting ? 0.7 : 1 }}
+                >
+                  {submitting ? <ActivityIndicator color="#000" /> : (
+                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Add {selectedIds.size} selected</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
