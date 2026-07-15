@@ -1381,6 +1381,14 @@ function inferMuscles(name: string): string[] {
   return muscles.length ? muscles : ['Full Body'];
 }
 
+// Name-based heuristic (same approach as inferEquipment/inferMuscles above)
+// — no food item is hand-tagged veg/non-veg today, so this infers it from
+// the dish name instead of retrofitting a field across ~900 lines of
+// existing curated data. Expects an already-lowercased name.
+function isNonVegFood(name: string): boolean {
+  return /\b(chicken|mutton|fish|eggs?|prawns?|shrimp|keema|meat|lamb|beef|pork|tuna|salmon|crab)\b/.test(name);
+}
+
 // ── Add Exercise Modal ──────────────────────────────────────────────────
 // "+" flow for manually-tracked sections (warmup, for now). Two entry
 // points — pick from the curated library or type your own — then a shared
@@ -1592,6 +1600,11 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   // Confession Booth opens directly in grouped/craving mode; others start at 'choice'
   const initialStep = kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice';
   const [step, setStep] = useState<'scope' | 'choice' | 'grouped' | 'review' | 'list' | 'mylist' | 'detail'>(initialStep);
+  // Veg/non-veg — defaults to hiding non-veg for a client whose profile says
+  // veg, but stays a toggle (not a hard filter) so they can still see
+  // everything if they want to log something outside their usual diet.
+  const dietType = useAuthStore((s) => s.profile)?.diet_type;
+  const [showNonVeg, setShowNonVeg] = useState(dietType !== 'veg');
   // craving mode: set by ConfessionBoothSection, uses CRAVING_GROUPS and stores as meal_slot='craving'
   const [cravingMode, setCravingMode] = useState(initialCravingMode);
   const activeGroups = cravingMode ? CRAVING_GROUPS : isDinner ? DINNER_GROUPS : isLunch ? LUNCH_GROUPS : BREAKFAST_GROUPS;
@@ -1914,6 +1927,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     }
   }
 
+  const libraryHasNonVeg = kind === 'food' && library.some((e) => isNonVegFood(e.name.toLowerCase()));
+
   const filtered = library.filter(e => {
     const n = e.name.toLowerCase();
     if (search.trim() && !n.includes(search.trim().toLowerCase())) return false;
@@ -1921,6 +1936,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
       if (filterEquip !== 'All' && inferEquipment(n) !== filterEquip) return false;
       if (filterMuscle !== 'All' && !inferMuscles(n).includes(filterMuscle)) return false;
     }
+    if (kind === 'food' && !showNonVeg && isNonVegFood(n)) return false;
     return true;
   });
 
@@ -2063,6 +2079,18 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           {/* ── Grouped breakfast picker ───────────────────────────────────── */}
           {step === 'grouped' && (
             <>
+              {activeGroups.some((g) => g.items.some((item) => isNonVegFood(item.name.toLowerCase()))) && (
+                <TouchableOpacity
+                  onPress={() => setShowNonVeg((v) => !v)}
+                  activeOpacity={0.75}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10, borderWidth: 0.5, borderColor: THEME.colors.border }}
+                >
+                  <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary }}>🍗 Show non-veg items</Text>
+                  <View style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: showNonVeg ? sectionColor : 'rgba(255,255,255,0.12)', padding: 2, justifyContent: 'center' }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', transform: [{ translateX: showNonVeg ? 16 : 0 }] }} />
+                  </View>
+                </TouchableOpacity>
+              )}
               {/* Search across every section at once — matching sections
                   auto-expand so there's no need to guess which one a dish
                   is filed under. */}
@@ -2089,9 +2117,9 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   const visibleGroups = activeGroups
                     .map(group => ({
                       group,
-                      items: isSearching
-                        ? group.items.filter(item => cleanFoodName(item.name).toLowerCase().includes(query))
-                        : group.items,
+                      items: group.items
+                        .filter(item => !isSearching || cleanFoodName(item.name).toLowerCase().includes(query))
+                        .filter(item => showNonVeg || !isNonVegFood(item.name.toLowerCase())),
                     }))
                     .filter(({ items }) => !isSearching || items.length > 0);
 
@@ -2338,6 +2366,18 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 style={aem.searchInput}
               />
+              {kind === 'food' && libraryHasNonVeg && (
+                <TouchableOpacity
+                  onPress={() => setShowNonVeg((v) => !v)}
+                  activeOpacity={0.75}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10, borderWidth: 0.5, borderColor: THEME.colors.border }}
+                >
+                  <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary }}>🍗 Show non-veg items</Text>
+                  <View style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: showNonVeg ? sectionColor : 'rgba(255,255,255,0.12)', padding: 2, justifyContent: 'center' }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', transform: [{ translateX: showNonVeg ? 16 : 0 }] }} />
+                  </View>
+                </TouchableOpacity>
+              )}
               {kind === 'exercise' && (
                 <View style={{ marginBottom: 8 }}>
                   {/* Equipment filter row */}
@@ -2711,7 +2751,35 @@ function dayStats(resolvedGrouped: any, dayNumber: number, weekStart: string) {
   });
   const pct     = total ? Math.round((done / total) * 100) : 0;
   const allDone = !isDayFuture && pct === 100 && total > 0;
-  return { dayDate, isTodayDay, isDayFuture, isDayPast, total, done, pct, allDone };
+
+  // Day-level status badge (Complete/Partial/Not logged) — deliberately NOT
+  // the same thing as `allDone`/`pct` above (which stay literal and still
+  // drive the numeric progress bar). A day counts as Complete once every
+  // section that actually has anything assigned has at least one item
+  // checked off — a client who finished Workout/Nutrition/Supplements in
+  // full but only drank 10/13 glasses of water engaged with every section
+  // and should read as Complete, not Partial. "Partial" = something logged,
+  // but at least one non-empty section has zero progress. "Not logged" =
+  // nothing checked off anywhere. A section with nothing assigned that day
+  // doesn't count against completion either way.
+  const groupDone  = (keys: string[]) => keys.reduce((s, k) => s + ((dayData[k] || []).filter((i: any) => i.completed).length), 0);
+  const groupTotal = (keys: string[]) => keys.reduce((s, k) => s + (dayData[k] || []).length, 0);
+  const foodNonCraving = ((dayData['food'] || []) as any[]).filter((i) => i.meal_slot !== 'craving');
+  const sections = [
+    { done: groupDone(['warmup', 'workout', 'cooldown']), total: groupTotal(['warmup', 'workout', 'cooldown']) },
+    { done: groupDone(['water']), total: groupTotal(['water']) },
+    { done: foodNonCraving.filter((i) => i.completed).length, total: foodNonCraving.length },
+    { done: groupDone(['supplement']), total: groupTotal(['supplement']) },
+  ];
+  const applicableSections = sections.filter((s) => s.total > 0);
+  const totalLoggedToday   = sections.reduce((s, sec) => s + sec.done, 0);
+  const dayStatus: 'complete' | 'partial' | 'notLogged' =
+    isDayFuture ? 'notLogged'
+    : totalLoggedToday === 0 ? 'notLogged'
+    : applicableSections.length > 0 && applicableSections.every((s) => s.done > 0) ? 'complete'
+    : 'partial';
+
+  return { dayDate, isTodayDay, isDayFuture, isDayPast, total, done, pct, allDone, dayStatus };
 }
 
 // ── Horizontal Day Tabs ────────────────────────────────────────────────
@@ -2724,7 +2792,7 @@ function DayTabs({ selectedDay, onSelect, resolvedGrouped, weekStart }: {
   return (
     <View style={tabStyles.row}>
       {[1, 2, 3, 4, 5, 6].map(d => {
-        const { isTodayDay, isDayFuture, isDayPast, pct, allDone, total } =
+        const { isTodayDay, isDayFuture, isDayPast, total, dayStatus } =
           dayStats(resolvedGrouped, d, weekStart);
         const isActive = d === selectedDay;
 
@@ -2736,7 +2804,7 @@ function DayTabs({ selectedDay, onSelect, resolvedGrouped, weekStart }: {
           border    = THEME.colors.teal;
           nameColor = isActive ? '#000' : THEME.colors.teal;
           dotColor  = null; // today is obvious from colour
-        } else if (allDone) {
+        } else if (dayStatus === 'complete') {
           bg        = isActive ? '#4CC986' : 'rgba(76,201,134,0.1)';
           border    = '#4CC986';
           nameColor = isActive ? '#000' : '#4CC986';
@@ -2746,12 +2814,12 @@ function DayTabs({ selectedDay, onSelect, resolvedGrouped, weekStart }: {
           border    = isActive ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)';
           nameColor = isActive ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)';
           dotColor  = null;
-        } else if (isDayPast && pct > 0) {
+        } else if (isDayPast && dayStatus === 'partial') {
           bg        = isActive ? 'rgba(232,164,74,0.1)' : 'transparent';
           border    = isActive ? THEME.colors.amber : 'rgba(255,255,255,0.07)';
           nameColor = isActive ? THEME.colors.amber : THEME.colors.textSecondary;
           dotColor  = THEME.colors.amber;
-        } else if (isDayPast && total > 0) {
+        } else if (isDayPast && dayStatus === 'notLogged' && total > 0) {
           bg        = isActive ? 'rgba(239,68,68,0.08)' : 'transparent';
           border    = isActive ? '#EF4444' : 'rgba(255,255,255,0.07)';
           nameColor = isActive ? '#EF4444' : THEME.colors.textMuted;
@@ -3231,7 +3299,7 @@ function DayPanel({
     setSuppAllOpen(open);
     setTimeout(() => setSuppAllOpen(null), 600);
   }
-  const { isTodayDay, isDayFuture, isDayPast, total, pct, allDone } =
+  const { isTodayDay, isDayFuture, isDayPast, total, pct, allDone, dayStatus } =
     dayStats(resolvedGrouped, dayNumber, weekStart);
   const dayData  = resolvedGrouped[dayNumber] || {};
   const dayDate  = getDayDate(weekStart, dayNumber);
@@ -3283,9 +3351,9 @@ function DayPanel({
             </Text>
             <Text style={tabStyles.panelDate}>{dateStr}</Text>
             {isTodayDay  && <View style={styles.todayPill}><Text style={styles.todayPillText}>TODAY</Text></View>}
-            {!isTodayDay && allDone && <View style={styles.donePill}><Text style={styles.donePillText}>✓ DONE</Text></View>}
-            {isDayPast && !allDone && pct > 0 && <View style={styles.partialPill}><Text style={styles.partialPillText}>◑ PARTIAL</Text></View>}
-            {isDayPast && pct === 0 && total > 0 && <View style={styles.missedPill}><Text style={styles.missedPillText}>● NOT LOGGED</Text></View>}
+            {!isTodayDay && dayStatus === 'complete' && <View style={styles.donePill}><Text style={styles.donePillText}>✓ DONE</Text></View>}
+            {isDayPast && dayStatus === 'partial' && <View style={styles.partialPill}><Text style={styles.partialPillText}>◑ PARTIAL</Text></View>}
+            {isDayPast && dayStatus === 'notLogged' && total > 0 && <View style={styles.missedPill}><Text style={styles.missedPillText}>● NOT LOGGED</Text></View>}
             {isDayFuture && <View style={styles.upcomingPill}><Text style={styles.upcomingPillText}>⏳ UPCOMING</Text></View>}
           </View>
           <ProgressBar percent={isDayFuture ? 0 : pct} color={barColor} />
