@@ -4092,7 +4092,7 @@ function ManualLogView({ userId }: { userId: string }) {
       }));
 
       const { error } = await supabase.from('manual_workout_logs').upsert(rows, {
-        onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+        onConflict: 'client_id,week_start_date,day_number,item_type,item_name,meal_slot',
         ignoreDuplicates: true,
       });
       if (error) throw error;

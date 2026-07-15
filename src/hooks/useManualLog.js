@@ -410,7 +410,7 @@ export function useManualLog(userId, profile, weekStartOverride) {
         fat_g:           fatG ?? null,
         is_custom:       true,
       }, {
-        onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+        onConflict: 'client_id,week_start_date,day_number,item_type,item_name,meal_slot',
         ignoreDuplicates: true,
       });
       if (error) throw error;

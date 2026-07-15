@@ -214,14 +214,14 @@ export function useApplyRoutineTemplate(domain: RoutineDomain) {
           }));
           // upsert + ignoreDuplicates, not insert: manual_workout_logs has a
           // unique constraint on (client_id, week_start_date, day_number,
-          // item_type, item_name). If a routine's item name happens to match
-          // a coach-assigned item already on that day (which the delete
+          // item_type, item_name, meal_slot). If a routine's item name happens
+          // to match a coach-assigned item already on that day (which the delete
           // above deliberately leaves alone), a plain insert would throw a
           // conflict and fail the whole apply — this just silently skips
           // that one item instead, same pattern already used for supplement
           // scope-apply elsewhere in the Workout Plan screen.
           const { error: insertError } = await supabase.from('manual_workout_logs').upsert(rows, {
-            onConflict: 'client_id,week_start_date,day_number,item_type,item_name',
+            onConflict: 'client_id,week_start_date,day_number,item_type,item_name,meal_slot',
             ignoreDuplicates: true,
           });
           if (insertError) throw insertError;
