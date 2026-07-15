@@ -154,9 +154,10 @@ function domainDeleteFilter(query: any, domain: RoutineDomain) {
 // Only ever deletes the client's OWN existing rows for that domain
 // (added_by_coach = false) for each target day before inserting the
 // template's items — coach-assigned exercises for that day are never
-// touched. Dates before today (and Sundays) are silently skipped
-// (reported back) since re-writing a day that's already happened, or one
-// with no day_number at all, doesn't make sense.
+// touched. Sundays are silently skipped (reported back) since there's no
+// day_number for them. Past dates are temporarily allowed (skippedPast
+// always 0 for now) so testing can apply routines retroactively — re-add
+// the `dayOnly < today` gate here if that needs locking back down.
 export function useApplyRoutineTemplate(domain: RoutineDomain) {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -164,7 +165,6 @@ export function useApplyRoutineTemplate(domain: RoutineDomain) {
   return useMutation({
     mutationFn: async ({ items, targetDates }: { items: RoutineTemplateItem[]; targetDates: Date[] }) => {
       const userId = user!.id;
-      const today = new Date(); today.setHours(0, 0, 0, 0);
 
       const pairs: { weekStart: string; dayNumber: number }[] = [];
       let skippedPast = 0;
@@ -172,7 +172,6 @@ export function useApplyRoutineTemplate(domain: RoutineDomain) {
 
       for (const d of targetDates) {
         const dayOnly = new Date(d); dayOnly.setHours(0, 0, 0, 0);
-        if (dayOnly < today) { skippedPast++; continue; }
         const pair = toWeekDayPair(dayOnly);
         if (!pair) { skippedSunday++; continue; }
         pairs.push(pair);

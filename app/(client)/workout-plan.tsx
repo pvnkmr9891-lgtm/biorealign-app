@@ -34,6 +34,7 @@ import {
   type RoutineTemplate, type RoutineTemplateItem, type RoutineDomain,
 } from '@/hooks/useWorkoutRoutineTemplates';
 import { useMyCustomExercises, useSaveCustomExercise, type CustomExercise } from '@/hooks/useCustomExercises';
+import { useMyCustomItems, useSaveCustomItem, type CustomItem } from '@/hooks/useCustomItems';
 
 const DAY_NAMES  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_ABBRS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -789,9 +790,10 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
         {cells.map((day, i) => {
           if (day == null) return <View key={i} style={{ width: '14.28%', aspectRatio: 1 }} />;
           const dateStr = toLocalDateStr(new Date(year, month, day));
-          const isPast = dateStr < todayStr;
           const isSunday = new Date(year, month, day).getDay() === 0;
-          const disabled = isPast || isSunday;
+          // Past dates are temporarily allowed for testing — see handleAddExercise's
+          // sibling gate in useApplyRoutineTemplate, also relaxed for the same reason.
+          const disabled = isSunday;
           const isSelected = selectedDates.has(dateStr);
           const isToday = dateStr === todayStr;
           return (
@@ -819,7 +821,7 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
         })}
       </View>
       <Text style={{ fontSize: 11, color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, marginTop: 10, textAlign: 'center' }}>
-        {selectedDates.size} date{selectedDates.size !== 1 ? 's' : ''} selected · past dates and Sundays can't be picked
+        {selectedDates.size} date{selectedDates.size !== 1 ? 's' : ''} selected · Sundays can't be picked
       </Text>
     </View>
   );
@@ -1643,6 +1645,14 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   // item off a list (curated or My List), which shouldn't re-save itself.
   const { data: myCustomExercises = [] } = useMyCustomExercises(kind === 'exercise');
   const { mutate: saveCustomExercise } = useSaveCustomExercise();
+  // Same idea as My List for exercises, for food/supplement — separate table
+  // since their shape (name + quantity, food adds macros) doesn't overlap
+  // with exercise's sets/reps/side/hold/rest.
+  const { data: myCustomItems = [] } = useMyCustomItems(
+    kind === 'supplement' ? 'supplement' : 'food',
+    kind === 'food' || kind === 'supplement',
+  );
+  const { mutate: saveCustomItem } = useSaveCustomItem();
   const [enteredManually, setEnteredManually] = useState(false);
   // Multi-select — checked items on the 'list'/'mylist' steps, added in one
   // batch with their library/My-List defaults rather than one at a time.
@@ -1760,6 +1770,24 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setStep('detail');
   }
 
+  // Same idea as pickFromMyList, for food/supplement — sourced from
+  // client_custom_items instead of client_custom_exercises.
+  function pickFromMyListItem(item: CustomItem) {
+    setEnteredManually(false);
+    setName(item.name);
+    if (kind === 'food') {
+      setQtyUnit(''); // free-text quantity, like manual entry — not a library stepper unit
+      setQuantity(item.quantity ?? '');
+      setCalories(item.calories != null ? String(item.calories) : '');
+      setProtein(item.protein_g != null ? String(item.protein_g) : '');
+      setCarbs(item.carbs_g != null ? String(item.carbs_g) : '');
+      setFat(item.fat_g != null ? String(item.fat_g) : '');
+    } else {
+      setQuantity(item.quantity ?? '');
+    }
+    setStep('detail');
+  }
+
   function startManual() {
     setEnteredManually(true);
     setName(''); setSetsIdx(0); setRepsIdx(0); setSide('na'); setAllowRotation(false); setHoldIdx(0); setRestIdx(0);
@@ -1796,6 +1824,37 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           holdSecs: item.holdSecs,
           restSecs: item.restSecs,
         });
+      }
+      reset(); onAddDone?.();
+    } catch (err: any) {
+      Alert.alert('Could not add', err?.message ?? 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Same idea as handleBatchAdd, for food/supplement My List items — no
+  // per-item review screen, each added with its own saved quantity/macros.
+  async function handleBatchAddItems(items: CustomItem[]) {
+    setSubmitting(true);
+    try {
+      for (const item of items) {
+        if (kind === 'food') {
+          await onAdd({
+            itemName: item.name,
+            quantity: item.quantity ?? null,
+            calories: item.calories,
+            proteinG: item.protein_g,
+            carbsG: item.carbs_g,
+            fatG: item.fat_g,
+          });
+        } else {
+          await onAdd({
+            itemName: item.name,
+            quantity: item.quantity ?? null,
+            scope,
+          });
+        }
       }
       reset(); onAddDone?.();
     } catch (err: any) {
@@ -1863,20 +1922,38 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setSubmitting(true);
     try {
       if (kind === 'food') {
+        const calNum = calories ? Number(calories) : null;
+        const proteinNum = protein ? Number(protein) : null;
+        const carbsNum = carbs ? Number(carbs) : null;
+        const fatNum = fat ? Number(fat) : null;
         await onAdd({
           itemName: name.trim(),
           quantity: quantity.trim() || null,
-          calories: calories ? Number(calories) : null,
-          proteinG: protein ? Number(protein) : null,
-          carbsG:   carbs   ? Number(carbs)   : null,
-          fatG:     fat     ? Number(fat)     : null,
+          calories: calNum,
+          proteinG: proteinNum,
+          carbsG:   carbsNum,
+          fatG:     fatNum,
         });
+        // A fresh manual entry gets remembered in "My List" for next time —
+        // best-effort, shouldn't block or fail today's log if it errors.
+        if (enteredManually) {
+          saveCustomItem(
+            { kind: 'food', name: name.trim(), quantity: quantity.trim() || null, calories: calNum, proteinG: proteinNum, carbsG: carbsNum, fatG: fatNum },
+            { onError: () => {} }
+          );
+        }
       } else if (kind === 'supplement') {
         await onAdd({
           itemName: name.trim(),
           quantity: quantity.trim() || null,
           scope,
         });
+        if (enteredManually) {
+          saveCustomItem(
+            { kind: 'supplement', name: name.trim(), quantity: quantity.trim() || null },
+            { onError: () => {} }
+          );
+        }
       } else {
         const reps     = repsIdx > 0 ? repsIdx : null;          // idx 0 = '—' = not set
         const holdSecs = holdIdx > 0 ? holdIdx + 9 : null;      // idx 0 = '—'; idx k → k+9 secs
@@ -1942,6 +2019,9 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
   const filteredMyList = myCustomExercises.filter((ce) =>
     !search.trim() || ce.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
+  const filteredMyItems = myCustomItems.filter((it) =>
+    !search.trim() || it.name.toLowerCase().includes(search.trim().toLowerCase())
   );
 
   const noun = kind === 'food' ? 'food' : kind === 'supplement' ? 'supplement' : 'exercise';
@@ -2013,6 +2093,17 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   <Text style={aem.choiceSub}>Choose from {library.length} curated supplement items</Text>
                 </View>
               </TouchableOpacity>
+              <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor, marginTop: 10 }]} onPress={() => setStep('mylist')} activeOpacity={0.85}>
+                <Text style={aem.choiceIcon}>⭐</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={aem.choiceTitle}>My List</Text>
+                  <Text style={aem.choiceSub}>
+                    {myCustomItems.length > 0
+                      ? `${myCustomItems.length} supplement${myCustomItems.length > 1 ? 's' : ''} you've added before`
+                      : "Supplements you type manually will be saved here"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor, marginTop: 10 }]} onPress={startManual} activeOpacity={0.85}>
                 <Text style={aem.choiceIcon}>✏️</Text>
                 <View style={{ flex: 1 }}>
@@ -2061,6 +2152,20 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                       {myCustomExercises.length > 0
                         ? `${myCustomExercises.length} exercise${myCustomExercises.length > 1 ? 's' : ''} you've added before`
                         : "Exercises you type manually will be saved here"}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {kind === 'food' && (
+                <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('mylist')} activeOpacity={0.85}>
+                  <Text style={aem.choiceIcon}>⭐</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={aem.choiceTitle}>My List</Text>
+                    <Text style={aem.choiceSub}>
+                      {myCustomItems.length > 0
+                        ? `${myCustomItems.length} food item${myCustomItems.length > 1 ? 's' : ''} you've added before`
+                        : "Foods you type manually will be saved here"}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -2491,8 +2596,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
             </View>
           )}
 
-          {/* ── My List — a client's own remembered manual exercises ────────── */}
-          {step === 'mylist' && (
+          {/* ── My List — a client's own remembered manual entries ──────────── */}
+          {step === 'mylist' && kind === 'exercise' && (
             <View style={{ flex: 1 }}>
               <TextInput
                 value={search}
@@ -2533,6 +2638,52 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                       }));
                     handleBatchAdd(items);
                   }}
+                  disabled={submitting}
+                  activeOpacity={0.85}
+                  style={{ marginTop: 10, backgroundColor: sectionColor, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: submitting ? 0.7 : 1 }}
+                >
+                  {submitting ? <ActivityIndicator color="#000" /> : (
+                    <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: '#000' }}>Add {selectedIds.size} selected</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Same idea as above, for food/supplement — sourced from client_custom_items */}
+          {step === 'mylist' && (kind === 'food' || kind === 'supplement') && (
+            <View style={{ flex: 1 }}>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search my list…"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                style={aem.searchInput}
+              />
+              {filteredMyItems.length > 0 && (
+                <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginBottom: 6 }}>
+                  Tick to multi-select, or tap a name to view & add it alone
+                </Text>
+              )}
+              <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+                {filteredMyItems.map((item) => (
+                  <TouchableOpacity key={item.id} style={aem.listRow} onPress={() => pickFromMyListItem(item)} activeOpacity={0.7}>
+                    <Checkbox checked={selectedIds.has(item.id)} onPress={() => toggleSelect(item.id)} color={sectionColor} />
+                    <Text style={[aem.listRowText, { marginLeft: 10 }]}>{item.name}</Text>
+                    <Text style={aem.listRowChevron}>›</Text>
+                  </TouchableOpacity>
+                ))}
+                {!filteredMyItems.length && (
+                  <Text style={aem.emptyText}>
+                    {myCustomItems.length === 0
+                      ? `Nothing here yet — ${noun}s you type manually will show up here.`
+                      : 'No matches.'}
+                  </Text>
+                )}
+              </ScrollView>
+              {selectedIds.size > 0 && (
+                <TouchableOpacity
+                  onPress={() => handleBatchAddItems(myCustomItems.filter((item) => selectedIds.has(item.id)))}
                   disabled={submitting}
                   activeOpacity={0.85}
                   style={{ marginTop: 10, backgroundColor: sectionColor, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: submitting ? 0.7 : 1 }}
