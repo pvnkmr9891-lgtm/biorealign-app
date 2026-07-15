@@ -123,6 +123,12 @@ function getMonthWeekStarts(year: number, month: number): string[] {
 }
 
 // ── Data hook ─────────────────────────────────────────────────────────
+// Per-day status mirrors dayStats() in workout-plan.tsx: a day is "all done"
+// once every section that has items gets at least one completion (not
+// necessarily 100% each), "partial" once something's logged but a section
+// with items has zero progress, "missed" when nothing's logged at all. We
+// reuse the {total, done} shape DayCell already renders (done===0 → red,
+// done<total → amber, done===total → green) rather than touching DayCell.
 function useMonthData(userId: string, year: number, month: number) {
   const weekStarts = useMemo(() => getMonthWeekStarts(year, month), [year, month]);
 
@@ -133,21 +139,46 @@ function useMonthData(userId: string, year: number, month: number) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('manual_workout_logs')
-        .select('week_start_date, day_number, completed')
+        .select('week_start_date, day_number, item_type, meal_slot, completed')
         .eq('client_id', userId)
         .in('week_start_date', weekStarts);
 
       if (error) throw error;
 
-      const map: Record<string, { total: number; done: number }> = {};
-      (data ?? []).forEach(log => {
+      type SectionCounts = { workout: [number, number]; water: [number, number]; food: [number, number]; supplement: [number, number] };
+      const perDay: Record<string, SectionCounts> = {};
+
+      (data ?? []).forEach((log: any) => {
         // day_number 1=Mon … 6=Sat; week_start_date is Monday
         const ws  = parseDate(log.week_start_date);
         const day = addDays(ws, log.day_number - 1);
         const key = toStr(day);
-        if (!map[key]) map[key] = { total: 0, done: 0 };
-        map[key].total++;
-        if (log.completed) map[key].done++;
+        if (!perDay[key]) perDay[key] = { workout: [0, 0], water: [0, 0], food: [0, 0], supplement: [0, 0] };
+
+        const bucket: keyof SectionCounts | null =
+          log.item_type === 'warmup' || log.item_type === 'workout' || log.item_type === 'cooldown' ? 'workout'
+          : log.item_type === 'water' ? 'water'
+          : log.item_type === 'supplement' ? 'supplement'
+          : log.item_type === 'food' && log.meal_slot !== 'craving' ? 'food'
+          : null;
+        if (!bucket) return;
+
+        perDay[key][bucket][1]++;
+        if (log.completed) perDay[key][bucket][0]++;
+      });
+
+      const map: Record<string, { total: number; done: number }> = {};
+      Object.entries(perDay).forEach(([key, sec]) => {
+        const groups = [sec.workout, sec.water, sec.food, sec.supplement];
+        const applicable   = groups.filter(([, total]) => total > 0);
+        const totalLogged  = groups.reduce((s, [done]) => s + done, 0);
+        const allSectionsStarted = applicable.length > 0 && applicable.every(([done]) => done > 0);
+
+        map[key] = totalLogged === 0
+          ? { total: 1, done: 0 }
+          : allSectionsStarted
+            ? { total: 1, done: 1 }
+            : { total: 2, done: 1 };
       });
       return map;
     },
