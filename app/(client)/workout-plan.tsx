@@ -1604,8 +1604,10 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const isDinner    = kind === 'food' && sectionLabel === 'Dinner';
   const isGrouped   = isBreakfast || isLunch || isDinner;
 
-  // Confession Booth opens directly in grouped/craving mode; others start at 'choice'
-  const initialStep = kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice';
+  // Confession Booth also starts at 'choice' now — "Log a craving" (the
+  // curated CRAVING_GROUPS list) is just one of its choice cards alongside
+  // My List and Write manually, same shape as the other food sections.
+  const initialStep = kind === 'supplement' ? 'scope' : 'choice';
   const [step, setStep] = useState<'scope' | 'choice' | 'grouped' | 'review' | 'list' | 'mylist' | 'detail'>(initialStep);
   // Veg/non-veg — defaults to hiding non-veg for a client whose profile says
   // veg, but stays a toggle (not a hard filter) so they can still see
@@ -1616,12 +1618,18 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const [cravingMode, setCravingMode] = useState(initialCravingMode);
   const activeGroups = cravingMode ? CRAVING_GROUPS : isDinner ? DINNER_GROUPS : isLunch ? LUNCH_GROUPS : BREAKFAST_GROUPS;
   const [scope, setScope] = useState<SupplementScope>('today');
-  // Food only — which of the 5 meal-time sections a manually-entered / My
-  // List item actually gets saved to, independent of which section's "+"
-  // opened this modal. myListTab is the horizontal-tab filter on the My
-  // List step, also food-only.
-  const [mealSlotChoice, setMealSlotChoice] = useState(initialMealSlot ?? FOOD_SLOTS[0].key);
-  const [myListTab, setMyListTab] = useState(initialMealSlot ?? FOOD_SLOTS[0].key);
+  // Manual entry / My List from Confession Booth can still choose to stay a
+  // craving OR reassign to one of the 5 real meal-time sections — the extra
+  // "Craving" pill only makes sense when opened from Confession Booth.
+  const mealSlotOptions = cravingMode
+    ? [{ key: 'craving', label: 'Craving', icon: '🙈', color: '#F97316' }, ...FOOD_SLOTS]
+    : FOOD_SLOTS;
+  // Food only — which of the mealSlotOptions a manually-entered / My List
+  // item actually gets saved to, independent of which section's "+" opened
+  // this modal. myListTab is the horizontal-tab filter on the My List step,
+  // also food-only.
+  const [mealSlotChoice, setMealSlotChoice] = useState(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
+  const [myListTab, setMyListTab] = useState(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
   const [search, setSearch] = useState('');
   const [filterEquip, setFilterEquip] = useState('All');
   const [filterMuscle, setFilterMuscle] = useState('All');
@@ -1684,7 +1692,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const [groupSearch, setGroupSearch] = useState('');
 
   function reset() {
-    setStep(kind === 'supplement' ? 'scope' : initialCravingMode ? 'grouped' : 'choice');
+    setStep(kind === 'supplement' ? 'scope' : 'choice');
     setScope('today'); setSearch(''); setFilterEquip('All'); setFilterMuscle('All'); setName('');
     setSetsIdx(0); setRepsIdx(0); setSide('na'); setAllowRotation(false); setHoldIdx(0); setRestIdx(0);
     setQuantity(''); setQtyCountRaw(1); setQtyUnit(''); setQtyBase(1);
@@ -1698,8 +1706,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setGroupSearch('');
     setEnteredManually(false);
     setSelectedIds(new Set());
-    setMealSlotChoice(initialMealSlot ?? FOOD_SLOTS[0].key);
-    setMyListTab(initialMealSlot ?? FOOD_SLOTS[0].key);
+    setMealSlotChoice(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
+    setMyListTab(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
   }
 
   // Reset fully whenever modal becomes visible so stale selections don't persist
@@ -2134,7 +2142,16 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           {/* ── Choice ────────────────────────────────────────────────────── */}
           {step === 'choice' && (
             <View style={{ gap: 12, paddingTop: 6 }}>
-              {isGrouped && (
+              {cravingMode && (
+                <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('grouped')} activeOpacity={0.85}>
+                  <Text style={aem.choiceIcon}>🙈</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={aem.choiceTitle}>Log a craving</Text>
+                    <Text style={aem.choiceSub}>Pick from {activeGroups.length} sections — sweet, savory, fried, drinks &amp; more</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              {!cravingMode && isGrouped && (
                 <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('grouped')} activeOpacity={0.85}>
                   <Text style={aem.choiceIcon}>{isDinner ? '🌙' : isLunch ? '🍛' : '🍽️'}</Text>
                   <View style={{ flex: 1 }}>
@@ -2150,7 +2167,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   </View>
                 </TouchableOpacity>
               )}
-              {!isGrouped && (
+              {!cravingMode && !isGrouped && (
                 <TouchableOpacity style={[aem.choiceCard, { borderColor: sectionColor }]} onPress={() => setStep('list')} activeOpacity={0.85}>
                   <Text style={aem.choiceIcon}>📋</Text>
                   <View style={{ flex: 1 }}>
@@ -2383,12 +2400,12 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
                 <TouchableOpacity
-                  onPress={initialCravingMode ? handleClose : () => setStep('choice')}
+                  onPress={() => setStep('choice')}
                   style={{ flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: THEME.colors.border }}
                   activeOpacity={0.8}
                 >
                   <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>
-                    {initialCravingMode ? 'Cancel' : '← Back'}
+                    ← Back
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -2677,7 +2694,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ flexDirection: 'row', gap: 8 }}
                   >
-                    {FOOD_SLOTS.map((slot) => {
+                    {mealSlotOptions.map((slot) => {
                       const active = myListTab === slot.key;
                       return (
                         <TouchableOpacity
@@ -2730,7 +2747,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                     {search.trim()
                       ? 'No matches.'
                       : kind === 'food'
-                      ? `Nothing in ${FOOD_SLOTS.find((s) => s.key === myListTab)?.label ?? 'this section'} yet — foods you type manually and save here will show up under whichever section you pick.`
+                      ? `Nothing in ${mealSlotOptions.find((s) => s.key === myListTab)?.label ?? 'this section'} yet — foods you type manually and save here will show up under whichever section you pick.`
                       : `Nothing here yet — ${noun}s you type manually will show up here.`}
                   </Text>
                 )}
@@ -2767,13 +2784,14 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
               {kind === 'food' ? (
                 <>
-                  {/* Which of the 5 meal-time sections this gets saved to —
-                      independent of which section's "+" opened this modal,
-                      so a manual entry or a My List pick can land anywhere. */}
+                  {/* Which section this gets saved to — independent of which
+                      section's "+" (or Confession Booth) opened this modal,
+                      so a manual entry or a My List pick can land anywhere.
+                      Includes "Craving" when opened from Confession Booth. */}
                   <View style={{ marginBottom: 16 }}>
                     <Text style={aem.fieldLabel}>Section</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {FOOD_SLOTS.map((slot) => (
+                      {mealSlotOptions.map((slot) => (
                         <TouchableOpacity
                           key={slot.key}
                           onPress={() => setMealSlotChoice(slot.key)}
@@ -2902,7 +2920,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                 {submitting
                   ? <ActivityIndicator color="#000" />
                   : <Text style={aem.submitBtnText}>
-                      Add to {kind === 'food' ? (FOOD_SLOTS.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
+                      Add to {kind === 'food' ? (mealSlotOptions.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
                     </Text>}
               </TouchableOpacity>
             </ScrollView>
@@ -3857,12 +3875,16 @@ function DayPanel({
           {/* ── Confession Booth — standalone craving logger ─────────────── */}
           {(() => {
             const cravingItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === 'craving');
+            // Full day's food list (not just craving items) as itemsForOrder — Confession
+            // Booth's My List/manual entry can now reassign an item to a real section
+            // instead of staying a craving, same reasoning as allFoodItemsNonCraving above.
+            const allFoodItems = dayData['food'] || [];
             return (
               <ConfessionBoothSection
                 items={cravingItems}
                 onToggle={onToggle}
                 onRemove={onRemoveExercise}
-                onAdd={(payload: any) => onAddExercise(dayNumber, 'food', cravingItems, payload, 'craving')}
+                onAdd={(payload: any) => onAddExercise(dayNumber, 'food', allFoodItems, payload, 'craving')}
                 locked={isDayFuture}
               />
             );
