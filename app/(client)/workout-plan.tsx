@@ -4049,10 +4049,15 @@ function ManualLogView({ userId }: { userId: string }) {
       if (scope === 'week') {
         for (let d = 1; d <= 6; d++) pairs.push({ ws: weekStart, dn: d });
       } else {
-        // month: find every Monday whose week overlaps with the current calendar month
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = today.getMonth(); // 0-indexed
+        // month: find every Monday whose week overlaps with the calendar month of
+        // the day currently being viewed — NOT the device's real-world "today". Using
+        // real-world today here meant adding from a past/future week (e.g. browsing
+        // back to last month) silently dropped that week's boundary days whenever they
+        // fell outside real-world today's month.
+        const [wy, wm, wd] = weekStart.split('-').map(Number);
+        const viewedDate = new Date(wy, wm - 1, wd + (dayNumber - 1));
+        const year = viewedDate.getFullYear();
+        const month = viewedDate.getMonth(); // 0-indexed
         const firstDay = new Date(year, month, 1);
         const lastDay  = new Date(year, month + 1, 0);
         // Walk from the Monday at-or-before the 1st, to the Monday on-or-after the last

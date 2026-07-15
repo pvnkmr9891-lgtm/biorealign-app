@@ -73,15 +73,18 @@ function useSupplementCalendarData(clientId: string) {
 
 // ── Day cell ─────────────────────────────────────────────────────────────────
 
-function DayCell({ date, mark, isToday }: {
+function DayCell({ date, mark, isToday, isFuture }: {
   date: string;
   mark: DayMark | undefined;
   isToday: boolean;
+  isFuture: boolean;
 }) {
   const day = Number(date.split('-')[2]);
 
-  // No log for this date → gray (neutral / not scheduled)
-  if (!mark) {
+  // No log for this date, or the date hasn't happened yet → gray (neutral).
+  // Future days get pre-seeded rows with completed:false (month-scope add),
+  // but a day that hasn't occurred yet can't be "Missed".
+  if (!mark || isFuture) {
     return (
       <View style={{ width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' }}>
         <View style={{
@@ -183,7 +186,7 @@ function OneSupplementCalendar({ data }: { data: SupplementCalendarData }) {
           const day = i + 1;
           const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
           return (
-            <DayCell key={ds} date={ds} mark={data.dates[ds]} isToday={ds === today} />
+            <DayCell key={ds} date={ds} mark={data.dates[ds]} isToday={ds === today} isFuture={ds > today} />
           );
         })}
       </View>
