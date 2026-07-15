@@ -124,11 +124,13 @@ function getMonthWeekStarts(year: number, month: number): string[] {
 
 // ── Data hook ─────────────────────────────────────────────────────────
 // Per-day status mirrors dayStats() in workout-plan.tsx: a day is "all done"
-// once every section that has items gets at least one completion (not
-// necessarily 100% each), "partial" once something's logged but a section
-// with items has zero progress, "missed" when nothing's logged at all. We
-// reuse the {total, done} shape DayCell already renders (done===0 → red,
-// done<total → amber, done===total → green) rather than touching DayCell.
+// once every one of the 4 sections gets at least one completion (not
+// necessarily 100% each) — a section with nothing added at all still fails
+// this, same as one with unchecked items — "partial" once something's
+// logged but at least one section has zero progress, "missed" when
+// nothing's logged at all. We reuse the {total, done} shape DayCell already
+// renders (done===0 → red, done<total → amber, done===total → green)
+// rather than touching DayCell.
 function useMonthData(userId: string, year: number, month: number) {
   const weekStarts = useMemo(() => getMonthWeekStarts(year, month), [year, month]);
 
@@ -170,9 +172,10 @@ function useMonthData(userId: string, year: number, month: number) {
       const map: Record<string, { total: number; done: number }> = {};
       Object.entries(perDay).forEach(([key, sec]) => {
         const groups = [sec.workout, sec.water, sec.food, sec.supplement];
-        const applicable   = groups.filter(([, total]) => total > 0);
-        const totalLogged  = groups.reduce((s, [done]) => s + done, 0);
-        const allSectionsStarted = applicable.length > 0 && applicable.every(([done]) => done > 0);
+        const totalLogged = groups.reduce((s, [done]) => s + done, 0);
+        // A section with nothing added counts the same as one added-but-not-done —
+        // both mean that section wasn't engaged with, so it still blocks "all done".
+        const allSectionsStarted = groups.every(([done]) => done > 0);
 
         map[key] = totalLogged === 0
           ? { total: 1, done: 0 }

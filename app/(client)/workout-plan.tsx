@@ -2906,28 +2906,28 @@ function dayStats(resolvedGrouped: any, dayNumber: number, weekStart: string) {
   // Day-level status badge (Complete/Partial/Not logged) — deliberately NOT
   // the same thing as `allDone`/`pct` above (which stay literal and still
   // drive the numeric progress bar). A day counts as Complete once every
-  // section that actually has anything assigned has at least one item
-  // checked off — a client who finished Workout/Nutrition/Supplements in
-  // full but only drank 10/13 glasses of water engaged with every section
-  // and should read as Complete, not Partial. "Partial" = something logged,
-  // but at least one non-empty section has zero progress. "Not logged" =
-  // nothing checked off anywhere. A section with nothing assigned that day
-  // doesn't count against completion either way.
+  // one of the 4 sections has at least one item checked off — a client who
+  // finished Workout/Nutrition/Supplements in full but only drank 10/13
+  // glasses of water engaged with every section and should read as
+  // Complete, not Partial. A section with NOTHING added that day (not even
+  // an unchecked item) still fails this check — "nothing added" is no
+  // different from "added but not filled in", both mean that section wasn't
+  // engaged with. "Partial" = something logged, but at least one section
+  // (empty or not) has zero progress. "Not logged" = nothing checked off
+  // anywhere.
   const groupDone  = (keys: string[]) => keys.reduce((s, k) => s + ((dayData[k] || []).filter((i: any) => i.completed).length), 0);
-  const groupTotal = (keys: string[]) => keys.reduce((s, k) => s + (dayData[k] || []).length, 0);
   const foodNonCraving = ((dayData['food'] || []) as any[]).filter((i) => i.meal_slot !== 'craving');
-  const sections = [
-    { done: groupDone(['warmup', 'workout', 'cooldown']), total: groupTotal(['warmup', 'workout', 'cooldown']) },
-    { done: groupDone(['water']), total: groupTotal(['water']) },
-    { done: foodNonCraving.filter((i) => i.completed).length, total: foodNonCraving.length },
-    { done: groupDone(['supplement']), total: groupTotal(['supplement']) },
+  const sectionDoneCounts = [
+    groupDone(['warmup', 'workout', 'cooldown']),
+    groupDone(['water']),
+    foodNonCraving.filter((i) => i.completed).length,
+    groupDone(['supplement']),
   ];
-  const applicableSections = sections.filter((s) => s.total > 0);
-  const totalLoggedToday   = sections.reduce((s, sec) => s + sec.done, 0);
+  const totalLoggedToday = sectionDoneCounts.reduce((s, d) => s + d, 0);
   const dayStatus: 'complete' | 'partial' | 'notLogged' =
     isDayFuture ? 'notLogged'
     : totalLoggedToday === 0 ? 'notLogged'
-    : applicableSections.length > 0 && applicableSections.every((s) => s.done > 0) ? 'complete'
+    : sectionDoneCounts.every((d) => d > 0) ? 'complete'
     : 'partial';
 
   return { dayDate, isTodayDay, isDayFuture, isDayPast, total, done, pct, allDone, dayStatus };
