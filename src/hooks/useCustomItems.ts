@@ -19,6 +19,10 @@ export interface CustomItem {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  // Food only — which of the 5 meal-time sections (morning_drink/breakfast/
+  // lunch/evening_snacks/dinner) this item belongs to. Null for supplements,
+  // which aren't sectioned in "My List".
+  meal_slot: string | null;
 }
 
 export function useMyCustomItems(kind: CustomItemKind, enabled: boolean) {
@@ -47,6 +51,7 @@ export interface SaveCustomItemInput {
   proteinG?: number | null;
   carbsG?: number | null;
   fatG?: number | null;
+  mealSlot?: string | null;
 }
 
 // Best-effort save — a manually-added item still gets logged for today even
@@ -63,13 +68,20 @@ export function useSaveCustomItem() {
       const name = input.name.trim();
       if (!userId || !name) return;
 
-      const { data: existing } = await supabase
+      // Same-name items in different meal-slot sections are distinct entries
+      // (e.g. "Dosa" saved under both Breakfast and Dinner), so the lookup
+      // matches on meal_slot too — .is() rather than .eq() for the null case
+      // (supplements, which aren't sectioned).
+      let existingQuery = supabase
         .from('client_custom_items')
         .select('id')
         .eq('client_id', userId)
         .eq('kind', input.kind)
-        .ilike('name', name)
-        .maybeSingle();
+        .ilike('name', name);
+      existingQuery = input.mealSlot
+        ? existingQuery.eq('meal_slot', input.mealSlot)
+        : existingQuery.is('meal_slot', null);
+      const { data: existing } = await existingQuery.maybeSingle();
 
       const row = {
         client_id: userId,
@@ -80,6 +92,7 @@ export function useSaveCustomItem() {
         protein_g: input.proteinG ?? null,
         carbs_g:   input.carbsG ?? null,
         fat_g:     input.fatG ?? null,
+        meal_slot: input.mealSlot ?? null,
       };
 
       if (existing) {

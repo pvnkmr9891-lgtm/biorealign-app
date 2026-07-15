@@ -623,6 +623,7 @@ function SectionGroup({ sectionKey, items, onToggle, onAdd, onRemove, locked = f
           library={EXERCISE_LIBRARY[sectionKey] ?? []}
           onAdd={async (payload) => { await onAdd!(payload); }}
           onAddDone={() => setShowAddModal(false)}
+          initialMealSlot={isFood ? sectionKey : undefined}
         />
       )}
     </View>
@@ -1589,10 +1590,14 @@ interface ReviewItem {
   fat: string;
 }
 
-function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLabel, kind, library, onAdd, initialCravingMode = false }: {
+function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLabel, kind, library, onAdd, initialCravingMode = false, initialMealSlot }: {
   visible: boolean; onClose: () => void; onAddDone?: () => void; sectionColor: string; sectionLabel: string;
   kind: 'exercise' | 'food' | 'supplement'; library: (WarmupExerciseDefault | FoodItemDefault | SupplementItemDefault)[]; onAdd: (payload: any) => Promise<void>;
   initialCravingMode?: boolean;
+  // Food only — which of the 5 meal-time sections this modal instance was opened
+  // from. Just the default for the in-modal section picker below, not a lock —
+  // the client can still choose a different section to save the item into.
+  initialMealSlot?: string;
 }) {
   const isBreakfast = kind === 'food' && sectionLabel === 'Breakfast';
   const isLunch     = kind === 'food' && sectionLabel === 'Lunch';
@@ -1611,6 +1616,12 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const [cravingMode, setCravingMode] = useState(initialCravingMode);
   const activeGroups = cravingMode ? CRAVING_GROUPS : isDinner ? DINNER_GROUPS : isLunch ? LUNCH_GROUPS : BREAKFAST_GROUPS;
   const [scope, setScope] = useState<SupplementScope>('today');
+  // Food only — which of the 5 meal-time sections a manually-entered / My
+  // List item actually gets saved to, independent of which section's "+"
+  // opened this modal. myListTab is the horizontal-tab filter on the My
+  // List step, also food-only.
+  const [mealSlotChoice, setMealSlotChoice] = useState(initialMealSlot ?? FOOD_SLOTS[0].key);
+  const [myListTab, setMyListTab] = useState(initialMealSlot ?? FOOD_SLOTS[0].key);
   const [search, setSearch] = useState('');
   const [filterEquip, setFilterEquip] = useState('All');
   const [filterMuscle, setFilterMuscle] = useState('All');
@@ -1687,6 +1698,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setGroupSearch('');
     setEnteredManually(false);
     setSelectedIds(new Set());
+    setMealSlotChoice(initialMealSlot ?? FOOD_SLOTS[0].key);
+    setMyListTab(initialMealSlot ?? FOOD_SLOTS[0].key);
   }
 
   // Reset fully whenever modal becomes visible so stale selections don't persist
@@ -1782,6 +1795,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
       setProtein(item.protein_g != null ? String(item.protein_g) : '');
       setCarbs(item.carbs_g != null ? String(item.carbs_g) : '');
       setFat(item.fat_g != null ? String(item.fat_g) : '');
+      setMealSlotChoice(item.meal_slot ?? myListTab);
     } else {
       setQuantity(item.quantity ?? '');
     }
@@ -1847,6 +1861,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
             proteinG: item.protein_g,
             carbsG: item.carbs_g,
             fatG: item.fat_g,
+            mealSlot: myListTab,
           });
         } else {
           await onAdd({
@@ -1933,12 +1948,13 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           proteinG: proteinNum,
           carbsG:   carbsNum,
           fatG:     fatNum,
+          mealSlot: mealSlotChoice,
         });
         // A fresh manual entry gets remembered in "My List" for next time —
         // best-effort, shouldn't block or fail today's log if it errors.
         if (enteredManually) {
           saveCustomItem(
-            { kind: 'food', name: name.trim(), quantity: quantity.trim() || null, calories: calNum, proteinG: proteinNum, carbsG: carbsNum, fatG: fatNum },
+            { kind: 'food', name: name.trim(), quantity: quantity.trim() || null, calories: calNum, proteinG: proteinNum, carbsG: carbsNum, fatG: fatNum, mealSlot: mealSlotChoice },
             { onError: () => {} }
           );
         }
@@ -2021,7 +2037,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     !search.trim() || ce.name.toLowerCase().includes(search.trim().toLowerCase())
   );
   const filteredMyItems = myCustomItems.filter((it) =>
-    !search.trim() || it.name.toLowerCase().includes(search.trim().toLowerCase())
+    (kind !== 'food' || it.meal_slot === myListTab)
+    && (!search.trim() || it.name.toLowerCase().includes(search.trim().toLowerCase()))
   );
 
   const noun = kind === 'food' ? 'food' : kind === 'supplement' ? 'supplement' : 'exercise';
@@ -2653,6 +2670,39 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           {/* Same idea as above, for food/supplement — sourced from client_custom_items */}
           {step === 'mylist' && (kind === 'food' || kind === 'supplement') && (
             <View style={{ flex: 1 }}>
+              {kind === 'food' && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 12 }}
+                >
+                  {FOOD_SLOTS.map((slot) => {
+                    const active = myListTab === slot.key;
+                    return (
+                      <TouchableOpacity
+                        key={slot.key}
+                        onPress={() => setMyListTab(slot.key)}
+                        activeOpacity={0.8}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 5,
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16,
+                          borderWidth: 1.5,
+                          borderColor: active ? slot.color : THEME.colors.border,
+                          backgroundColor: active ? `${slot.color}20` : 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13 }}>{slot.icon}</Text>
+                        <Text style={{
+                          fontSize: 12.5, fontFamily: THEME.fonts.sansMedium,
+                          color: active ? slot.color : THEME.colors.textSecondary,
+                        }}>
+                          {slot.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
               <TextInput
                 value={search}
                 onChangeText={setSearch}
@@ -2675,9 +2725,11 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                 ))}
                 {!filteredMyItems.length && (
                   <Text style={aem.emptyText}>
-                    {myCustomItems.length === 0
-                      ? `Nothing here yet — ${noun}s you type manually will show up here.`
-                      : 'No matches.'}
+                    {search.trim()
+                      ? 'No matches.'
+                      : kind === 'food'
+                      ? `Nothing in ${FOOD_SLOTS.find((s) => s.key === myListTab)?.label ?? 'this section'} yet — foods you type manually and save here will show up under whichever section you pick.`
+                      : `Nothing here yet — ${noun}s you type manually will show up here.`}
                   </Text>
                 )}
               </ScrollView>
@@ -2713,6 +2765,37 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
               {kind === 'food' ? (
                 <>
+                  {/* Which of the 5 meal-time sections this gets saved to —
+                      independent of which section's "+" opened this modal,
+                      so a manual entry or a My List pick can land anywhere. */}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={aem.fieldLabel}>Section</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {FOOD_SLOTS.map((slot) => (
+                        <TouchableOpacity
+                          key={slot.key}
+                          onPress={() => setMealSlotChoice(slot.key)}
+                          activeOpacity={0.8}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16,
+                            borderWidth: 1.5,
+                            borderColor: mealSlotChoice === slot.key ? slot.color : THEME.colors.border,
+                            backgroundColor: mealSlotChoice === slot.key ? `${slot.color}20` : 'rgba(255,255,255,0.03)',
+                          }}
+                        >
+                          <Text style={{ fontSize: 13 }}>{slot.icon}</Text>
+                          <Text style={{
+                            fontSize: 12.5, fontFamily: THEME.fonts.sansMedium,
+                            color: mealSlotChoice === slot.key ? slot.color : THEME.colors.textSecondary,
+                          }}>
+                            {slot.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
                   {/* Quantity — stepper when from library, text input for manual */}
                   <View style={{ marginBottom: 16 }}>
                     <Text style={aem.fieldLabel}>Quantity</Text>
@@ -2816,7 +2899,9 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
               >
                 {submitting
                   ? <ActivityIndicator color="#000" />
-                  : <Text style={aem.submitBtnText}>Add to {sectionLabel}</Text>}
+                  : <Text style={aem.submitBtnText}>
+                      Add to {kind === 'food' ? (FOOD_SLOTS.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
+                    </Text>}
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -3720,22 +3805,30 @@ function DayPanel({
           <Text style={[styles.categoryCardLabel, { color: '#4ADE80' }]}>Nutrition</Text>
         </View>
         <View style={styles.categoryCardBody}>
-          {FOOD_SLOTS.map(slot => {
-            const slotItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === slot.key);
-            return (
-              <View key={slot.key} onLayout={e => { foodSectionOffsets.current[slot.key] = e.nativeEvent.layout.y; }}>
-                <SectionGroup
-                  sectionKey={slot.key}
-                  items={slotItems}
-                  onToggle={onToggle}
-                  locked={isDayFuture}
-                  onAdd={(payload: any) => onAddExercise(dayNumber, 'food', slotItems, payload, slot.key)}
-                  onRemove={onRemoveExercise}
-                  forceOpenState={expandedFoodSlot === slot.key ? true : undefined}
-                />
-              </View>
-            );
-          })}
+          {/* Non-craving food across ALL sections, not just this one — passed
+              as itemsForOrder so item_order still comes out right when the
+              modal's own section picker overrides which slot an item lands
+              in (see AddExerciseModal's mealSlotChoice), since the item may
+              end up in a different section than the one whose "+" opened it. */}
+          {(() => {
+            const allFoodItemsNonCraving = (dayData['food'] || []).filter((i: any) => i.meal_slot !== 'craving');
+            return FOOD_SLOTS.map(slot => {
+              const slotItems = (dayData['food'] || []).filter((i: any) => i.meal_slot === slot.key);
+              return (
+                <View key={slot.key} onLayout={e => { foodSectionOffsets.current[slot.key] = e.nativeEvent.layout.y; }}>
+                  <SectionGroup
+                    sectionKey={slot.key}
+                    items={slotItems}
+                    onToggle={onToggle}
+                    locked={isDayFuture}
+                    onAdd={(payload: any) => onAddExercise(dayNumber, 'food', allFoodItemsNonCraving, payload, slot.key)}
+                    onRemove={onRemoveExercise}
+                    forceOpenState={expandedFoodSlot === slot.key ? true : undefined}
+                  />
+                </View>
+              );
+            });
+          })()}
 
           {/* Save / Add Routine — snapshot this day's Nutrition (excluding
               Confession Booth, which is free-form logging, not a plannable
@@ -4187,9 +4280,15 @@ function ManualLogView({ userId }: { userId: string }) {
   // currently showing (already meal_slot-filtered for food), used only to
   // compute the next item_order.
   const handleAddExercise = useCallback(async (dayNumber: number, itemType: string, itemsForOrder: any[], payload: any, mealSlot?: string) => {
-    const { scope, ...itemPayload } = payload;
-    const effectiveMealSlot = mealSlot;
-    const realOrders = itemsForOrder.map((i: any) => i.item_order || 0);
+    // Food's "Write manually"/My List can pick a different meal-time section
+    // than the one whose "+" opened the modal — payload.mealSlot wins over
+    // the closed-over section when present.
+    const { scope, mealSlot: payloadMealSlot, ...itemPayload } = payload;
+    const effectiveMealSlot = payloadMealSlot ?? mealSlot;
+    const relevantItemsForOrder = payloadMealSlot
+      ? itemsForOrder.filter((i: any) => i.meal_slot === effectiveMealSlot)
+      : itemsForOrder;
+    const realOrders = relevantItemsForOrder.map((i: any) => i.item_order || 0);
     const nextOrder  = realOrders.length ? Math.max(...realOrders) + 1 : 1;
 
     // For supplements with week/month scope, bulk-insert across multiple days
