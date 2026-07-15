@@ -2671,37 +2671,39 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           {step === 'mylist' && (kind === 'food' || kind === 'supplement') && (
             <View style={{ flex: 1 }}>
               {kind === 'food' && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 12 }}
-                >
-                  {FOOD_SLOTS.map((slot) => {
-                    const active = myListTab === slot.key;
-                    return (
-                      <TouchableOpacity
-                        key={slot.key}
-                        onPress={() => setMyListTab(slot.key)}
-                        activeOpacity={0.8}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 5,
-                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16,
-                          borderWidth: 1.5,
-                          borderColor: active ? slot.color : THEME.colors.border,
-                          backgroundColor: active ? `${slot.color}20` : 'rgba(255,255,255,0.03)',
-                        }}
-                      >
-                        <Text style={{ fontSize: 13 }}>{slot.icon}</Text>
-                        <Text style={{
-                          fontSize: 12.5, fontFamily: THEME.fonts.sansMedium,
-                          color: active ? slot.color : THEME.colors.textSecondary,
-                        }}>
-                          {slot.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+                <View style={{ height: 40, marginBottom: 12 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ flexDirection: 'row', gap: 8 }}
+                  >
+                    {FOOD_SLOTS.map((slot) => {
+                      const active = myListTab === slot.key;
+                      return (
+                        <TouchableOpacity
+                          key={slot.key}
+                          onPress={() => setMyListTab(slot.key)}
+                          activeOpacity={0.8}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 5,
+                            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16,
+                            borderWidth: 1.5,
+                            borderColor: active ? slot.color : THEME.colors.border,
+                            backgroundColor: active ? `${slot.color}20` : 'rgba(255,255,255,0.03)',
+                          }}
+                        >
+                          <Text style={{ fontSize: 13 }}>{slot.icon}</Text>
+                          <Text style={{
+                            fontSize: 12.5, fontFamily: THEME.fonts.sansMedium,
+                            color: active ? slot.color : THEME.colors.textSecondary,
+                          }}>
+                            {slot.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
               )}
               <TextInput
                 value={search}
