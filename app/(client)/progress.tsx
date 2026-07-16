@@ -8,7 +8,7 @@ import {
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { useActiveEnrollment, useProgressHistory } from '@/hooks/useClient';
+import { useActiveEnrollment, useProgressHistory, useMyCheckinVitals } from '@/hooks/useClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useBodyMetrics, useLatestBodyMetric, useSaveBodyMetrics, useDeleteBodyMetric, useWeekBodyMetric, useProgressPhotos, useUploadProgressPhoto, useDeleteProgressPhoto, useSetPhotoVisibility, useSetAllPhotosVisibility, useMyNutritionTrend, useMyOopsTrend } from '@/hooks/useProgress';
 import { useMyTrainingLoadScores } from '@/hooks/useTrainingLoad';
@@ -495,11 +495,19 @@ function OverviewTab({ onGoToMeasurements }: { onGoToMeasurements: () => void })
   const { user } = useAuth();
   const { data: enrollment } = useActiveEnrollment();
   const { data: history = [], isLoading } = useProgressHistory(20);
+  const { data: checkinVitals = [] } = useMyCheckinVitals();
   const { data: bodyHistory = [] } = useBodyMetrics(10);
   const { data: nutritionTrend = [] } = useMyNutritionTrend();
   const { data: oopsTrend = [] }      = useMyOopsTrend();
   const { data: trainingLoad } = useMyTrainingLoadScores();
   const [nutritionView, setNutritionView] = useState<'total' | 'oops'>('total');
+  // Score Trend toggle — 'scores' = computed Fitness/Recovery/Longevity
+  // (0-100), 'raw' = the actual Mood/Energy/Sleep/Pain numbers the client
+  // entered at check-in. Raw values are normalized to 0-100 for the shared
+  // chart's fixed y-axis (LineChart only ever renders a 0-100 scale), with
+  // each metric's real scale noted in its legend label and the latest day's
+  // actual figures shown as a stat row underneath.
+  const [scoreView, setScoreView] = useState<'scores' | 'raw'>('scores');
 
   const selectedWeekStart = getOffsetWeekStart(weekOffset);
   const { data: weekAlignment = [] } = useWeeklyAlignment(selectedWeekStart);
@@ -513,29 +521,37 @@ function OverviewTab({ onGoToMeasurements }: { onGoToMeasurements: () => void })
   const latestBody   = bodyHistory[bodyHistory.length - 1] ?? null;
   const previousBody = bodyHistory[bodyHistory.length - 2] ?? null;
 
-  // Filter history to selected week for Score Trend
+  // Filter to the selected week (Mon-Sat, same boundary used everywhere else
+  // in the app) for the Score Trend chart — always, including the current
+  // week. Used to dump the client's ENTIRE history (up to 20 points) onto
+  // this one chart whenever weekOffset was 0, which crammed that many date
+  // labels onto the x-axis until they overlapped and became illegible. Now
+  // every week (reachable via the ‹ › arrows) shows at most 6 cleanly
+  // spaced points, same as any other week.
   const weekEnd = (() => {
     const d = new Date(selectedWeekStart + 'T00:00:00');
     d.setDate(d.getDate() + 6);
     return d.toISOString().split('T')[0];
   })();
-  const weekHistory = isCurrentWeek
-    ? history // current week: show all history (provides context)
-    : history.filter(m => {
-        const d = m.recorded_at?.split('T')[0];
-        return d >= selectedWeekStart && d <= weekEnd;
-      });
+  const weekHistory = history.filter(m => {
+    const d = m.recorded_at?.split('T')[0];
+    return d >= selectedWeekStart && d <= weekEnd;
+  });
+  const weekVitals = checkinVitals.filter(v => v.date >= selectedWeekStart && v.date <= weekEnd);
 
   // Week range label for trend chart header
   const wStart = new Date(selectedWeekStart + 'T00:00:00');
   const wEnd2  = new Date(selectedWeekStart + 'T00:00:00'); wEnd2.setDate(wStart.getDate() + 5);
   const fmt    = (d: Date) => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  const weekLabel = isCurrentWeek ? 'All time' : `${fmt(wStart)} – ${fmt(wEnd2)}`;
+  const weekLabel = isCurrentWeek ? 'This week' : `${fmt(wStart)} – ${fmt(wEnd2)}`;
 
-  const displayHistory = weekHistory.length > 0 ? weekHistory : (isCurrentWeek ? history : []);
+  const displayHistory = weekHistory;
 
   const labels = displayHistory.map(m =>
     new Date(m.recorded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  );
+  const rawLabels = weekVitals.map(v =>
+    new Date(v.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
   );
 
   const SERIES = [
@@ -543,6 +559,14 @@ function OverviewTab({ onGoToMeasurements }: { onGoToMeasurements: () => void })
     { key: 'recovery_score',  label: 'Recovery',  color: THEME.scoreColors.recovery,  data: displayHistory.map(m => m.recovery_score  ?? 0) },
     { key: 'longevity_score', label: 'Longevity', color: THEME.scoreColors.longevity, data: displayHistory.map(m => m.longevity_score ?? 0) },
   ];
+
+  const RAW_SERIES = [
+    { key: 'mood',   label: 'Mood (/10)',   color: THEME.scoreColors.fitness,   data: weekVitals.map(v => Math.round(((v.mood ?? 0) / 10) * 100)) },
+    { key: 'energy', label: 'Energy (/12)', color: THEME.colors.amber,          data: weekVitals.map(v => Math.round(((v.energy ?? 0) / 12) * 100)) },
+    { key: 'sleep',  label: 'Sleep (hrs)',  color: THEME.scoreColors.recovery,  data: weekVitals.map(v => Math.round((Math.min(v.sleep_hrs ?? 0, 12) / 12) * 100)) },
+    { key: 'pain',   label: 'Pain (/12)',   color: '#F87171',                   data: weekVitals.map(v => Math.round(((v.pain_level ?? 0) / 12) * 100)) },
+  ];
+  const latestVital = weekVitals[weekVitals.length - 1] ?? null;
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -571,12 +595,34 @@ function OverviewTab({ onGoToMeasurements }: { onGoToMeasurements: () => void })
 
       {/* Score trend chart */}
       <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 20, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 16 }}>
-        {/* Score trend header + week nav */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        {/* Score trend header + Scores/Raw toggle */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
             Score trend
           </Text>
+          <View style={{ flexDirection: 'row', backgroundColor: THEME.colors.surface3, borderRadius: 20, padding: 3, gap: 2 }}>
+            {(['scores', 'raw'] as const).map(v => (
+              <TouchableOpacity
+                key={v}
+                onPress={() => setScoreView(v)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16,
+                  backgroundColor: scoreView === v ? THEME.colors.teal : 'transparent',
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{
+                  fontSize: 11, fontFamily: THEME.fonts.sansMedium,
+                  color: scoreView === v ? '#000' : THEME.colors.textMuted,
+                }}>
+                  {v === 'scores' ? 'Scores' : 'Raw'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
+
+        {/* Week nav — same ‹ › pair drives both views */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <TouchableOpacity onPress={() => setWeekOffset(o => o - 1)} style={{ padding: 6 }}>
             <Text style={{ fontSize: 18, color: THEME.colors.teal }}>‹</Text>
@@ -589,23 +635,58 @@ function OverviewTab({ onGoToMeasurements }: { onGoToMeasurements: () => void })
           </TouchableOpacity>
         </View>
 
-        {isLoading || displayHistory.length < 2 ? (
-          <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13 }}>
-              {isLoading ? 'Loading…' : 'No check-in data for this period'}
-            </Text>
-          </View>
-        ) : (
-          <LineChart series={SERIES} labels={labels} height={180} showDots={displayHistory.length <= 8} />
-        )}
-        <View style={{ flexDirection: 'row', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
-          {SERIES.map(s => (
-            <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 16, height: 2.5, borderRadius: 1.5, backgroundColor: s.color }} />
-              <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12 }}>{s.label}</Text>
+        {scoreView === 'scores' ? (
+          <>
+            {isLoading || displayHistory.length < 2 ? (
+              <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13 }}>
+                  {isLoading ? 'Loading…' : 'No check-in data for this week'}
+                </Text>
+              </View>
+            ) : (
+              <LineChart series={SERIES} labels={labels} height={180} showDots={displayHistory.length <= 8} />
+            )}
+            <View style={{ flexDirection: 'row', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
+              {SERIES.map(s => (
+                <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 16, height: 2.5, borderRadius: 1.5, backgroundColor: s.color }} />
+                  <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12 }}>{s.label}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </>
+        ) : (
+          <>
+            {weekVitals.length < 2 ? (
+              <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 13 }}>
+                  No check-in data for this week
+                </Text>
+              </View>
+            ) : (
+              <LineChart series={RAW_SERIES} labels={rawLabels} height={180} showDots={weekVitals.length <= 8} />
+            )}
+            <View style={{ flexDirection: 'row', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
+              {RAW_SERIES.map(s => (
+                <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 16, height: 2.5, borderRadius: 1.5, backgroundColor: s.color }} />
+                  <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 12 }}>{s.label}</Text>
+                </View>
+              ))}
+            </View>
+            {/* Lines above are normalized to fit the shared 0-100 chart scale
+                (each metric has its own real range — see legend) — actual
+                figures from the most recent logged day in this week: */}
+            {latestVital && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14, paddingTop: 14, borderTopWidth: 0.5, borderTopColor: THEME.colors.border }}>
+                <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11 }}>
+                  Latest ({new Date(latestVital.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}):{'  '}
+                  Mood {latestVital.mood ?? '–'}/10 · Energy {latestVital.energy ?? '–'}/12 · Sleep {latestVital.sleep_hrs ?? '–'}h · Pain {latestVital.pain_level ?? '–'}/12
+                </Text>
+              </View>
+            )}
+          </>
+        )}
       </View>
 
       {/* Training Load — daily Cardio / Strength / Mobility scores derived from workout logs.

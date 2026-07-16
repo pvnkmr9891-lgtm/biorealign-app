@@ -304,6 +304,39 @@ export function useProgressHistory(limit = 8) {
   });
 }
 
+export interface CheckinVitalRow {
+  date: string; // YYYY-MM-DD
+  mood: number | null;
+  energy: number | null;
+  sleep_hrs: number | null;
+  pain_level: number | null;
+}
+
+// The raw numbers behind the computed scores (mood/energy/sleep/pain), for
+// the Score Trend chart's "Raw" toggle on the client's own Progress screen —
+// self-service mirror of useClientCheckinVitals (coach viewing a client).
+// progress_metrics (fitness/recovery/longevity scores) doesn't carry these;
+// they only live in daily_checkins.
+export function useMyCheckinVitals() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: [...clientKeys.checkins(user?.id ?? ''), 'vitals'],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const cutoff = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from('daily_checkins')
+        .select('date, mood, energy, sleep_hrs, pain_level')
+        .eq('client_id', user!.id)
+        .gte('date', cutoff)
+        .order('date', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as CheckinVitalRow[];
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Today's protocol — program content for current week, day of week
 // ---------------------------------------------------------------------------
