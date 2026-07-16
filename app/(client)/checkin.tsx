@@ -1033,7 +1033,7 @@ function SuccessScreen({
                 style={{ borderRadius: 14, paddingVertical: 15, alignItems: 'center', width: '100%', borderWidth: 1, borderColor: THEME.colors.border }}
               >
                 <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>
-                  Back to Dashboard
+                  Done
                 </Text>
               </TouchableOpacity>
             </>
@@ -1044,7 +1044,7 @@ function SuccessScreen({
               style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center', width: '100%', shadowColor: THEME.colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 4 }}
             >
               <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>
-                Back to Dashboard
+                Done
               </Text>
             </TouchableOpacity>
           )}
@@ -1170,7 +1170,7 @@ export default function CheckinScreen() {
           selectedDate={selectedDate}
           missedCount={missedDates.length}
           onUpdate={() => setViewMode('form')}
-          onDone={() => router.replace('/(client)')}
+          onDone={() => router.back()}
           onLogMissed={() => setCalendarOpen(true)}
         />
         {/* Mounted here too (not just in the form-view return below) so
