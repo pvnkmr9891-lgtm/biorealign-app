@@ -909,14 +909,18 @@ function SuccessScreen({
   scores,
   isUpdate,
   selectedDate,
+  missedCount,
   onUpdate,
   onDone,
+  onLogMissed,
 }: {
   scores:       Scores;
   isUpdate:     boolean;
   selectedDate: string;
+  missedCount:  number;
   onUpdate:     () => void;
   onDone:       () => void;
+  onLogMissed:  () => void;
 }) {
   const computed  = computeScores(scores);
   const fadeAnim  = useRef(new Animated.Value(0)).current;
@@ -942,7 +946,29 @@ function SuccessScreen({
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 60, paddingBottom: 60 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 60 }}>
+
+        {/* Update action — was a small muted underlined link at the very
+            bottom of the page, easy to miss. Now a clearly visible pill in
+            the top-right, where an edit affordance is expected. */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 24 }}>
+          <TouchableOpacity
+            onPress={onUpdate}
+            activeOpacity={0.8}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              backgroundColor: THEME.colors.surface2, borderRadius: 20,
+              paddingHorizontal: 14, paddingVertical: 9,
+              borderWidth: 0.5, borderColor: THEME.colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 13 }}>✎</Text>
+            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textPrimary }}>
+              Update
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
 
           <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 2, borderColor: `${THEME.colors.teal}60`, alignItems: 'center', justifyContent: 'center', marginBottom: 24, shadowColor: THEME.colors.teal, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 6 }}>
@@ -987,21 +1013,41 @@ function SuccessScreen({
             ))}
           </View>
 
-          <TouchableOpacity
-            onPress={onDone}
-            activeOpacity={0.85}
-            style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center', width: '100%', marginBottom: 12, shadowColor: THEME.colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 4 }}
-          >
-            <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>
-              Back to Dashboard
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={onUpdate} activeOpacity={0.7}>
-            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, textDecorationLine: 'underline' }}>
-              Update this check-in
-            </Text>
-          </TouchableOpacity>
+          {missedCount > 0 ? (
+            <>
+              {/* Caught-up nudge — surfaces before letting them leave, rather
+                  than silently losing the "you missed some days" moment once
+                  they're back on the dashboard. */}
+              <TouchableOpacity
+                onPress={onLogMissed}
+                activeOpacity={0.85}
+                style={{ backgroundColor: THEME.colors.amber, borderRadius: 14, paddingVertical: 16, alignItems: 'center', width: '100%', marginBottom: 10, shadowColor: THEME.colors.amber, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 }}
+              >
+                <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>
+                  📅 Log a missed day ({missedCount} in the last 2 weeks)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onDone}
+                activeOpacity={0.8}
+                style={{ borderRadius: 14, paddingVertical: 15, alignItems: 'center', width: '100%', borderWidth: 1, borderColor: THEME.colors.border }}
+              >
+                <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textSecondary }}>
+                  Back to Dashboard
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              onPress={onDone}
+              activeOpacity={0.85}
+              style={{ backgroundColor: THEME.colors.teal, borderRadius: 14, paddingVertical: 16, alignItems: 'center', width: '100%', shadowColor: THEME.colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 4 }}
+            >
+              <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>
+                Back to Dashboard
+              </Text>
+            </TouchableOpacity>
+          )}
 
         </Animated.View>
       </ScrollView>
@@ -1033,6 +1079,37 @@ export default function CheckinScreen() {
   const { mutateAsync: saveCheckin, isPending }         = useSaveCheckin();
 
   const loggedDates = useMemo(() => new Set(allDatesArr), [allDatesArr]);
+
+  // Past days (last 14, excluding today) without a logged check-in — used to
+  // nudge catching up instead of just exiting after saving. Gated on having
+  // at least one logged check-in ever so a brand-new user's pre-signup days
+  // don't get flagged as "missed" on their very first entry.
+  const missedDates = useMemo(() => {
+    if (loggedDates.size === 0) return [] as string[];
+    const missed: string[] = [];
+    const base = new Date(); base.setHours(0, 0, 0, 0);
+    for (let i = 1; i <= 14; i++) {
+      const d = new Date(base); d.setDate(d.getDate() - i);
+      const ds = toDateStr(d);
+      if (!loggedDates.has(ds)) missed.push(ds);
+    }
+    return missed;
+  }, [loggedDates]);
+
+  // Pulses the calendar icon when there are missed days to log, so it reads
+  // as "something needs attention" rather than just a neutral nav button.
+  const calendarPulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (missedDates.length === 0) { calendarPulse.setValue(1); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(calendarPulse, { toValue: 1.18, duration: 700, useNativeDriver: true }),
+        Animated.timing(calendarPulse, { toValue: 1,    duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [missedDates.length]);
 
   const isToday      = selectedDate === today;
   const activeCheckin = isToday ? todayCheckin : dateCheckin;
@@ -1086,13 +1163,27 @@ export default function CheckinScreen() {
 
   if (viewMode === 'summary') {
     return (
-      <SuccessScreen
-        scores={scores}
-        isUpdate={!!activeCheckin}
-        selectedDate={selectedDate}
-        onUpdate={() => setViewMode('form')}
-        onDone={() => router.replace('/(client)')}
-      />
+      <>
+        <SuccessScreen
+          scores={scores}
+          isUpdate={!!activeCheckin}
+          selectedDate={selectedDate}
+          missedCount={missedDates.length}
+          onUpdate={() => setViewMode('form')}
+          onDone={() => router.replace('/(client)')}
+          onLogMissed={() => setCalendarOpen(true)}
+        />
+        {/* Mounted here too (not just in the form-view return below) so
+            "Log a missed day" can open it straight from the success screen —
+            picking an unlogged date flips viewMode back to 'form' via the
+            selectedDate effect above. */}
+        <CheckinCalendar
+          visible={calendarOpen}
+          onClose={() => setCalendarOpen(false)}
+          onSelectDate={handleSelectDate}
+          loggedDates={loggedDates}
+        />
+      </>
     );
   }
 
@@ -1127,19 +1218,37 @@ export default function CheckinScreen() {
               </Text>
             </View>
 
-            {/* Calendar icon */}
+            {/* Calendar icon — pulses + shows a badge when there are missed
+                days in the last 2 weeks, nudging the client to catch up. */}
             <TouchableOpacity
               onPress={() => setCalendarOpen(true)}
               activeOpacity={0.75}
-              style={{
-                width: 40, height: 40, borderRadius: 12,
-                backgroundColor: 'rgba(0,196,180,0.1)',
-                borderWidth: 1, borderColor: 'rgba(0,196,180,0.25)',
-                alignItems: 'center', justifyContent: 'center',
-                marginTop: 2,
-              }}
+              style={{ marginTop: 2 }}
             >
-              <Text style={{ fontSize: 18 }}>📅</Text>
+              <Animated.View
+                style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  backgroundColor: 'rgba(0,196,180,0.1)',
+                  borderWidth: 1, borderColor: 'rgba(0,196,180,0.25)',
+                  alignItems: 'center', justifyContent: 'center',
+                  transform: [{ scale: calendarPulse }],
+                }}
+              >
+                <Text style={{ fontSize: 18 }}>📅</Text>
+                {missedDates.length > 0 && (
+                  <View style={{
+                    position: 'absolute', top: -3, right: -3,
+                    width: 16, height: 16, borderRadius: 8,
+                    backgroundColor: THEME.colors.amber,
+                    borderWidth: 2, borderColor: THEME.colors.background,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ fontSize: 9, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.background }}>
+                      {missedDates.length > 9 ? '9+' : missedDates.length}
+                    </Text>
+                  </View>
+                )}
+              </Animated.View>
             </TouchableOpacity>
           </View>
           </View>
