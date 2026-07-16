@@ -139,95 +139,73 @@ function toWeekDayPair(d: Date): { weekStart: string; dayNumber: number } | null
   return { weekStart: getWeekStart(d), dayNumber: dow };
 }
 
-// Which manual_workout_logs rows a domain's "replace" step is allowed to
-// touch for a given day. Nutrition explicitly excludes meal_slot='craving'
-// (Confession Booth) — that's free-form logging of what actually happened,
-// not part of a plannable routine, and the Save/Add Routine buttons sit
-// before it on the Nutrition screen specifically to keep it untouched.
-function domainDeleteFilter(query: any, domain: RoutineDomain) {
-  if (domain === 'workout')    return query.in('item_type', ['warmup', 'workout', 'cooldown']);
-  if (domain === 'supplement') return query.eq('item_type', 'supplement');
-  return query.eq('item_type', 'food').neq('meal_slot', 'craving'); // nutrition
-}
-
 // ── Apply a template's items to one or more target dates ────────────────────
-// Only ever deletes the client's OWN existing rows for that domain
-// (added_by_coach = false) for each target day before inserting the
-// template's items — coach-assigned exercises for that day are never
-// touched. Sundays are silently skipped (reported back) since there's no
-// day_number for them. Past dates are temporarily allowed (skippedPast
-// always 0 for now) so testing can apply routines retroactively — re-add
-// the `dayOnly < today` gate here if that needs locking back down.
+// Single RPC round-trip (apply_routine_template_items) instead of looping
+// delete-then-insert per day in JS. Two things that fixed:
+//
+// 1. Correctness — the old code deleted EVERY one of the client's own
+//    domain items for a target day, then reinserted the whole template
+//    fresh with completed=false. Re-applying a routine that's a superset of
+//    an already-completed one (e.g. saved 12 exercises checked off, then
+//    later applied a 14-exercise version of the "same" routine) wiped the
+//    green ticks on all 12, not just the 2 new ones. The RPC now diffs:
+//    items still present in the new routine (matched by item_type +
+//    item_name + meal_slot) are left completely untouched — including
+//    completed status — items dropped from the routine get deleted, and
+//    only genuinely new items get inserted (completed=false). Applies to
+//    all three domains (workout/nutrition/supplement) since they share this
+//    one function.
+// 2. Performance — was 2 round trips (delete + upsert) per target day, so
+//    applying to an entire month was ~52 sequential requests. Now one RPC
+//    call handles every target day in a single request, same reasoning as
+//    the batch-save fix.
+//
+// Sundays are silently skipped (reported back) since there's no day_number
+// for them. Past dates are temporarily allowed (skippedPast always 0 for
+// now) so testing can apply routines retroactively — re-add a `dayOnly <
+// today` filter on targetDates here if that needs locking back down.
 export function useApplyRoutineTemplate(domain: RoutineDomain) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ items, targetDates }: { items: RoutineTemplateItem[]; targetDates: Date[] }) => {
-      const userId = user!.id;
-
-      const pairs: { weekStart: string; dayNumber: number }[] = [];
-      let skippedPast = 0;
+      const pairs: { week_start_date: string; day_number: number }[] = [];
       let skippedSunday = 0;
 
       for (const d of targetDates) {
         const dayOnly = new Date(d); dayOnly.setHours(0, 0, 0, 0);
         const pair = toWeekDayPair(dayOnly);
         if (!pair) { skippedSunday++; continue; }
-        pairs.push(pair);
+        pairs.push({ week_start_date: pair.weekStart, day_number: pair.dayNumber });
       }
 
-      for (const { weekStart, dayNumber } of pairs) {
-        const baseQuery = supabase
-          .from('manual_workout_logs')
-          .delete()
-          .eq('client_id', userId)
-          .eq('week_start_date', weekStart)
-          .eq('day_number', dayNumber)
-          .eq('added_by_coach', false);
-        const { error: deleteError } = await domainDeleteFilter(baseQuery, domain);
-        if (deleteError) throw deleteError;
-
-        if (items.length) {
-          const rows = items.map((item, idx) => ({
-            client_id:       userId,
-            week_start_date: weekStart,
-            day_number:      dayNumber,
-            item_type:       item.item_type,
-            item_name:       item.item_name,
-            item_order:      item.item_order ?? idx,
-            sets:            item.sets ?? null,
-            reps:            item.reps ?? null,
-            side:            item.side ?? null,
-            hold_secs:       item.hold_secs ?? null,
-            rest_secs:       item.rest_secs ?? null,
-            meal_slot:       item.meal_slot ?? null,
-            quantity:        item.quantity ?? null,
-            calories:        item.calories ?? null,
-            protein_g:       item.protein_g ?? null,
-            carbs_g:         item.carbs_g ?? null,
-            fat_g:           item.fat_g ?? null,
-            completed:       false,
-            is_custom:       true,
-            added_by_coach:  false,
-          }));
-          // upsert + ignoreDuplicates, not insert: manual_workout_logs has a
-          // unique constraint on (client_id, week_start_date, day_number,
-          // item_type, item_name, meal_slot). If a routine's item name happens
-          // to match a coach-assigned item already on that day (which the delete
-          // above deliberately leaves alone), a plain insert would throw a
-          // conflict and fail the whole apply — this just silently skips
-          // that one item instead, same pattern already used for supplement
-          // scope-apply elsewhere in the Workout Plan screen.
-          const { error: insertError } = await supabase.from('manual_workout_logs').upsert(rows, {
-            onConflict: 'client_id,week_start_date,day_number,item_type,item_name,meal_slot',
-            ignoreDuplicates: true,
-          });
-          if (insertError) throw insertError;
-        }
+      if (pairs.length) {
+        const rpcItems = items.map((item, idx) => ({
+          item_type:   item.item_type,
+          item_name:   item.item_name,
+          item_order:  item.item_order ?? idx,
+          sets:        item.sets ?? null,
+          reps:        item.reps ?? null,
+          side:        item.side ?? null,
+          hold_secs:   item.hold_secs ?? null,
+          rest_secs:   item.rest_secs ?? null,
+          meal_slot:   item.meal_slot ?? null,
+          quantity:    item.quantity ?? null,
+          calories:    item.calories ?? null,
+          protein_g:   item.protein_g ?? null,
+          carbs_g:     item.carbs_g ?? null,
+          fat_g:       item.fat_g ?? null,
+        }));
+        const { error } = await supabase.rpc('apply_routine_template_items', {
+          p_domain:  domain,
+          p_targets: pairs,
+          p_items:   rpcItems,
+        });
+        if (error) throw error;
       }
 
-      return { appliedCount: pairs.length, skippedPast, skippedSunday };
+      return { appliedCount: pairs.length, skippedPast: 0, skippedSunday };
     },
     onSuccess: () => {
       if (user?.id) qc.invalidateQueries({ queryKey: ['manual_logs', user.id] });
