@@ -707,7 +707,12 @@ function SaveRoutineModal({ visible, onClose, onSave, saving, description, nameP
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {/* 'padding' on both platforms, not the usual iOS-only convention —
+          this Modal is statusBarTranslucent, so Android's own window resize
+          doesn't reliably apply here already (same reasoning as the sheet
+          below); 'height' mode was visibly squashing/reflowing content as
+          the keyboard opened instead of just sliding it up. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <Pressable style={wg.backdrop} onPress={handleClose}>
         <Pressable style={wg.card}>
           <View style={wg.header}>
@@ -1629,10 +1634,12 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   // always gets meal_slot='craving' on submit (see handleSubmit/
   // handleBatchAddItems), so it stays excluded from Nutrition's completion
   // scoring the same way every other craving always has.
-  const mealSlotOptions = cravingMode
-    ? [...CRAVING_GROUPS.map(g => ({ key: g.key, label: g.label, icon: g.icon, color: g.color })),
-       { key: 'others', label: 'Others', icon: '🍽️', color: '#9CA3AF' }]
-    : FOOD_SLOTS;
+  const mealSlotOptions = useMemo(() => (
+    cravingMode
+      ? [...CRAVING_GROUPS.map(g => ({ key: g.key, label: g.label, icon: g.icon, color: g.color })),
+         { key: 'others', label: 'Others', icon: '🍽️', color: '#9CA3AF' }]
+      : FOOD_SLOTS
+  ), [cravingMode]);
   // Food only — which of the mealSlotOptions a manually-entered / My List
   // item actually gets saved to, independent of which section's "+" opened
   // this modal. myListTab is the horizontal-tab filter on the My List step,
@@ -2088,7 +2095,15 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {/* 'padding' on both platforms — Android 'height' mode was shrinking this
+          KeyboardAvoidingView's own frame on keyboard-open, which made the
+          bottom sheet (anchored via backdrop's justifyContent:'flex-end')
+          visibly squash/reflow against the shrinking parent instead of just
+          sliding up to clear the keyboard. This Modal is statusBarTranslucent,
+          so Android's own window resize doesn't reliably kick in here anyway
+          — 'padding' (keyboard-height-based, not frame-shrink-based) avoids
+          the double-recalculation and is what was actually glitching. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <Pressable style={aem.backdrop} onPress={handleClose}>
         <Pressable style={aem.sheet}>
           <View style={aem.handle} />
@@ -2961,7 +2976,7 @@ const aem = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#0E1320', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, height: '82%',
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, maxHeight: '82%',
   },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'center', marginBottom: 14 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
