@@ -273,18 +273,19 @@ export function useManualLog(userId, profile, weekStartOverride) {
   }, [userId, weekStart, profile, queryClient, qKey]);
 
   // ── Batch save ────────────────────────────────────────────────────
+  // Single round-trip via RPC rather than one .update() call per changed
+  // item — checking off everything across all sections could mean 50-100+
+  // items, and firing that many parallel requests was taking 10+ seconds
+  // (React Native's networking stack caps concurrent connections per host,
+  // so a big Promise.all just queues up instead of actually running in
+  // parallel). The RPC does one UPDATE ... FROM jsonb_array_elements(...)
+  // for the whole batch instead.
   const { mutateAsync: batchSave, isPending: isSaving } = useMutation({
     mutationFn: async (updates) => {
-      const promises = updates.map(({ id, completed, completed_at }) =>
-        supabase
-          .from('manual_workout_logs')
-          .update({ completed, completed_at })
-          .eq('id', id)
-          .eq('client_id', userId)
-      );
-      const results = await Promise.all(promises);
-      const failed  = results.find(r => r.error);
-      if (failed) throw failed.error;
+      if (!updates.length) return;
+      const payload = updates.map(({ id, completed, completed_at }) => ({ id, completed, completed_at }));
+      const { error } = await supabase.rpc('batch_update_manual_log_completion', { updates: payload });
+      if (error) throw error;
     },
     onSuccess: async () => {
       // Await the primary log query specifically — handleSave (workout-plan.tsx)
