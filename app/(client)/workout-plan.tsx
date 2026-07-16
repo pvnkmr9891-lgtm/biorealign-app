@@ -1618,18 +1618,24 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const [cravingMode, setCravingMode] = useState(initialCravingMode);
   const activeGroups = cravingMode ? CRAVING_GROUPS : isDinner ? DINNER_GROUPS : isLunch ? LUNCH_GROUPS : BREAKFAST_GROUPS;
   const [scope, setScope] = useState<SupplementScope>('today');
-  // Manual entry / My List from Confession Booth can still choose to stay a
-  // craving OR reassign to one of the 5 real meal-time sections — the extra
-  // "Craving" pill only makes sense when opened from Confession Booth.
+  // Confession Booth's manual entry / My List gets organized by the same
+  // craving categories as the curated list (Fast Food, Bakery, Chocolate,
+  // Chips/Street Food, Drinks) plus an Others catch-all — NOT the 5 real
+  // meal-time sections, which don't apply here. This is purely a My-List
+  // browsing tag: whatever category is picked, the actual logged item still
+  // always gets meal_slot='craving' on submit (see handleSubmit/
+  // handleBatchAddItems), so it stays excluded from Nutrition's completion
+  // scoring the same way every other craving always has.
   const mealSlotOptions = cravingMode
-    ? [{ key: 'craving', label: 'Craving', icon: '🙈', color: '#F97316' }, ...FOOD_SLOTS]
+    ? [...CRAVING_GROUPS.map(g => ({ key: g.key, label: g.label, icon: g.icon, color: g.color })),
+       { key: 'others', label: 'Others', icon: '🍽️', color: '#9CA3AF' }]
     : FOOD_SLOTS;
   // Food only — which of the mealSlotOptions a manually-entered / My List
   // item actually gets saved to, independent of which section's "+" opened
   // this modal. myListTab is the horizontal-tab filter on the My List step,
   // also food-only.
-  const [mealSlotChoice, setMealSlotChoice] = useState(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
-  const [myListTab, setMyListTab] = useState(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
+  const [mealSlotChoice, setMealSlotChoice] = useState(initialCravingMode ? CRAVING_GROUPS[0].key : (initialMealSlot ?? FOOD_SLOTS[0].key));
+  const [myListTab, setMyListTab] = useState(initialCravingMode ? CRAVING_GROUPS[0].key : (initialMealSlot ?? FOOD_SLOTS[0].key));
   const [search, setSearch] = useState('');
   const [filterEquip, setFilterEquip] = useState('All');
   const [filterMuscle, setFilterMuscle] = useState('All');
@@ -1706,8 +1712,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
     setGroupSearch('');
     setEnteredManually(false);
     setSelectedIds(new Set());
-    setMealSlotChoice(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
-    setMyListTab(initialCravingMode ? 'craving' : (initialMealSlot ?? FOOD_SLOTS[0].key));
+    setMealSlotChoice(initialCravingMode ? CRAVING_GROUPS[0].key : (initialMealSlot ?? FOOD_SLOTS[0].key));
+    setMyListTab(initialCravingMode ? CRAVING_GROUPS[0].key : (initialMealSlot ?? FOOD_SLOTS[0].key));
   }
 
   // Reset fully whenever modal becomes visible so stale selections don't persist
@@ -1869,7 +1875,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
             proteinG: item.protein_g,
             carbsG: item.carbs_g,
             fatG: item.fat_g,
-            mealSlot: myListTab,
+            mealSlot: cravingMode ? 'craving' : myListTab,
           });
         } else {
           await onAdd({
@@ -1949,6 +1955,11 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
         const proteinNum = protein ? Number(protein) : null;
         const carbsNum = carbs ? Number(carbs) : null;
         const fatNum = fat ? Number(fat) : null;
+        // The craving category (fastfood/bakery/...) is a My-List browsing
+        // tag only — the actual day log always stays meal_slot='craving' in
+        // Confession Booth, same as every other craving, so it keeps being
+        // excluded from Nutrition's completion scoring.
+        const dbMealSlot = cravingMode ? 'craving' : mealSlotChoice;
         await onAdd({
           itemName: name.trim(),
           quantity: quantity.trim() || null,
@@ -1956,7 +1967,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           proteinG: proteinNum,
           carbsG:   carbsNum,
           fatG:     fatNum,
-          mealSlot: mealSlotChoice,
+          mealSlot: dbMealSlot,
         });
         // A fresh manual entry gets remembered in "My List" for next time —
         // best-effort, shouldn't block or fail today's log if it errors.
@@ -2747,7 +2758,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                     {search.trim()
                       ? 'No matches.'
                       : kind === 'food'
-                      ? `Nothing in ${mealSlotOptions.find((s) => s.key === myListTab)?.label ?? 'this section'} yet — foods you type manually and save here will show up under whichever section you pick.`
+                      ? `Nothing in ${mealSlotOptions.find((s) => s.key === myListTab)?.label ?? 'this ' + (cravingMode ? 'category' : 'section')} yet — foods you type manually and save here will show up under whichever ${cravingMode ? 'category' : 'section'} you pick.`
                       : `Nothing here yet — ${noun}s you type manually will show up here.`}
                   </Text>
                 )}
@@ -2784,12 +2795,13 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
               {kind === 'food' ? (
                 <>
-                  {/* Which section this gets saved to — independent of which
-                      section's "+" (or Confession Booth) opened this modal,
-                      so a manual entry or a My List pick can land anywhere.
-                      Includes "Craving" when opened from Confession Booth. */}
+                  {/* Regular sections: which of the 5 meal-time sections this
+                      gets saved to, independent of which section's "+" opened
+                      this modal. Confession Booth: which craving category
+                      (My-List browsing tag only — always logged as a craving
+                      regardless of category, see handleSubmit). */}
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={aem.fieldLabel}>Section</Text>
+                    <Text style={aem.fieldLabel}>{cravingMode ? 'Category' : 'Section'}</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                       {mealSlotOptions.map((slot) => (
                         <TouchableOpacity
@@ -2920,7 +2932,8 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                 {submitting
                   ? <ActivityIndicator color="#000" />
                   : <Text style={aem.submitBtnText}>
-                      Add to {kind === 'food' ? (mealSlotOptions.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
+                      {cravingMode ? 'Log as ' : 'Add to '}
+                      {kind === 'food' ? (mealSlotOptions.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
                     </Text>}
               </TouchableOpacity>
             </ScrollView>
