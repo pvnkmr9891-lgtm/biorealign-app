@@ -624,7 +624,7 @@ function SectionGroup({ sectionKey, items, onToggle, onAdd, onRemove, locked = f
           library={EXERCISE_LIBRARY[sectionKey] ?? []}
           onAdd={async (payload) => { await onAdd!(payload); }}
           onAddDone={() => setShowAddModal(false)}
-          initialMealSlot={isFood ? sectionKey : undefined}
+          initialMealSlot={isFood ? sectionKey : isSupplement ? (meta as any).mealSlot : undefined}
         />
       )}
     </View>
@@ -1815,6 +1815,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
       setMealSlotChoice(item.meal_slot ?? myListTab);
     } else {
       setQuantity(item.quantity ?? '');
+      if (kind === 'supplement') setMealSlotChoice(item.meal_slot ?? mealSlotChoice);
     }
     setStep('detail');
   }
@@ -1881,10 +1882,14 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
             mealSlot: cravingMode ? 'craving' : myListTab,
           });
         } else {
+          // Supplement My List isn't tabbed, so a multi-select batch can mix
+          // items saved under different sections — use each item's own
+          // section rather than one shared value.
           await onAdd({
             itemName: item.name,
             quantity: item.quantity ?? null,
             scope,
+            mealSlot: item.meal_slot ?? mealSlotChoice,
           });
         }
       }
@@ -1985,10 +1990,11 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           itemName: name.trim(),
           quantity: quantity.trim() || null,
           scope,
+          mealSlot: mealSlotChoice,
         });
         if (enteredManually) {
           saveCustomItem(
-            { kind: 'supplement', name: name.trim(), quantity: quantity.trim() || null },
+            { kind: 'supplement', name: name.trim(), quantity: quantity.trim() || null, mealSlot: mealSlotChoice },
             { onError: () => {} }
           );
         }
@@ -2797,41 +2803,43 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                 />
               </View>
 
+              {(kind === 'food' || kind === 'supplement') && (
+                // Regular sections: which of the 5 meal-time sections this gets
+                // saved to, independent of which section's "+" opened this
+                // modal. Confession Booth (food only): which craving category
+                // (My-List browsing tag only — always logged as a craving
+                // regardless of category, see handleSubmit).
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={aem.fieldLabel}>{cravingMode ? 'Category' : 'Section'}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {mealSlotOptions.map((slot) => (
+                      <TouchableOpacity
+                        key={slot.key}
+                        onPress={() => setMealSlotChoice(slot.key)}
+                        activeOpacity={0.8}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 5,
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16,
+                          borderWidth: 1.5,
+                          borderColor: mealSlotChoice === slot.key ? slot.color : THEME.colors.border,
+                          backgroundColor: mealSlotChoice === slot.key ? `${slot.color}20` : 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13 }}>{slot.icon}</Text>
+                        <Text style={{
+                          fontSize: 12.5, fontFamily: THEME.fonts.sansMedium,
+                          color: mealSlotChoice === slot.key ? slot.color : THEME.colors.textSecondary,
+                        }}>
+                          {slot.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
               {kind === 'food' ? (
                 <>
-                  {/* Regular sections: which of the 5 meal-time sections this
-                      gets saved to, independent of which section's "+" opened
-                      this modal. Confession Booth: which craving category
-                      (My-List browsing tag only — always logged as a craving
-                      regardless of category, see handleSubmit). */}
-                  <View style={{ marginBottom: 16 }}>
-                    <Text style={aem.fieldLabel}>{cravingMode ? 'Category' : 'Section'}</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {mealSlotOptions.map((slot) => (
-                        <TouchableOpacity
-                          key={slot.key}
-                          onPress={() => setMealSlotChoice(slot.key)}
-                          activeOpacity={0.8}
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 5,
-                            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16,
-                            borderWidth: 1.5,
-                            borderColor: mealSlotChoice === slot.key ? slot.color : THEME.colors.border,
-                            backgroundColor: mealSlotChoice === slot.key ? `${slot.color}20` : 'rgba(255,255,255,0.03)',
-                          }}
-                        >
-                          <Text style={{ fontSize: 13 }}>{slot.icon}</Text>
-                          <Text style={{
-                            fontSize: 12.5, fontFamily: THEME.fonts.sansMedium,
-                            color: mealSlotChoice === slot.key ? slot.color : THEME.colors.textSecondary,
-                          }}>
-                            {slot.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-
                   {/* Quantity — stepper when from library, text input for manual */}
                   <View style={{ marginBottom: 16 }}>
                     <Text style={aem.fieldLabel}>Quantity</Text>
@@ -2937,7 +2945,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
                   ? <ActivityIndicator color="#000" />
                   : <Text style={aem.submitBtnText}>
                       {cravingMode ? 'Log as ' : 'Add to '}
-                      {kind === 'food' ? (mealSlotOptions.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
+                      {(kind === 'food' || kind === 'supplement') ? (mealSlotOptions.find((s) => s.key === mealSlotChoice)?.label ?? sectionLabel) : sectionLabel}
                     </Text>}
               </TouchableOpacity>
             </ScrollView>
@@ -3929,21 +3937,29 @@ function DayPanel({
         </View>
         <SupplementSlotPill slots={SUPPLEMENT_SLOTS} dayData={dayData['supplement'] || []} />
         <View style={styles.categoryCardBody}>
-          {SUPPLEMENT_SLOTS.map(slot => {
-            const slotItems = (dayData['supplement'] || []).filter((i: any) => i.meal_slot === slot.mealSlot);
-            return (
-              <SectionGroup
-                key={slot.key}
-                sectionKey={slot.key}
-                items={slotItems}
-                onToggle={onToggle}
-                locked={isDayFuture}
-                onAdd={(payload: any) => onAddExercise(dayNumber, 'supplement', slotItems, payload, slot.mealSlot)}
-                onRemove={onRemoveExercise}
-                forceOpenState={suppAllOpen}
-              />
-            );
-          })}
+          {/* Full supplement list (not just this slot) as itemsForOrder — same
+              reasoning as allFoodItemsNonCraving above: the modal's own section
+              picker can reassign an item to a different slot than the one whose
+              "+" opened it, so item_order needs to be computed against the
+              actual destination slot's existing items. */}
+          {(() => {
+            const allSupplementItems = dayData['supplement'] || [];
+            return SUPPLEMENT_SLOTS.map(slot => {
+              const slotItems = allSupplementItems.filter((i: any) => i.meal_slot === slot.mealSlot);
+              return (
+                <SectionGroup
+                  key={slot.key}
+                  sectionKey={slot.key}
+                  items={slotItems}
+                  onToggle={onToggle}
+                  locked={isDayFuture}
+                  onAdd={(payload: any) => onAddExercise(dayNumber, 'supplement', allSupplementItems, payload, slot.mealSlot)}
+                  onRemove={onRemoveExercise}
+                  forceOpenState={suppAllOpen}
+                />
+              );
+            });
+          })()}
 
           {/* Save / Add Routine — snapshot this day's full Supplement
               schedule (all 5 slots), or apply a previously saved one */}
