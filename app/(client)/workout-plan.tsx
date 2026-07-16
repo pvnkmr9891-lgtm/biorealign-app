@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Animated, StyleSheet, Alert, Modal, Pressable, Image, useWindowDimensions, BackHandler,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -706,6 +707,7 @@ function SaveRoutineModal({ visible, onClose, onSave, saving, description, nameP
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Pressable style={wg.backdrop} onPress={handleClose}>
         <Pressable style={wg.card}>
           <View style={wg.header}>
@@ -743,6 +745,7 @@ function SaveRoutineModal({ visible, onClose, onSave, saving, description, nameP
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -2079,6 +2082,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose} statusBarTranslucent>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Pressable style={aem.backdrop} onPress={handleClose}>
         <Pressable style={aem.sheet}>
           <View style={aem.handle} />
@@ -2940,6 +2944,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           )}
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

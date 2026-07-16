@@ -2,6 +2,7 @@
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, Alert, Modal, Pressable,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { THEME } from '@/constants/theme';
 import {
@@ -145,6 +146,7 @@ export function SupplementScheduleForm({
           </TouchableOpacity>
         </View>
 
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
 
           {/* Active schedules â€” quick-end chips */}
@@ -299,6 +301,7 @@ export function SupplementScheduleForm({
             </Text>
           </TouchableOpacity>
         </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

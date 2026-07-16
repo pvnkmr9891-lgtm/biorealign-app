@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Image, Dimensions, Modal, Pressable, Linking, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Image, Dimensions, Modal, Pressable, Linking, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CalendarGrid } from '@/components/ui/CalendarGrid';
 import { WeekStatusStrip } from '@/components/ui/WeekStatusStrip';
@@ -2113,7 +2113,7 @@ export function ClientProfileView({
   if (showRecoveryTab) tabs = [...tabs, RECOVERY_TAB];
 
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Hero header */}
       <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 18 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -2176,6 +2176,6 @@ export function ClientProfileView({
         {tab === 'recovery'     && <RehabTab clientId={clientId} />}
         {tab === 'fitness'      && <FitnessAssessmentTab clientId={clientId} clientName={clientName} isAdminContext={showRecoveryTab} />}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
