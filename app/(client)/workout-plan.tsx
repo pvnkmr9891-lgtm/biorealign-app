@@ -1758,6 +1758,20 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
   const isDinner    = kind === 'food' && sectionLabel === 'Dinner';
   const isGrouped   = isBreakfast || isLunch || isDinner;
 
+  // Explicit pixel height (not maxHeight alone) — same "canonical
+  // scroll-in-modal" reasoning as AddRoutineModal's cardHeight: a `flex: 1`
+  // ScrollView (the exercise/food/supplement list below) needs a parent with
+  // a DEFINITE height to expand into. maxHeight alone leaves the sheet's
+  // height ambiguous (bounded-by-content, not stretched), which collapsed
+  // the whole list to near-zero height — the sheet rendered as just its
+  // header/search-bar sliver pinned to the bottom of the screen, with
+  // nothing selectable below it. behavior="padding" (not 'height') on the
+  // KeyboardAvoidingView below is what actually fixed the earlier
+  // keyboard-open squash bug, so restoring an explicit height here doesn't
+  // reintroduce it.
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = windowHeight * 0.82;
+
   // Confession Booth also starts at 'choice' now — "Log a craving" (the
   // curated CRAVING_GROUPS list) is just one of its choice cards alongside
   // My List and Write manually, same shape as the other food sections.
@@ -2251,7 +2265,7 @@ function AddExerciseModal({ visible, onClose, onAddDone, sectionColor, sectionLa
           the double-recalculation and is what was actually glitching. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <Pressable style={aem.backdrop} onPress={handleClose}>
-        <Pressable style={aem.sheet}>
+        <Pressable style={[aem.sheet, { height: sheetHeight }]}>
           <View style={aem.handle} />
           <View style={aem.header}>
             <Text style={aem.title}>{titleFor()}</Text>
@@ -3122,7 +3136,7 @@ const aem = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#0E1320', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, maxHeight: '82%',
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28,
   },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'center', marginBottom: 14 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
