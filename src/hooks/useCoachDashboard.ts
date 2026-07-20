@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { getSupplementInteractionWarning } from '@/constants/supplementItems';
+import { getWeekStart, toLocalDateStr, addDaysToDateStr } from '@/lib/dateHelpers';
 import { THEME } from '@/constants/theme';
 
 export const coachDashboardKeys = {
@@ -10,6 +11,7 @@ export const coachDashboardKeys = {
   medicalOpinionReqs:   (uid: string) => ['coach', uid, 'medical_opinion_requests'] as const,
   todayCheckins:        (uid: string) => ['coach', uid, 'today_checkins'] as const,
   clientWins:           (uid: string) => ['coach', uid, 'client_wins'] as const,
+  weekCheckinGrid:      (uid: string) => ['coach', uid, 'week_checkin_grid'] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -247,7 +249,7 @@ export function useCoachAttentionItems() {
 export interface TodayCheckinRow {
   clientId: string;
   clientName: string;
-  checkin: { mood: number; energy: number; sleep_hrs: number; pain_level: number } | null;
+  checkin: { mood: number; energy: number; sleep_hrs: number; pain_level: number; created_at: string } | null;
 }
 
 function todayLocalDateStr(): string {
@@ -273,7 +275,7 @@ export function useCoachTodayCheckins() {
       const clientIds = clients.map((c) => c.id);
       const { data: checkins, error: checkinsErr } = await supabase
         .from('daily_checkins')
-        .select('client_id, mood, energy, sleep_hrs, pain_level')
+        .select('client_id, mood, energy, sleep_hrs, pain_level, created_at')
         .in('client_id', clientIds)
         .eq('date', todayLocalDateStr());
       if (checkinsErr) throw checkinsErr;
@@ -286,7 +288,7 @@ export function useCoachTodayCheckins() {
           return {
             clientId: c.id,
             clientName: c.full_name ?? 'Client',
-            checkin: ci ? { mood: ci.mood, energy: ci.energy, sleep_hrs: ci.sleep_hrs, pain_level: ci.pain_level } : null,
+            checkin: ci ? { mood: ci.mood, energy: ci.energy, sleep_hrs: ci.sleep_hrs, pain_level: ci.pain_level, created_at: ci.created_at } : null,
           };
         })
         // checked-in first, then alphabetical within each group
@@ -351,13 +353,23 @@ export function useCoachClientWins() {
 }
 
 // ---------------------------------------------------------------------------
-// Client pulse — 7-day adherence per assigned client, worst-first.
+// Client pulse — 7-day adherence per assigned client, worst-first, plus a
+// per-day completed-items series for sparklines.
+//
+// Adherence is computed against the client's PLAN days (week_start_date +
+// day_number identify the calendar day each item belongs to), not against
+// completed_at. The old completed_at-window approach silently excluded every
+// unchecked item (completed_at is null until checked), so the denominator
+// only ever contained completed items — adherence read ~100% or "No data"
+// and nothing in between.
 // ---------------------------------------------------------------------------
 export interface ClientPulseRow {
   clientId: string;
   clientName: string;
   adherencePct: number | null;
   lastActiveAt: string | null;
+  /** Completed items per calendar day, last 7 days, oldest → newest */
+  dailyDone: number[];
 }
 
 export function useCoachClientPulse() {
@@ -375,14 +387,17 @@ export function useCoachClientPulse() {
       if (!clients?.length) return [];
 
       const clientIds = clients.map((c) => c.id);
-      const sevenDaysAgoIso = new Date(Date.now() - 7 * 86400000).toISOString();
+      const todayStr   = toLocalDateStr(new Date());
+      const windowFrom = addDaysToDateStr(todayStr, -6); // 7-day window incl. today
+      const curWs  = getWeekStart(new Date());
+      const prevWs = getWeekStart(new Date(Date.now() - 7 * 86400000));
 
-      const [{ data: logs7d }, { data: lastCompleted }] = await Promise.all([
+      const [{ data: planRows }, { data: lastCompleted }] = await Promise.all([
         supabase
           .from('manual_workout_logs')
-          .select('client_id, completed')
+          .select('client_id, week_start_date, day_number, completed')
           .in('client_id', clientIds)
-          .gte('completed_at', sevenDaysAgoIso),
+          .in('week_start_date', [prevWs, curWs]),
         supabase
           .from('manual_workout_logs')
           .select('client_id, completed_at')
@@ -392,11 +407,19 @@ export function useCoachClientPulse() {
           .limit(2000),
       ]);
 
-      const adherenceTotals: Record<string, { total: number; done: number }> = {};
-      (logs7d ?? []).forEach((l: any) => {
-        if (!adherenceTotals[l.client_id]) adherenceTotals[l.client_id] = { total: 0, done: 0 };
-        adherenceTotals[l.client_id].total++;
-        if (l.completed) adherenceTotals[l.client_id].done++;
+      const buckets: Record<string, { total: number; done: number; daily: number[] }> = {};
+      (planRows ?? []).forEach((l: any) => {
+        // day_number 1=Mon … 6=Sat; week_start_date is that week's Monday
+        const rowDate = addDaysToDateStr(l.week_start_date, l.day_number - 1);
+        if (rowDate < windowFrom || rowDate > todayStr) return; // outside window / future plan days
+        if (!buckets[l.client_id]) buckets[l.client_id] = { total: 0, done: 0, daily: [0, 0, 0, 0, 0, 0, 0] };
+        const b = buckets[l.client_id];
+        b.total++;
+        if (l.completed) {
+          b.done++;
+          const daysAgo = Math.round((new Date(todayStr + 'T00:00:00').getTime() - new Date(rowDate + 'T00:00:00').getTime()) / 86400000);
+          b.daily[6 - daysAgo]++;
+        }
       });
 
       const lastActiveMap: Record<string, string> = {};
@@ -406,15 +429,69 @@ export function useCoachClientPulse() {
 
       return clients
         .map((c) => {
-          const adherence = adherenceTotals[c.id];
+          const b = buckets[c.id];
           return {
             clientId: c.id,
             clientName: c.full_name ?? 'Client',
-            adherencePct: adherence && adherence.total > 0 ? Math.round((adherence.done / adherence.total) * 100) : null,
+            adherencePct: b && b.total > 0 ? Math.round((b.done / b.total) * 100) : null,
             lastActiveAt: lastActiveMap[c.id] ?? null,
+            dailyDone: b?.daily ?? [0, 0, 0, 0, 0, 0, 0],
           };
         })
         .sort((a, b) => (a.adherencePct ?? 101) - (b.adherencePct ?? 101));
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Week check-in grid — which days this week (Mon–Sun) each client checked
+// in. Cells: 1 = checked in, 0 = missed, null = future day.
+// ---------------------------------------------------------------------------
+export interface WeekCheckinGridRow {
+  clientId: string;
+  clientName: string;
+  days: (number | null)[]; // 7 cells, Mon → Sun
+}
+
+export function useCoachWeekCheckinGrid() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: coachDashboardKeys.weekCheckinGrid(user?.id ?? ''),
+    enabled: !!user?.id,
+    queryFn: async (): Promise<WeekCheckinGridRow[]> => {
+      const { data: clients, error: clientsErr } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('assigned_coach_id', user!.id)
+        .order('full_name');
+      if (clientsErr) throw clientsErr;
+      if (!clients?.length) return [];
+
+      const weekStart = getWeekStart(new Date());
+      const todayStr  = toLocalDateStr(new Date());
+      const { data: checkins, error } = await supabase
+        .from('daily_checkins')
+        .select('client_id, date')
+        .in('client_id', clients.map((c) => c.id))
+        .gte('date', weekStart)
+        .lte('date', todayStr);
+      if (error) throw error;
+
+      const byClient: Record<string, Set<string>> = {};
+      (checkins ?? []).forEach((c: any) => {
+        (byClient[c.client_id] ??= new Set()).add(c.date);
+      });
+
+      return clients.map((c) => ({
+        clientId: c.id,
+        clientName: c.full_name ?? 'Client',
+        days: Array.from({ length: 7 }, (_, i) => {
+          const d = addDaysToDateStr(weekStart, i);
+          if (d > todayStr) return null;
+          return byClient[c.id]?.has(d) ? 1 : 0;
+        }),
+      }));
     },
   });
 }

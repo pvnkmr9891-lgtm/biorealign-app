@@ -48,7 +48,47 @@ export const THEME = {
     md: 10,
     lg: 14,
     xl: 20,
+    '2xl': 28,
     full: 9999,
+  },
+
+  /** Type scale — hierarchy over boldness. display for hero numbers,
+      h1 screen titles, h2 section values, body copy, caption secondary,
+      micro overline labels. */
+  type: {
+    display: 56,
+    h1: 32,
+    h2: 22,
+    body: 16,
+    caption: 13,
+    micro: 11,
+  },
+
+  /** Glow shadow recipes — subtle neon depth on dark surfaces. Android gets
+      elevation only (colored shadows are iOS-only), which still reads as
+      lift without the tint. */
+  glow: {
+    teal: {
+      shadowColor: '#00C4B4',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.45,
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    amber: {
+      shadowColor: '#E8A44A',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.45,
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    soft: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.35,
+      shadowRadius: 20,
+      elevation: 6,
+    },
   },
 
   /** Pill colors for each program slug */

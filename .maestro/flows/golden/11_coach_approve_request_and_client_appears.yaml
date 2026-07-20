@@ -18,6 +18,9 @@ appId: com.biorealign.app
 - assertVisible:
     id: "coach-home-screen"
     timeout: 10000
+# Quick actions live inside the FAB now — open it first
+- tapOn:
+    id: "coach-fab"
 - tapOn:
     id: "quick-action-coach-requests"
 - assertVisible:
@@ -31,6 +34,8 @@ appId: com.biorealign.app
 - assertVisible:
     id: "coach-home-screen"
     timeout: 10000
+- tapOn:
+    id: "coach-fab"
 - tapOn:
     id: "quick-action-my-clients"
 - assertVisible:
