@@ -31,7 +31,7 @@ import { CRAVING_GROUPS, type CravingItem } from '@/constants/cravingGroups';
 import { SUPPLEMENT_ITEMS, type SupplementItemDefault } from '@/constants/supplementItems';
 import { useSupplementCatalogImages } from '@/hooks/useSupplementCatalogImages';
 import {
-  useMyRoutineTemplates, useSaveRoutineTemplate, useApplyRoutineTemplate, useDeleteRoutineTemplate,
+  useMyRoutineTemplates, useSaveRoutineTemplate, useApplyRoutineTemplate, useDeleteRoutineTemplate, useClearRoutineItems,
   type RoutineTemplate, type RoutineTemplateItem, type RoutineDomain,
 } from '@/hooks/useWorkoutRoutineTemplates';
 import { useMyCustomExercises, useSaveCustomExercise, type CustomExercise } from '@/hooks/useCustomExercises';
@@ -838,6 +838,38 @@ function RoutineMultiCalendar({ selectedDates, onToggleDate }: {
 
 type RoutineScope = 'today' | 'week' | 'month' | 'custom';
 
+// Shared by AddRoutineModal and ClearRoutineModal — resolves a scope choice
+// into the actual list of calendar dates it covers, anchored on whichever
+// day is currently open in the Workout Plan screen (viewedDate), not
+// necessarily today's real-world date.
+function computeRoutineScopeDates(scope: RoutineScope, weekStart: string, selectedDay: number, customDates: Set<string>): Date[] {
+  const viewedDate = getDayDate(weekStart, selectedDay);
+  if (scope === 'today') return [viewedDate];
+  if (scope === 'week') {
+    const dates: Date[] = [];
+    for (let d = 1; d <= 6; d++) dates.push(getDayDate(weekStart, d));
+    return dates;
+  }
+  if (scope === 'month') {
+    const year = viewedDate.getFullYear(), month = viewedDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay  = new Date(year, month + 1, 0);
+    const dates: Date[] = [];
+    const firstMon = new Date(firstDay);
+    const dow0 = firstMon.getDay();
+    firstMon.setDate(firstMon.getDate() - (dow0 === 0 ? 6 : dow0 - 1));
+    for (let mon = new Date(firstMon); mon <= lastDay; mon.setDate(mon.getDate() + 7)) {
+      for (let d = 0; d < 6; d++) {
+        const actual = addDaysToDate(mon, d);
+        if (actual >= firstDay && actual <= lastDay) dates.push(actual);
+      }
+    }
+    return dates;
+  }
+  // custom
+  return Array.from(customDates).map(s => parseDateLocal(s));
+}
+
 const WORKOUT_SECTION_LABELS: Record<string, string> = { warmup: 'Warm-up', workout: 'Workout', cooldown: 'Cool-down' };
 const MEAL_SLOT_ORDER = ['morning_drink', 'breakfast', 'lunch', 'evening_snacks', 'dinner'];
 const MEAL_SLOT_LABELS: Record<string, string> = {
@@ -925,31 +957,7 @@ function AddRoutineModal({
   }
 
   function computeScopeDates(): Date[] {
-    const viewedDate = getDayDate(weekStart, selectedDay);
-    if (scope === 'today') return [viewedDate];
-    if (scope === 'week') {
-      const dates: Date[] = [];
-      for (let d = 1; d <= 6; d++) dates.push(getDayDate(weekStart, d));
-      return dates;
-    }
-    if (scope === 'month') {
-      const year = viewedDate.getFullYear(), month = viewedDate.getMonth();
-      const firstDay = new Date(year, month, 1);
-      const lastDay  = new Date(year, month + 1, 0);
-      const dates: Date[] = [];
-      const firstMon = new Date(firstDay);
-      const dow0 = firstMon.getDay();
-      firstMon.setDate(firstMon.getDate() - (dow0 === 0 ? 6 : dow0 - 1));
-      for (let mon = new Date(firstMon); mon <= lastDay; mon.setDate(mon.getDate() + 7)) {
-        for (let d = 0; d < 6; d++) {
-          const actual = addDaysToDate(mon, d);
-          if (actual >= firstDay && actual <= lastDay) dates.push(actual);
-        }
-      }
-      return dates;
-    }
-    // custom
-    return Array.from(customDates).map(s => parseDateLocal(s));
+    return computeRoutineScopeDates(scope, weekStart, selectedDay, customDates);
   }
 
   async function handleConfirmApply() {
@@ -1152,6 +1160,144 @@ function AddRoutineModal({
                   activeOpacity={0.85}
                 >
                   {applying ? <ActivityIndicator color="#000" /> : <Text style={wg.gotItText}>Apply Routine</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Clear Section modal ──────────────────────────────────────────────────
+// Companion to AddRoutineModal, for undoing a mistake in one shot instead of
+// deleting items one by one: same scope picker (today / week / month /
+// custom dates), but skips template selection entirely and wipes every
+// client-owned item in the section across the chosen dates. Coach-assigned
+// items and (for nutrition) Confession Booth cravings are never touched —
+// see clear_routine_items RPC.
+function ClearRoutineModal({
+  visible, onClose, onConfirm, clearing, weekStart, selectedDay, sectionLabel, itemLabel,
+}: {
+  visible: boolean; onClose: () => void; onConfirm: (targetDates: Date[]) => Promise<void>; clearing: boolean;
+  weekStart: string; selectedDay: number; sectionLabel: string; itemLabel: string;
+}) {
+  const [step, setStep] = useState<'scope' | 'custom' | 'confirm'>('scope');
+  const [scope, setScope] = useState<RoutineScope>('today');
+  const [customDates, setCustomDates] = useState<Set<string>>(new Set());
+  const { height: windowHeight } = useWindowDimensions();
+  const cardHeight = windowHeight * 0.82;
+  const [showTick, setShowTick] = useState(0);
+
+  function reset() {
+    setStep('scope'); setScope('today'); setCustomDates(new Set());
+  }
+  function handleClose() { reset(); onClose(); }
+
+  function toggleCustomDate(dateStr: string) {
+    setCustomDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr); else next.add(dateStr);
+      return next;
+    });
+  }
+
+  const scopeDates = step === 'confirm' ? computeRoutineScopeDates(scope, weekStart, selectedDay, customDates) : [];
+
+  async function handleConfirmClear() {
+    await onConfirm(scopeDates);
+    handleClose();
+  }
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={handleClose}
+      onShow={() => setShowTick(t => t + 1)}
+      statusBarTranslucent
+    >
+      <Pressable style={wg.backdrop} onPress={handleClose}>
+        <Pressable style={[wg.card, { height: cardHeight }]}>
+          <View style={wg.header}>
+            <Text style={wg.title}>{step === 'confirm' ? 'Confirm' : `🧹  Clear ${sectionLabel}`}</Text>
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={wg.closeX}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={wg.divider} />
+
+          <ScrollView
+            key={`clear-scroll-${showTick}`}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 18 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {step === 'scope' && (
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: THEME.colors.textMuted, fontSize: 12.5, fontFamily: THEME.fonts.sans, lineHeight: 18, marginBottom: 4 }}>
+                  Pick which days to clear all {itemLabel}s from.
+                </Text>
+                {([
+                  { key: 'today' as const, label: 'This day only' },
+                  { key: 'week'  as const, label: 'This week (Mon-Sat)' },
+                  { key: 'month' as const, label: 'This month' },
+                  { key: 'custom' as const, label: 'Custom dates…' },
+                ]).map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={{
+                      paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12,
+                      backgroundColor: scope === opt.key ? 'rgba(0,196,180,0.1)' : THEME.colors.surface2,
+                      borderWidth: 1, borderColor: scope === opt.key ? THEME.colors.teal : THEME.colors.border,
+                    }}
+                    onPress={() => {
+                      setScope(opt.key);
+                      if (opt.key === 'custom') setStep('custom'); else setStep('confirm');
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ color: scope === opt.key ? THEME.colors.teal : THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sansMedium }}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {step === 'custom' && (
+              <View style={{ gap: 14 }}>
+                <RoutineMultiCalendar selectedDates={customDates} onToggleDate={toggleCustomDate} />
+                <TouchableOpacity
+                  style={[wg.gotItBtn, { margin: 0, opacity: customDates.size ? 1 : 0.5 }]}
+                  disabled={!customDates.size}
+                  onPress={() => setStep('confirm')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={wg.gotItText}>Continue with {customDates.size} date{customDates.size !== 1 ? 's' : ''}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {step === 'confirm' && (
+              <View style={{ gap: 14 }}>
+                <Text style={{ color: THEME.colors.textPrimary, fontSize: 14, fontFamily: THEME.fonts.sans, lineHeight: 21 }}>
+                  Clear all <Text style={{ fontFamily: THEME.fonts.sansMedium }}>{sectionLabel}</Text> {itemLabel}s from{' '}
+                  <Text style={{ fontFamily: THEME.fonts.sansMedium }}>{scopeDates.length} day{scopeDates.length !== 1 ? 's' : ''}</Text>?
+                </Text>
+                <Text style={{ color: '#F87171', fontSize: 12.5, fontFamily: THEME.fonts.sans, lineHeight: 18 }}>
+                  This can't be undone. Anything your coach assigned is never touched{sectionLabel === 'Nutrition' ? ', and Confession Booth entries are unaffected.' : '.'}
+                </Text>
+                <TouchableOpacity
+                  style={{ borderRadius: 14, paddingVertical: 15, alignItems: 'center', backgroundColor: '#F87171', opacity: clearing || !scopeDates.length ? 0.6 : 1 }}
+                  onPress={handleConfirmClear}
+                  disabled={clearing || !scopeDates.length}
+                  activeOpacity={0.85}
+                >
+                  {clearing ? <ActivityIndicator color="#0A0A0B" /> : <Text style={{ color: '#0A0A0B', fontSize: 15, fontFamily: THEME.fonts.sansMedium }}>Clear {sectionLabel}</Text>}
                 </TouchableOpacity>
               </View>
             )}
@@ -3543,8 +3689,8 @@ const suppIconStyle = { fontSize: 16, fontFamily: THEME.fonts.sans } as const;
 // ── Day Panel (content for the selected day) ──────────────────────────
 function DayPanel({
   dayNumber, resolvedGrouped, weekStart, onToggle, onToggleAll, onAddExercise, onRemoveExercise, scrollViewRef,
-  onOpenSaveRoutine, onOpenAddRoutine, onOpenSaveNutritionRoutine, onOpenAddNutritionRoutine,
-  onOpenSaveSupplementRoutine, onOpenAddSupplementRoutine,
+  onOpenSaveRoutine, onOpenAddRoutine, onOpenClearRoutine, onOpenSaveNutritionRoutine, onOpenAddNutritionRoutine, onOpenClearNutritionRoutine,
+  onOpenSaveSupplementRoutine, onOpenAddSupplementRoutine, onOpenClearSupplementRoutine,
 }: {
   dayNumber: number;
   resolvedGrouped: any;
@@ -3556,10 +3702,13 @@ function DayPanel({
   scrollViewRef: React.RefObject<ScrollView>;
   onOpenSaveRoutine: () => void;
   onOpenAddRoutine: () => void;
+  onOpenClearRoutine: () => void;
   onOpenSaveNutritionRoutine: () => void;
   onOpenAddNutritionRoutine: () => void;
+  onOpenClearNutritionRoutine: () => void;
   onOpenSaveSupplementRoutine: () => void;
   onOpenAddSupplementRoutine: () => void;
+  onOpenClearSupplementRoutine: () => void;
 }) {
   const [expandedFoodSlot, setExpandedFoodSlot] = useState<string | null>(null);
   const [suppAllOpen, setSuppAllOpen] = useState<boolean | null>(null);
@@ -3761,6 +3910,14 @@ function DayPanel({
           <Text style={{ fontSize: 16 }}>📂</Text>
           <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={{ width: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(248,113,113,0.1)', borderRadius: 14, borderWidth: 0.5, borderColor: 'rgba(248,113,113,0.3)' }}
+          onPress={onOpenClearRoutine}
+          activeOpacity={0.8}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ fontSize: 16 }}>🧹</Text>
+        </TouchableOpacity>
       </View>
       </>)}
 
@@ -3911,6 +4068,14 @@ function DayPanel({
               <Text style={{ fontSize: 16 }}>📂</Text>
               <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={{ width: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(248,113,113,0.1)', borderRadius: 14, borderWidth: 0.5, borderColor: 'rgba(248,113,113,0.3)' }}
+              onPress={onOpenClearNutritionRoutine}
+              activeOpacity={0.8}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ fontSize: 16 }}>🧹</Text>
+            </TouchableOpacity>
           </View>
 
           {/* ── Confession Booth — standalone craving logger ─────────────── */}
@@ -3994,6 +4159,14 @@ function DayPanel({
             >
               <Text style={{ fontSize: 16 }}>📂</Text>
               <Text style={{ fontFamily: THEME.fonts.sansMedium, fontSize: 13.5, color: THEME.colors.textPrimary }}>Add Routine</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ width: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(248,113,113,0.1)', borderRadius: 14, borderWidth: 0.5, borderColor: 'rgba(248,113,113,0.3)' }}
+              onPress={onOpenClearSupplementRoutine}
+              activeOpacity={0.8}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ fontSize: 16 }}>🧹</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -4141,9 +4314,9 @@ function ManualLogView({ userId }: { userId: string }) {
   // domain (workout / nutrition / supplement), sharing the same
   // save/apply/delete mutations (they're domain-parameterized) and the
   // same SaveRoutineModal/AddRoutineModal components.
-  const [workoutRoutineModal, setWorkoutRoutineModal]       = useState<'save' | 'add' | null>(null);
-  const [nutritionRoutineModal, setNutritionRoutineModal]   = useState<'save' | 'add' | null>(null);
-  const [supplementRoutineModal, setSupplementRoutineModal] = useState<'save' | 'add' | null>(null);
+  const [workoutRoutineModal, setWorkoutRoutineModal]       = useState<'save' | 'add' | 'clear' | null>(null);
+  const [nutritionRoutineModal, setNutritionRoutineModal]   = useState<'save' | 'add' | 'clear' | null>(null);
+  const [supplementRoutineModal, setSupplementRoutineModal] = useState<'save' | 'add' | 'clear' | null>(null);
 
   const { data: workoutTemplates = [], isLoading: workoutTemplatesLoading }       = useMyRoutineTemplates('workout');
   const { data: nutritionTemplates = [], isLoading: nutritionTemplatesLoading }   = useMyRoutineTemplates('nutrition');
@@ -4154,6 +4327,10 @@ function ManualLogView({ userId }: { userId: string }) {
   const { mutateAsync: applyWorkoutRoutine, isPending: applyingWorkoutRoutine }       = useApplyRoutineTemplate('workout');
   const { mutateAsync: applyNutritionRoutine, isPending: applyingNutritionRoutine }   = useApplyRoutineTemplate('nutrition');
   const { mutateAsync: applySupplementRoutine, isPending: applyingSupplementRoutine } = useApplyRoutineTemplate('supplement');
+
+  const { mutateAsync: clearWorkoutRoutine, isPending: clearingWorkoutRoutine }       = useClearRoutineItems('workout');
+  const { mutateAsync: clearNutritionRoutine, isPending: clearingNutritionRoutine }   = useClearRoutineItems('nutrition');
+  const { mutateAsync: clearSupplementRoutine, isPending: clearingSupplementRoutine } = useClearRoutineItems('supplement');
 
   const { mutateAsync: deleteWorkoutTemplate }    = useDeleteRoutineTemplate('workout');
   const { mutateAsync: deleteNutritionTemplate }  = useDeleteRoutineTemplate('nutrition');
@@ -4326,6 +4503,28 @@ function ManualLogView({ userId }: { userId: string }) {
       queryClient.invalidateQueries({ queryKey: ['manual_logs', userId] });
     } catch (e: any) {
       Alert.alert('Could not apply routine', e?.message ?? 'Please try again.');
+    }
+  }, [queryClient, userId]);
+
+  // Wipes every client-owned item in a section across the chosen dates in
+  // one shot — companion to handleApplyRoutine, for undoing a mistake
+  // (wrong routine applied to a whole month) without deleting items one by
+  // one. See useClearRoutineItems / clear_routine_items RPC.
+  const handleClearRoutine = useCallback(async (
+    clearFn: (args: { targetDates: Date[] }) => Promise<{ clearedCount: number; skippedSunday: number }>,
+    closeModal: () => void,
+    sectionLabel: string,
+    targetDates: Date[],
+  ) => {
+    try {
+      const result = await clearFn({ targetDates });
+      closeModal();
+      const parts = [`Cleared ${sectionLabel} on ${result.clearedCount} day${result.clearedCount !== 1 ? 's' : ''}.`];
+      if (result.skippedSunday) parts.push(`${result.skippedSunday} Sunday${result.skippedSunday !== 1 ? 's were' : ' was'} skipped (rest day).`);
+      Alert.alert('Cleared', parts.join(' '));
+      queryClient.invalidateQueries({ queryKey: ['manual_logs', userId] });
+    } catch (e: any) {
+      Alert.alert('Could not clear section', e?.message ?? 'Please try again.');
     }
   }, [queryClient, userId]);
 
@@ -4664,10 +4863,13 @@ function ManualLogView({ userId }: { userId: string }) {
               scrollViewRef={scrollViewRef}
               onOpenSaveRoutine={() => setWorkoutRoutineModal('save')}
               onOpenAddRoutine={() => setWorkoutRoutineModal('add')}
+              onOpenClearRoutine={() => setWorkoutRoutineModal('clear')}
               onOpenSaveNutritionRoutine={() => setNutritionRoutineModal('save')}
               onOpenAddNutritionRoutine={() => setNutritionRoutineModal('add')}
+              onOpenClearNutritionRoutine={() => setNutritionRoutineModal('clear')}
               onOpenSaveSupplementRoutine={() => setSupplementRoutineModal('save')}
               onOpenAddSupplementRoutine={() => setSupplementRoutineModal('add')}
+              onOpenClearSupplementRoutine={() => setSupplementRoutineModal('clear')}
             />
           </View>
       </ScrollView>
@@ -4720,6 +4922,16 @@ function ManualLogView({ userId }: { userId: string }) {
         itemLabel="exercise"
         emptyStateMessage="No saved routines yet — build a day's exercises, then tap Save Routine."
       />
+      <ClearRoutineModal
+        visible={workoutRoutineModal === 'clear'}
+        onClose={() => setWorkoutRoutineModal(null)}
+        onConfirm={(dates) => handleClearRoutine(clearWorkoutRoutine, () => setWorkoutRoutineModal(null), 'Workout', dates)}
+        clearing={clearingWorkoutRoutine}
+        weekStart={weekStart}
+        selectedDay={selectedDay}
+        sectionLabel="Workout"
+        itemLabel="exercise"
+      />
 
       {/* Nutrition routine modals */}
       <SaveRoutineModal
@@ -4743,6 +4955,16 @@ function ManualLogView({ userId }: { userId: string }) {
         itemLabel="item"
         emptyStateMessage="No saved routines yet — build a day's meals, then tap Save Routine."
       />
+      <ClearRoutineModal
+        visible={nutritionRoutineModal === 'clear'}
+        onClose={() => setNutritionRoutineModal(null)}
+        onConfirm={(dates) => handleClearRoutine(clearNutritionRoutine, () => setNutritionRoutineModal(null), 'Nutrition', dates)}
+        clearing={clearingNutritionRoutine}
+        weekStart={weekStart}
+        selectedDay={selectedDay}
+        sectionLabel="Nutrition"
+        itemLabel="item"
+      />
 
       {/* Supplement routine modals */}
       <SaveRoutineModal
@@ -4765,6 +4987,16 @@ function ManualLogView({ userId }: { userId: string }) {
         selectedDay={selectedDay}
         itemLabel="supplement"
         emptyStateMessage="No saved routines yet — build a day's supplement schedule, then tap Save Routine."
+      />
+      <ClearRoutineModal
+        visible={supplementRoutineModal === 'clear'}
+        onClose={() => setSupplementRoutineModal(null)}
+        onConfirm={(dates) => handleClearRoutine(clearSupplementRoutine, () => setSupplementRoutineModal(null), 'Supplement', dates)}
+        clearing={clearingSupplementRoutine}
+        weekStart={weekStart}
+        selectedDay={selectedDay}
+        sectionLabel="Supplement"
+        itemLabel="supplement"
       />
 
       {/* Sticky Save button */}

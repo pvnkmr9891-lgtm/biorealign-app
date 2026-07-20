@@ -212,3 +212,41 @@ export function useApplyRoutineTemplate(domain: RoutineDomain) {
     },
   });
 }
+
+// ── Clear every client-owned item for a domain across target dates ──────────
+// Companion to useApplyRoutineTemplate: same target-date resolution, but
+// deletes instead of diff-upserting — for when the wrong routine was applied
+// and the client wants a clean slate rather than fixing items one at a time.
+// Coach-assigned items and Confession Booth cravings are never touched, same
+// exclusions as the apply RPC's delete clause.
+export function useClearRoutineItems(domain: RoutineDomain) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ targetDates }: { targetDates: Date[] }) => {
+      const pairs: { week_start_date: string; day_number: number }[] = [];
+      let skippedSunday = 0;
+
+      for (const d of targetDates) {
+        const dayOnly = new Date(d); dayOnly.setHours(0, 0, 0, 0);
+        const pair = toWeekDayPair(dayOnly);
+        if (!pair) { skippedSunday++; continue; }
+        pairs.push({ week_start_date: pair.weekStart, day_number: pair.dayNumber });
+      }
+
+      if (pairs.length) {
+        const { error } = await supabase.rpc('clear_routine_items', {
+          p_domain:  domain,
+          p_targets: pairs,
+        });
+        if (error) throw error;
+      }
+
+      return { clearedCount: pairs.length, skippedSunday };
+    },
+    onSuccess: () => {
+      if (user?.id) qc.invalidateQueries({ queryKey: ['manual_logs', user.id] });
+    },
+  });
+}
