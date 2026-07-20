@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuth } from '@/hooks/useAuth';
 import { useMessages, useSendMessage, useMarkMessagesRead, uploadChatAttachment } from '@/hooks/useCoach';
+import { FadeInUp } from '@/components/ui/FadeInUp';
 import { THEME } from '@/constants/theme';
 
 function formatTime(dateStr: string): string {
@@ -123,7 +124,7 @@ export default function MessagingScreen() {
       >
 
         {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: THEME.colors.border, backgroundColor: THEME.colors.background }}>
+        <FadeInUp delay={0} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: THEME.colors.background, ...THEME.glow.soft, shadowOpacity: 0.15 }}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
@@ -132,20 +133,20 @@ export default function MessagingScreen() {
           </TouchableOpacity>
 
           {/* Avatar */}
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${THEME.colors.teal}20`, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${THEME.colors.teal}40` }}>
+          <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: `${THEME.colors.teal}18`, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: THEME.colors.teal, ...THEME.glow.teal }}>
             <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sansMedium, fontSize: 14 }}>{initials}</Text>
           </View>
 
           <View style={{ flex: 1 }}>
-            <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 16 }}>
+            <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: THEME.type.h2 * 0.73 }}>
               {clientName}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#34D399' }} />
-              <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sans, fontSize: 12 }}>Active client</Text>
+              <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.sans, fontSize: THEME.type.caption - 1 }}>Active client</Text>
             </View>
           </View>
-        </View>
+        </FadeInUp>
 
         {/* Messages */}
         {isLoading ? (
@@ -175,7 +176,7 @@ export default function MessagingScreen() {
                 <View key={group.date}>
                   {/* Date divider */}
                   <View style={{ alignItems: 'center', marginVertical: 16 }}>
-                    <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                    <View style={{ backgroundColor: THEME.colors.surface2, borderRadius: THEME.radius.full, paddingHorizontal: 12, paddingVertical: 4 }}>
                       <Text style={{ fontSize: 11, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.textMuted }}>
                         {formatDateDivider(group.date)}
                       </Text>
@@ -200,18 +201,16 @@ export default function MessagingScreen() {
                         <View style={{
                           maxWidth: '78%',
                           backgroundColor: mine ? THEME.colors.teal : THEME.colors.surface2,
-                          borderRadius: 18,
-                          borderBottomRightRadius: mine ? 4 : 18,
-                          borderBottomLeftRadius:  mine ? 18 : 4,
+                          borderRadius: 20,
+                          borderBottomRightRadius: mine ? 4 : 20,
+                          borderBottomLeftRadius:  mine ? 20 : 4,
                           paddingHorizontal: 14,
                           paddingVertical: 10,
-                          borderWidth: 0.5,
-                          borderColor: mine ? THEME.colors.teal : THEME.colors.border,
-                          shadowColor: mine ? THEME.colors.teal : 'transparent',
-                          shadowOffset: { width: 0, height: 1 },
-                          shadowOpacity: 0.2,
-                          shadowRadius: 4,
-                          elevation: mine ? 2 : 0,
+                          shadowColor: mine ? THEME.colors.teal : '#000',
+                          shadowOffset: { width: 0, height: mine ? 0 : 3 },
+                          shadowOpacity: mine ? 0.35 : 0.2,
+                          shadowRadius: mine ? 10 : 6,
+                          elevation: mine ? 4 : 1,
                         }}>
                           {msg.attachmentUrl && (
                             <TouchableOpacity activeOpacity={0.9} onPress={() => Linking.openURL(msg.attachmentUrl)}>
@@ -251,12 +250,12 @@ export default function MessagingScreen() {
         )}
 
         {/* Input bar */}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, borderTopWidth: 0.5, borderTopColor: THEME.colors.border, backgroundColor: THEME.colors.background }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingVertical: 12, paddingBottom: Platform.OS === 'ios' ? 28 : 12, backgroundColor: THEME.colors.background, ...THEME.glow.soft, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15 }}>
           <TouchableOpacity
             onPress={handleAttach}
             disabled={attaching}
             activeOpacity={0.8}
-            style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+            style={{ width: 46, height: 46, borderRadius: THEME.radius.full, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center' }}
           >
             {attaching
               ? <ActivityIndicator color={THEME.colors.teal} size="small" />
@@ -267,11 +266,11 @@ export default function MessagingScreen() {
             style={{
               flex: 1,
               backgroundColor: THEME.colors.surface2,
-              borderRadius: 24,
+              borderRadius: THEME.radius.full,
               paddingHorizontal: 18,
               paddingVertical: 12,
-              borderWidth: 0.5,
-              borderColor: text.trim() ? `${THEME.colors.teal}60` : THEME.colors.border,
+              borderWidth: 1.5,
+              borderColor: text.trim() ? `${THEME.colors.teal}80` : 'transparent',
               color: THEME.colors.textPrimary,
               fontFamily: THEME.fonts.sans,
               fontSize: 15,
@@ -291,21 +290,10 @@ export default function MessagingScreen() {
             onPress={handleSend}
             disabled={isPending || !text.trim()}
             activeOpacity={0.8}
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 23,
-              backgroundColor: text.trim() ? THEME.colors.teal : THEME.colors.surface2,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: 0.5,
-              borderColor: text.trim() ? THEME.colors.teal : THEME.colors.border,
-              shadowColor: text.trim() ? THEME.colors.teal : 'transparent',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.4,
-              shadowRadius: 8,
-              elevation: text.trim() ? 4 : 0,
-            }}
+            style={[
+              { width: 46, height: 46, borderRadius: THEME.radius.full, backgroundColor: text.trim() ? THEME.colors.teal : THEME.colors.surface2, alignItems: 'center', justifyContent: 'center' },
+              !!text.trim() && THEME.glow.teal,
+            ]}
           >
             {isPending ? (
               <ActivityIndicator color={THEME.colors.background} size="small" />
