@@ -9,6 +9,7 @@ import { NutritionTrendChart } from '@/components/coach/NutritionTrendChart';
 import { useClientProfile, useClientBodyMetrics, useClientPhotos, useClientWorkoutSummary, useClientNutritionTrend, useClientOopsTrend, useClientCheckinVitals, useClientWeightAdherenceTrend } from '@/hooks/useCoachClientOverview';
 import { WeightAdherenceChart } from '@/components/coach/WeightAdherenceChart';
 import { VitalsSparklines } from '@/components/ui/VitalsSparklines';
+import { FadeInUp } from '@/components/ui/FadeInUp';
 import { WeeklyDigestCard } from '@/components/coach/WeeklyDigestCard';
 import { useClientTrainingLoadScores } from '@/hooks/useTrainingLoad';
 import { TrainingLoadSection } from '@/components/ui/TrainingLoadSection';
@@ -2115,28 +2116,28 @@ export function ClientProfileView({
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Hero header */}
-      <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 18 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+      <FadeInUp delay={0} style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 18 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <TouchableOpacity
             onPress={onBack}
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
           >
             <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>←</Text>
           </TouchableOpacity>
-          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${THEME.colors.teal}20`, borderWidth: 1, borderColor: `${THEME.colors.teal}30`, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 15, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: `${THEME.colors.teal}18`, borderWidth: 2, borderColor: THEME.colors.teal, alignItems: 'center', justifyContent: 'center', ...THEME.glow.teal }}>
+            <Text style={{ fontSize: 16, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
               {clientName?.split(' ').map((n) => n[0]).slice(0, 2).join('')}
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>{clientName}</Text>
-            <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>{ownerLabel}</Text>
+            <Text style={{ fontSize: THEME.type.h2, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>{clientName}</Text>
+            <Text style={{ fontSize: THEME.type.caption, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 1 }}>{ownerLabel}</Text>
           </View>
         </View>
 
         {/* Tab bar — horizontally scrollable now that there are 7 tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4 }}>
-          <View style={{ flexDirection: 'row', backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 4, gap: 4, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+          <View style={{ flexDirection: 'row', backgroundColor: THEME.colors.surface2, borderRadius: THEME.radius.xl, padding: 4, gap: 4 }}>
             {tabs.map((t) => {
               const active = tab === t.key;
               return (
@@ -2145,7 +2146,10 @@ export function ClientProfileView({
                   testID={`client-profile-tab-${t.key}`}
                   onPress={() => setTab(t.key)}
                   activeOpacity={0.8}
-                  style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, backgroundColor: active ? t.color : 'transparent', gap: 2 }}
+                  style={[
+                    { alignItems: 'center', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12, borderRadius: THEME.radius.lg, backgroundColor: active ? t.color : 'transparent', gap: 2 },
+                    active && { shadowColor: t.color, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 5 },
+                  ]}
                 >
                   <Text style={{ fontSize: 14 }}>{t.icon}</Text>
                   <Text numberOfLines={1} style={{ fontSize: 9.5, fontFamily: THEME.fonts.sansMedium, color: active ? THEME.colors.background : THEME.colors.textMuted }}>
@@ -2156,7 +2160,7 @@ export function ClientProfileView({
             })}
           </View>
         </ScrollView>
-      </View>
+      </FadeInUp>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         {tab === 'profile'      && <ProfileTab clientId={clientId} />}

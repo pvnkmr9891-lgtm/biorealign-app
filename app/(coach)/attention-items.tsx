@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   useCoachAttentionItems, ATTENTION_META, attentionItemRoute, AttentionItemType,
 } from '@/hooks/useCoachDashboard';
+import { FadeInUp } from '@/components/ui/FadeInUp';
 import { THEME } from '@/constants/theme';
 
 // Full "Needs attention" list — everything the home panel truncates,
@@ -25,7 +26,7 @@ export default function AttentionItemsScreen() {
 
   return (
     <SafeAreaView testID="coach-attention-items-screen" style={{ flex: 1, backgroundColor: THEME.colors.background }} edges={['top']}>
-      <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <FadeInUp delay={0} style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <TouchableOpacity
           testID="back-button"
           onPress={() => router.back()}
@@ -34,12 +35,12 @@ export default function AttentionItemsScreen() {
           <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>←</Text>
         </TouchableOpacity>
         <View>
-          <Text style={{ fontSize: 26, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>Needs Attention</Text>
-          <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
+          <Text style={{ fontSize: THEME.type.h1, fontFamily: THEME.fonts.serif, color: THEME.colors.textPrimary }}>Needs Attention</Text>
+          <Text style={{ fontSize: THEME.type.caption, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>
             {items.length} {items.length === 1 ? 'item' : 'items'} across your clients
           </Text>
         </View>
-      </View>
+      </FadeInUp>
 
       {isLoading ? (
         <ActivityIndicator color={THEME.colors.amber} style={{ marginTop: 40 }} />
@@ -53,13 +54,13 @@ export default function AttentionItemsScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-          {groups.map((group) => {
+          {groups.map((group, gi) => {
             const meta = ATTENTION_META[group.type];
             return (
-              <View key={group.type} style={{ marginBottom: 22 }}>
+              <FadeInUp key={group.type} delay={gi * 60} style={{ marginBottom: 22 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                   <Text style={{ fontSize: 13 }}>{meta.icon}</Text>
-                  <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                  <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: THEME.type.micro, letterSpacing: 1.2, textTransform: 'uppercase' }}>
                     {meta.groupLabel} · {group.items.length}
                   </Text>
                 </View>
@@ -70,14 +71,17 @@ export default function AttentionItemsScreen() {
                       activeOpacity={0.8}
                       onPress={() => router.push(attentionItemRoute(item, user?.id) as any)}
                       style={{
-                        backgroundColor: `${meta.color}10`,
-                        borderRadius: 14,
+                        backgroundColor: `${meta.color}12`,
+                        borderRadius: THEME.radius.xl,
                         padding: 14,
-                        borderWidth: 1,
-                        borderColor: `${meta.color}40`,
                         flexDirection: 'row',
                         alignItems: 'flex-start',
                         gap: 10,
+                        shadowColor: meta.color,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 12,
+                        elevation: 4,
                       }}
                     >
                       <View style={{ flex: 1 }}>
@@ -92,7 +96,7 @@ export default function AttentionItemsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-              </View>
+              </FadeInUp>
             );
           })}
         </ScrollView>
