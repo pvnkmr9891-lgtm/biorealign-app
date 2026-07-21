@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminAnalytics, useAdminRehabCalendar, useAdminDailyPulse, useAdminWeekly, useAdminMonthly } from '@/hooks/useAdmin';
 import { THEME } from '@/constants/theme';
+import { RadialProgress } from '@/components/ui/RadialProgress';
+import { FadeInUp } from '@/components/ui/FadeInUp';
 
 type DashTab = 'today' | 'week' | 'month';
 const DASH_TABS: { key: DashTab; label: string; icon: string }[] = [
@@ -13,18 +15,10 @@ const DASH_TABS: { key: DashTab; label: string; icon: string }[] = [
   { key: 'month', label: 'Month', icon: '📈' },
 ];
 
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12, marginHorizontal: 24 }}>
-      {children}
-    </Text>
-  );
-}
-
 function PanelCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: THEME.colors.border, marginBottom: 14 }}>
-      <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: THEME.radius.xl, padding: 16, marginBottom: 14, ...THEME.glow.soft }}>
+      <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: THEME.type.micro, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
         {title}
       </Text>
       {children}
@@ -32,14 +26,60 @@ function PanelCard({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function StatCell({ value, label, color, sub }: { value: string | number; label: string; color: string; sub?: string }) {
+// Collapsible variant of PanelCard — used for the heavy Tier-3 lists so the
+// screen doesn't read as one long unbroken scroll. Collapsed by default;
+// tap the header to expand. Count badge is tone-colored so the header alone
+// still communicates "how much is in here" without opening it.
+function Accordion({
+  title, icon, count, tone = 'neutral', defaultExpanded = false, children,
+}: {
+  title: string; icon?: string; count?: number; tone?: 'red' | 'amber' | 'neutral'; defaultExpanded?: boolean; children: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const toneColor = tone === 'red' ? '#F87171' : tone === 'amber' ? THEME.colors.amber : THEME.colors.textSecondary;
   return (
-    <View style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}>
-      <Text style={{ fontSize: 22, fontFamily: THEME.fonts.sansMedium, color }}>{value}</Text>
-      <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2, textAlign: 'center' }}>{label}</Text>
+    <View style={{ marginHorizontal: 24, backgroundColor: THEME.colors.surface2, borderRadius: THEME.radius.xl, marginBottom: 14, overflow: 'hidden', ...THEME.glow.soft }}>
+      <TouchableOpacity onPress={() => setExpanded((e) => !e)} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+        {icon && <Text style={{ fontSize: 15, marginRight: 8 }}>{icon}</Text>}
+        <Text style={{ flex: 1, color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: THEME.type.micro, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          {title}
+        </Text>
+        {count != null && count > 0 && (
+          <View style={{ backgroundColor: `${toneColor}20`, borderRadius: THEME.radius.full, paddingHorizontal: 8, paddingVertical: 2, marginRight: 8 }}>
+            <Text style={{ color: toneColor, fontFamily: THEME.fonts.sansMedium, fontSize: 11 }}>{count}</Text>
+          </View>
+        )}
+        <Text style={{ color: THEME.colors.textMuted, fontSize: 12 }}>{expanded ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {expanded && <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>{children}</View>}
+    </View>
+  );
+}
+
+function StatCell({ value, label, color, sub, delta }: { value: string | number; label: string; color: string; sub?: string; delta?: React.ReactNode }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: THEME.colors.surface2, borderRadius: THEME.radius.xl, padding: 14, alignItems: 'center', ...THEME.glow.soft }}>
+      <Text style={{ fontSize: THEME.type.h2, fontFamily: THEME.fonts.sansSemibold, color }}>{value}</Text>
+      <Text style={{ fontSize: 10.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3, textAlign: 'center' }}>{label}</Text>
       {sub != null && (
         <Text style={{ fontSize: 9.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textSecondary, marginTop: 2, textAlign: 'center' }}>{sub}</Text>
       )}
+      {delta != null && <View style={{ marginTop: 5 }}>{delta}</View>}
+    </View>
+  );
+}
+
+// Radial-gauge score display — replaces the old hand-drawn bordered circle
+// with the same animated RadialProgress used across the coach dashboard, so
+// score rings look and feel identical wherever they show up in the app.
+function ScoreRing({ label, value, color, deltaNode }: { label: string; value: number; color: string; deltaNode?: React.ReactNode }) {
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <RadialProgress size={72} strokeWidth={7} progress={value / 100} color={color} glow={false}>
+        <Text style={{ color, fontFamily: THEME.fonts.sansSemibold, fontSize: THEME.type.h2 }}>{value}</Text>
+      </RadialProgress>
+      <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11, marginTop: 8 }}>{label}</Text>
+      {deltaNode}
     </View>
   );
 }
@@ -58,12 +98,167 @@ function todayRangeIso() {
   return { startDate: start.toISOString(), endDate: end.toISOString() };
 }
 
-// ── TODAY tab ────────────────────────────────────────────────────────────────
-function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysAppointments: any[] }) {
-  const router = useRouter();
-  const { data: pulse, isLoading } = useAdminDailyPulse();
+// ── Action Center — Tier 1 ───────────────────────────────────────────────────
+// Always visible above the Today/Week/Month toggle, independent of which tab
+// is selected: red flags, unread coach message backlog, admin-review queue,
+// and the longest-waiting onboarding outliers. Previously these only showed
+// up on the Today tab, so switching to Week/Month hid every urgent item.
+function ActionCenterCard({ tone, icon, title, children }: { tone: 'red' | 'amber'; icon: string; title: string; children: React.ReactNode }) {
+  const toneColor = tone === 'red' ? '#F87171' : THEME.colors.amber;
+  return (
+    <View
+      style={{
+        marginHorizontal: 24, backgroundColor: `${toneColor}12`, borderRadius: THEME.radius.xl, padding: 16, marginBottom: 12,
+        shadowColor: toneColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.25, shadowRadius: 14, elevation: 5,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <Text style={{ fontSize: 15 }}>{icon}</Text>
+        <Text style={{ color: toneColor, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
 
-  if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
+function WaitingOnPlanList({ waiting, router }: { waiting: { clientId: string; clientName: string; assessedAt: string }[]; router: ReturnType<typeof useRouter> }) {
+  const [expanded, setExpanded] = useState(false);
+  const days = (assessedAt: string) => Math.floor((Date.now() - new Date(assessedAt).getTime()) / 86400000);
+  const longest = Math.max(...waiting.map((w) => days(w.assessedAt)));
+  const shown = expanded ? waiting : waiting.slice(0, 3);
+
+  return (
+    <View>
+      <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary, marginBottom: 10 }}>
+        <Text style={{ fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>{waiting.length}</Text> client{waiting.length !== 1 ? 's' : ''} waiting
+        {' · longest '}
+        <Text style={{ fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>{longest}d</Text>
+      </Text>
+      <View style={{ gap: 7 }}>
+        {shown.map((w) => {
+          const d = days(w.assessedAt);
+          return (
+            <TouchableOpacity
+              key={w.clientId}
+              onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: w.clientId, clientName: w.clientName } })}
+              activeOpacity={0.8}
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{w.clientName}</Text>
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: d >= 14 ? '#F87171' : THEME.colors.amber }}>
+                {d <= 0 ? 'assessed today' : `waiting ${d}d`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {waiting.length > 3 && (
+        <TouchableOpacity onPress={() => setExpanded((e) => !e)} style={{ marginTop: 10 }}>
+          <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+            {expanded ? 'Show less' : `+${waiting.length - 3} more`}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function ActionCenter({ pulse, loading }: { pulse: any; loading: boolean }) {
+  const router = useRouter();
+  if (loading || !pulse) return null;
+
+  const redFlags: any[] = pulse.redFlags ?? [];
+  const messageBacklog: any[] = pulse.messageBacklog ?? [];
+  const needAction = [
+    { label: 'Recovery quotes awaiting your response', count: pulse.pendingRehabList?.length ?? 0, route: '/(admin)/rehab-queue' },
+    { label: 'Detailed assessments awaiting coach review', count: pulse.pendingAssessmentsList?.length ?? 0, route: '/(admin)/assessments' },
+    { label: 'Client feedback unread by coach', count: pulse.unreadFeedbackList?.length ?? 0, route: '/(admin)/medical-records' },
+  ].filter((i) => i.count > 0);
+  const waiting: any[] = pulse.waitingOnFirstPlan ?? [];
+  const unreadTotal = messageBacklog.reduce((s, b) => s + b.unreadCount, 0);
+
+  const totalUrgent = redFlags.length + unreadTotal + needAction.reduce((s, i) => s + i.count, 0) + waiting.length;
+
+  if (totalUrgent === 0) {
+    return (
+      <FadeInUp delay={0} style={{ marginHorizontal: 24, marginBottom: 18 }}>
+        <View style={{ backgroundColor: `${THEME.colors.teal}12`, borderRadius: THEME.radius.xl, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 10, ...THEME.glow.teal }}>
+          <Text style={{ fontSize: 18 }}>✅</Text>
+          <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.sansMedium, fontSize: 13 }}>All clear — nothing urgent right now.</Text>
+        </View>
+      </FadeInUp>
+    );
+  }
+
+  return (
+    <FadeInUp delay={0} style={{ marginBottom: 4 }}>
+      <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sansMedium, fontSize: THEME.type.micro, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 12, marginHorizontal: 24 }}>
+        ⚡ Action Center
+      </Text>
+
+      {redFlags.length > 0 && (
+        <ActionCenterCard tone="red" icon="🚨" title={`Red flags (${redFlags.length})`}>
+          <View style={{ gap: 8 }}>
+            {redFlags.slice(0, 5).map((f) => (
+              <TouchableOpacity
+                key={f.clientId}
+                onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: f.clientId, clientName: f.clientName } })}
+                activeOpacity={0.8}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{f.clientName}</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>{f.reason}</Text>
+              </TouchableOpacity>
+            ))}
+            {redFlags.length > 5 && (
+              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>+{redFlags.length - 5} more</Text>
+            )}
+          </View>
+        </ActionCenterCard>
+      )}
+
+      {messageBacklog.length > 0 && (
+        <ActionCenterCard tone="red" icon="💬" title="Unread client messages · older than 24h">
+          <View style={{ gap: 8 }}>
+            {messageBacklog.map((b) => (
+              <View key={b.coachId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{b.coachName}</Text>
+                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
+                  <Text style={{ color: '#F87171', fontFamily: THEME.fonts.sansMedium }}>{b.unreadCount}</Text>
+                  {'  '}oldest {timeAgo(b.oldestSentAt)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </ActionCenterCard>
+      )}
+
+      {needAction.length > 0 && (
+        <ActionCenterCard tone="amber" icon="📌" title="Need your action">
+          <View style={{ gap: 10 }}>
+            {needAction.map((i) => (
+              <TouchableOpacity key={i.label} onPress={() => router.push(i.route as any)} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{i.label}</Text>
+                <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>{i.count}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ActionCenterCard>
+      )}
+
+      {waiting.length > 0 && (
+        <ActionCenterCard tone="amber" icon="🚀" title="Waiting on their first plan">
+          <WaitingOnPlanList waiting={waiting} router={router} />
+        </ActionCenterCard>
+      )}
+    </FadeInUp>
+  );
+}
+
+// ── TODAY tab — Tier 2, informational (Tier-1 items moved to ActionCenter) ──
+function TodayTab({ pulse, loading, todaysAppointments }: { pulse: any; loading: boolean; todaysAppointments: any[] }) {
+  const router = useRouter();
+  if (loading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
 
   return (
     <View>
@@ -85,7 +280,7 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
 
       {/* Signups today — names, not just a count */}
       {(pulse?.signupsTodayList?.length ?? 0) > 0 && (
-        <View style={{ marginHorizontal: 24, backgroundColor: `${THEME.colors.amber}12`, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: `${THEME.colors.amber}30`, marginBottom: 14, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+        <View style={{ marginHorizontal: 24, backgroundColor: `${THEME.colors.amber}12`, borderRadius: THEME.radius.xl, padding: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
           <Text style={{ fontSize: 13 }}>✨</Text>
           <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>
             New today:{' '}
@@ -126,53 +321,11 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
         )}
       </PanelCard>
 
-      {/* Need action — broken down instead of one lump number */}
-      <PanelCard title="📌 Need your action">
-        <View style={{ gap: 10 }}>
-          <TouchableOpacity onPress={() => router.push('/(admin)/rehab-queue')} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>Recovery quotes awaiting your response</Text>
-            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: (pulse?.pendingRehabList?.length ?? 0) > 0 ? '#F87171' : THEME.colors.textMuted }}>{pulse?.pendingRehabList?.length ?? 0}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(admin)/assessments')} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>Detailed assessments awaiting coach review</Text>
-            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: (pulse?.pendingAssessmentsList?.length ?? 0) > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{pulse?.pendingAssessmentsList?.length ?? 0}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(admin)/medical-records')} activeOpacity={0.8} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>Client feedback unread by coach</Text>
-            <Text style={{ fontSize: 14, fontFamily: THEME.fonts.sansMedium, color: (pulse?.unreadFeedbackList?.length ?? 0) > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{pulse?.unreadFeedbackList?.length ?? 0}</Text>
-          </TouchableOpacity>
-        </View>
-      </PanelCard>
-
-      {/* Waiting on first plan */}
-      {(pulse?.waitingOnFirstPlan?.length ?? 0) > 0 && (
-        <PanelCard title="🚀 Waiting on their first plan">
-          <View style={{ gap: 8 }}>
-            {pulse!.waitingOnFirstPlan.map((w) => {
-              const days = Math.floor((Date.now() - new Date(w.assessedAt).getTime()) / 86400000);
-              return (
-                <TouchableOpacity
-                  key={w.clientId}
-                  onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: w.clientId, clientName: w.clientName } })}
-                  activeOpacity={0.8}
-                  style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
-                >
-                  <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{w.clientName}</Text>
-                  <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: days >= 3 ? '#F87171' : THEME.colors.amber }}>
-                    {days <= 0 ? 'assessed today' : `waiting ${days}d`}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </PanelCard>
-      )}
-
       {/* Wins of the day */}
       {(pulse?.streakMilestonesToday?.length ?? 0) > 0 && (
         <PanelCard title="🎉 Wins today">
           <View style={{ gap: 8 }}>
-            {pulse!.streakMilestonesToday.map((w) => (
+            {pulse!.streakMilestonesToday.map((w: any) => (
               <TouchableOpacity
                 key={w.clientId}
                 onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: w.clientId, clientName: w.clientName } })}
@@ -191,7 +344,7 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
       {(pulse?.paymentsPending?.length ?? 0) > 0 && (
         <PanelCard title="💳 Recovery payments pending">
           <View style={{ gap: 8 }}>
-            {pulse!.paymentsPending.map((p) => (
+            {pulse!.paymentsPending.map((p: any) => (
               <TouchableOpacity
                 key={p.requestId}
                 onPress={() => router.push('/(admin)/rehab-queue')}
@@ -203,47 +356,6 @@ function TodayTab({ analytics, todaysAppointments }: { analytics: any; todaysApp
                   {p.amount != null ? `₹${p.amount.toLocaleString('en-IN')} pending` : 'Awaiting payment'}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </PanelCard>
-      )}
-
-      {/* Red flags — pain/energy spikes, gone-silent, mood & sleep streaks */}
-      {(pulse?.redFlags?.length ?? 0) > 0 && (
-        <PanelCard title={`🚨 Red flags (${pulse!.redFlags.length})`}>
-          <View style={{ gap: 8 }}>
-            {pulse!.redFlags.slice(0, 8).map((f) => (
-              <TouchableOpacity
-                key={f.clientId}
-                onPress={() => router.push({ pathname: '/(admin)/client-profile', params: { clientId: f.clientId, clientName: f.clientName } })}
-                activeOpacity={0.8}
-                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}
-              >
-                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{f.clientName}</Text>
-                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sansMedium, color: '#F87171' }}>{f.reason}</Text>
-              </TouchableOpacity>
-            ))}
-            {pulse!.redFlags.length > 8 && (
-              <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
-                +{pulse!.redFlags.length - 8} more
-              </Text>
-            )}
-          </View>
-        </PanelCard>
-      )}
-
-      {/* Coach message backlog */}
-      {(pulse?.messageBacklog?.length ?? 0) > 0 && (
-        <PanelCard title="💬 Unread client messages · older than 24h">
-          <View style={{ gap: 8 }}>
-            {pulse!.messageBacklog.map((b) => (
-              <View key={b.coachId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}>
-                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{b.coachName}</Text>
-                <Text style={{ fontSize: 12, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted }}>
-                  <Text style={{ color: THEME.colors.amber, fontFamily: THEME.fonts.sansMedium }}>{b.unreadCount}</Text>
-                  {'  '}oldest {timeAgo(b.oldestSentAt)}
-                </Text>
-              </View>
             ))}
           </View>
         </PanelCard>
@@ -303,6 +415,28 @@ function TrendChart({ data }: { data: { date: string; checkins: number; active: 
   );
 }
 
+// Horizontal proportional bars — replaces a plain number list with an actual
+// visual funnel, so the biggest bottleneck is obvious at a glance instead of
+// requiring a read-every-row comparison.
+function FunnelBar({ stages, router }: { stages: { label: string; value: number; route: string }[]; router: ReturnType<typeof useRouter> }) {
+  const max = Math.max(1, ...stages.map((s) => s.value));
+  return (
+    <View style={{ gap: 12 }}>
+      {stages.map((s) => (
+        <TouchableOpacity key={s.label} onPress={() => router.push(s.route as any)} activeOpacity={0.8}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+            <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{s.label}</Text>
+            <Text style={{ fontSize: 12.5, fontFamily: THEME.fonts.sansMedium, color: s.value > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{s.value}</Text>
+          </View>
+          <View style={{ height: 7, backgroundColor: THEME.colors.surface3, borderRadius: 4, overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${Math.max(3, (s.value / max) * 100)}%`, backgroundColor: s.value > 0 ? THEME.colors.amber : THEME.colors.border, borderRadius: 4 }} />
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 // ── WEEK tab ─────────────────────────────────────────────────────────────────
 function DeltaBadge({ now, prev, suffix = 'pts vs last wk' }: { now: number; prev: number; suffix?: string }) {
   const delta = now - prev;
@@ -326,9 +460,9 @@ function WeekTab({ analytics }: { analytics: any }) {
   ] : [];
 
   const AVG_SCORES = analytics ? [
-    { label: 'Avg Fitness',   value: analytics.avgFitness,   color: THEME.scoreColors.fitness },
-    { label: 'Avg Recovery',  value: analytics.avgRecovery,  color: THEME.scoreColors.recovery },
-    { label: 'Avg Longevity', value: analytics.avgLongevity, color: THEME.scoreColors.longevity },
+    { label: 'Fitness',   value: analytics.avgFitness,   color: THEME.scoreColors.fitness },
+    { label: 'Recovery',  value: analytics.avgRecovery,  color: THEME.scoreColors.recovery },
+    { label: 'Longevity', value: analytics.avgLongevity, color: THEME.scoreColors.longevity },
   ] : [];
 
   if (isLoading) return <ActivityIndicator color={THEME.colors.teal} style={{ marginTop: 40 }} />;
@@ -342,22 +476,14 @@ function WeekTab({ analytics }: { analytics: any }) {
 
   return (
     <View>
-      {/* WoW deltas */}
+      {/* WoW KPIs — delta embedded in the same card, not a separate row */}
       <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14 }}>
-        <StatCell value={`${weekly?.engagementThisWeek ?? 0}%`} label="Engagement" color="#6EE7B7" />
-        <StatCell value={`${weekly?.adherenceThisWeek ?? 0}%`} label="Adherence" color={THEME.colors.teal} />
-        <StatCell value={`${weekly?.checkinRateThisWeek ?? 0}%`} label="Check-in rate" color="#93C5FD" />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14, marginTop: -8 }}>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <DeltaBadge now={weekly?.engagementThisWeek ?? 0} prev={weekly?.engagementPrevWeek ?? 0} />
-        </View>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <DeltaBadge now={weekly?.adherenceThisWeek ?? 0} prev={weekly?.adherencePrevWeek ?? 0} />
-        </View>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <DeltaBadge now={weekly?.checkinRateThisWeek ?? 0} prev={weekly?.checkinRatePrevWeek ?? 0} />
-        </View>
+        <StatCell value={`${weekly?.engagementThisWeek ?? 0}%`} label="Engagement" color="#6EE7B7"
+          delta={<DeltaBadge now={weekly?.engagementThisWeek ?? 0} prev={weekly?.engagementPrevWeek ?? 0} />} />
+        <StatCell value={`${weekly?.adherenceThisWeek ?? 0}%`} label="Adherence" color={THEME.colors.teal}
+          delta={<DeltaBadge now={weekly?.adherenceThisWeek ?? 0} prev={weekly?.adherencePrevWeek ?? 0} />} />
+        <StatCell value={`${weekly?.checkinRateThisWeek ?? 0}%`} label="Check-in rate" color="#93C5FD"
+          delta={<DeltaBadge now={weekly?.checkinRateThisWeek ?? 0} prev={weekly?.checkinRatePrevWeek ?? 0} />} />
       </View>
 
       {/* 14-day daily trend */}
@@ -367,9 +493,16 @@ function WeekTab({ analytics }: { analytics: any }) {
         </PanelCard>
       )}
 
+      {/* Onboarding funnel — always visible, it's a compact diagnostic, not a heavy list */}
+      {weekly && (
+        <PanelCard title={`🧭 Where clients are stuck (${weekly.funnel.healthy}/${weekly.funnel.totalClients} healthy)`}>
+          <FunnelBar stages={FUNNEL_STAGES} router={router} />
+        </PanelCard>
+      )}
+
       {/* Coach leaderboard */}
       {(weekly?.leaderboard?.length ?? 0) > 0 && (
-        <PanelCard title="🧑‍🏫 Coach leaderboard (7d)">
+        <Accordion title="Coach leaderboard (7d)" icon="🧑‍🏫" count={weekly!.leaderboard.length}>
           <View style={{ gap: 12 }}>
             {weekly!.leaderboard.map((c) => (
               <TouchableOpacity
@@ -393,12 +526,12 @@ function WeekTab({ analytics }: { analytics: any }) {
               </TouchableOpacity>
             ))}
           </View>
-        </PanelCard>
+        </Accordion>
       )}
 
       {/* Client movers */}
       {((weekly?.topGainers?.length ?? 0) > 0 || (weekly?.topDecliners?.length ?? 0) > 0) && (
-        <PanelCard title="📈 Client movers — composite score (14d)">
+        <Accordion title="Client movers — composite score (14d)" icon="📈" count={(weekly?.topGainers?.length ?? 0) + (weekly?.topDecliners?.length ?? 0)}>
           <View style={{ gap: 6 }}>
             {weekly!.topGainers.map((m) => (
               <TouchableOpacity key={m.clientId} activeOpacity={0.8}
@@ -417,12 +550,12 @@ function WeekTab({ analytics }: { analytics: any }) {
               </TouchableOpacity>
             ))}
           </View>
-        </PanelCard>
+        </Accordion>
       )}
 
       {/* Churn risk */}
       {(weekly?.churnRisk?.length ?? 0) > 0 && (
-        <PanelCard title="⚠️ Churn risk — active last week, silent this week">
+        <Accordion title="Churn risk — active last week, silent this week" icon="⚠️" tone="amber" count={weekly!.churnRisk.length}>
           <View style={{ gap: 8 }}>
             {weekly!.churnRisk.slice(0, 8).map((c) => (
               <TouchableOpacity key={c.clientId} activeOpacity={0.8}
@@ -437,26 +570,11 @@ function WeekTab({ analytics }: { analytics: any }) {
               </Text>
             )}
           </View>
-        </PanelCard>
-      )}
-
-      {/* Onboarding funnel */}
-      {weekly && (
-        <PanelCard title={`🧭 Where clients are stuck (${weekly.funnel.healthy}/${weekly.funnel.totalClients} healthy)`}>
-          <View style={{ gap: 8 }}>
-            {FUNNEL_STAGES.map((s) => (
-              <TouchableOpacity key={s.label} activeOpacity={0.8} onPress={() => router.push(s.route as any)}
-                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 }}>
-                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sans, color: THEME.colors.textPrimary }}>{s.label}</Text>
-                <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: s.value > 0 ? THEME.colors.amber : THEME.colors.textMuted }}>{s.value}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </PanelCard>
+        </Accordion>
       )}
 
       {analytics?.disengagedClients && analytics.disengagedClients.length > 0 && (
-        <PanelCard title="Disengaged clients (no activity in 14d)">
+        <Accordion title="Disengaged clients (no activity in 14d)" icon="😴" tone="amber" count={analytics.disengagedClients.length}>
           <View style={{ gap: 8 }}>
             {analytics.disengagedClients.slice(0, 6).map((c: any) => (
               <TouchableOpacity
@@ -479,22 +597,20 @@ function WeekTab({ analytics }: { analytics: any }) {
               </Text>
             </TouchableOpacity>
           )}
-        </PanelCard>
+        </Accordion>
       )}
 
       <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14 }}>
         {PLAN_STATS.map(s => <StatCell key={s.label} value={s.value} label={s.label} color={s.color} />)}
       </View>
 
-      <PanelCard title="Platform average scores">
+      {/* All-time — deliberately unqualified by any date range, unlike Month
+          tab's "Outcome scores" (30D vs prior), so the two don't read as the
+          same widget with different numbers. */}
+      <PanelCard title="Platform averages · all-time">
         <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingTop: 6 }}>
           {AVG_SCORES.map((s) => (
-            <View key={s.label} style={{ alignItems: 'center' }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 3, borderColor: s.color, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                <Text style={{ color: s.color, fontFamily: THEME.fonts.sansMedium, fontSize: 20 }}>{s.value}</Text>
-              </View>
-              <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11 }}>{s.label}</Text>
-            </View>
+            <ScoreRing key={s.label} label={s.label} value={s.value} color={s.color} />
           ))}
         </View>
       </PanelCard>
@@ -514,11 +630,12 @@ function MonthTab({ analytics }: { analytics: any }) {
   return (
     <View>
       {/* Growth */}
-      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 24, marginBottom: 14 }}>
         <StatCell
           value={`+${monthly?.signupsThis30 ?? 0}`}
           label="Signups (30d)"
           color={THEME.colors.amber}
+          delta={<DeltaBadge now={monthly?.signupsThis30 ?? 0} prev={monthly?.signupsPrev30 ?? 0} suffix=" vs prior 30d" />}
         />
         <StatCell
           value={monthly?.activationRate != null ? `${monthly.activationRate}%` : '—'}
@@ -533,21 +650,18 @@ function MonthTab({ analytics }: { analytics: any }) {
           color={THEME.colors.teal}
         />
       </View>
-      <View style={{ marginHorizontal: 24, marginBottom: 14, alignItems: 'center' }}>
-        <DeltaBadge now={monthly?.signupsThis30 ?? 0} prev={monthly?.signupsPrev30 ?? 0} suffix=" vs prior 30d" />
-      </View>
 
-      {/* Outcomes */}
-      <PanelCard title="Outcome scores — avg, this 30d vs prior">
+      {/* Outcomes — 30D vs prior, distinct from Week tab's all-time averages */}
+      <PanelCard title="Outcome scores · 30d vs prior">
         <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingTop: 6 }}>
           {(monthly?.outcomes ?? []).map((o) => (
-            <View key={o.key} style={{ alignItems: 'center' }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 3, borderColor: scoreColorFor(o.label), alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
-                <Text style={{ color: scoreColorFor(o.label), fontFamily: THEME.fonts.sansMedium, fontSize: 20 }}>{o.current}</Text>
-              </View>
-              <Text style={{ color: THEME.colors.textMuted, fontFamily: THEME.fonts.sans, fontSize: 11, marginBottom: 3 }}>{o.label}</Text>
-              <DeltaBadge now={o.current} prev={o.previous} suffix="" />
-            </View>
+            <ScoreRing
+              key={o.key}
+              label={o.label}
+              value={o.current}
+              color={scoreColorFor(o.label)}
+              deltaNode={<View style={{ marginTop: 3 }}><DeltaBadge now={o.current} prev={o.previous} suffix="" /></View>}
+            />
           ))}
         </View>
       </PanelCard>
@@ -556,14 +670,14 @@ function MonthTab({ analytics }: { analytics: any }) {
       <PanelCard title="💰 Revenue — recovery sessions">
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
-            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: '#6EE7B7' }}>
+            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansSemibold, color: '#6EE7B7' }}>
               ₹{(monthly?.rehab.revenueThis30 ?? 0).toLocaleString('en-IN')}
             </Text>
             <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3 }}>Collected (30d)</Text>
             <DeltaBadge now={monthly?.rehab.revenueThis30 ?? 0} prev={monthly?.rehab.revenuePrev30 ?? 0} suffix=" vs prior" />
           </View>
           <View style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
-            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.amber }}>
+            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansSemibold, color: THEME.colors.amber }}>
               ₹{(monthly?.rehab.pendingCollections ?? 0).toLocaleString('en-IN')}
             </Text>
             <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3 }}>
@@ -571,7 +685,7 @@ function MonthTab({ analytics }: { analytics: any }) {
             </Text>
           </View>
           <View style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
-            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansMedium, color: THEME.colors.teal }}>
+            <Text style={{ fontSize: 20, fontFamily: THEME.fonts.sansSemibold, color: THEME.colors.teal }}>
               {monthly?.rehab.avgTicket != null ? `₹${monthly.rehab.avgTicket.toLocaleString('en-IN')}` : '—'}
             </Text>
             <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 3 }}>Avg ticket</Text>
@@ -590,7 +704,7 @@ function MonthTab({ analytics }: { analytics: any }) {
             { label: 'No-show',   value: monthly?.rehab.noShow ?? 0,    color: THEME.colors.amber },
           ].map((s) => (
             <View key={s.label} style={{ width: '30%', alignItems: 'center', paddingVertical: 6 }}>
-              <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansMedium, color: s.color }}>{s.value}</Text>
+              <Text style={{ fontSize: 18, fontFamily: THEME.fonts.sansSemibold, color: s.color }}>{s.value}</Text>
               <Text style={{ fontSize: 10, fontFamily: THEME.fonts.sans, color: THEME.colors.textMuted, marginTop: 2 }}>{s.label}</Text>
             </View>
           ))}
@@ -627,7 +741,7 @@ function MonthTab({ analytics }: { analytics: any }) {
                       </Text>
                     </Text>
                   </View>
-                  <View style={{ height: 6, backgroundColor: THEME.colors.surface3, borderRadius: 3, overflow: 'hidden', borderWidth: 0.5, borderColor: THEME.colors.border }}>
+                  <View style={{ height: 6, backgroundColor: THEME.colors.surface3, borderRadius: 3, overflow: 'hidden' }}>
                     <View style={{ height: '100%', width: `${(f.clientCount / maxUsage) * 100}%`, backgroundColor: THEME.colors.teal, borderRadius: 3 }} />
                   </View>
                 </View>
@@ -646,6 +760,9 @@ export default function AdminDashboard() {
   const { data: analytics, isLoading } = useAdminAnalytics();
   const { startDate, endDate } = todayRangeIso();
   const { data: todaysAppointments = [] } = useAdminRehabCalendar({ startDate, endDate });
+  // Fetched once here (not inside TodayTab) so the Action Center can stay
+  // visible regardless of which of the Today/Week/Month tabs is selected.
+  const { data: pulse, isLoading: pulseLoading } = useAdminDailyPulse();
   const [tab, setTab] = useState<DashTab>('today');
   const [menuVisible, setMenuVisible] = useState(false);
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Eshwar';
@@ -682,14 +799,14 @@ export default function AdminDashboard() {
             <Text style={{ color: THEME.colors.textSecondary, fontFamily: THEME.fonts.sans, fontSize: 13 }}>
               Admin · BioRealign
             </Text>
-            <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: 32, marginTop: 2 }}>
+            <Text style={{ color: THEME.colors.textPrimary, fontFamily: THEME.fonts.serif, fontSize: THEME.type.h1, marginTop: 2 }}>
               Welcome, <Text style={{ color: THEME.colors.teal, fontFamily: THEME.fonts.cormorantSemibold }}>{firstName}</Text>
             </Text>
           </View>
           <View style={{ gap: 10, marginTop: 4, alignItems: 'center' }}>
             <TouchableOpacity
               onPress={() => setMenuVisible(true)}
-              style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+              style={{ width: 42, height: 42, borderRadius: THEME.radius.lg, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', ...THEME.glow.soft }}
             >
               <Text style={{ color: THEME.colors.textPrimary, fontSize: 18 }}>☰</Text>
               {ADMIN_ACTIONS.some((a) => (a.badge ?? 0) > 0) && (
@@ -698,15 +815,18 @@ export default function AdminDashboard() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={confirmSignOut}
-              style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: THEME.colors.border }}
+              style={{ width: 42, height: 42, borderRadius: THEME.radius.lg, backgroundColor: THEME.colors.surface2, alignItems: 'center', justifyContent: 'center', ...THEME.glow.soft }}
             >
               <Text style={{ color: THEME.colors.error, fontSize: 17 }}>⏻</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Today / Week / Month tabs */}
-        <View style={{ flexDirection: 'row', marginHorizontal: 24, marginBottom: 18, backgroundColor: THEME.colors.surface2, borderRadius: 14, padding: 4, gap: 4, borderWidth: 0.5, borderColor: THEME.colors.border }}>
+        {/* Action Center — Tier 1, always visible regardless of tab */}
+        <ActionCenter pulse={pulse} loading={pulseLoading} />
+
+        {/* Today / Week / Month tabs — global time-range filter for Tier 2 */}
+        <View style={{ flexDirection: 'row', marginHorizontal: 24, marginBottom: 18, backgroundColor: THEME.colors.surface2, borderRadius: THEME.radius.xl, padding: 4, gap: 4, ...THEME.glow.soft }}>
           {DASH_TABS.map((t) => {
             const active = tab === t.key;
             return (
@@ -714,7 +834,7 @@ export default function AdminDashboard() {
                 key={t.key}
                 onPress={() => setTab(t.key)}
                 activeOpacity={0.8}
-                style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, backgroundColor: active ? THEME.colors.teal : 'transparent' }}
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: THEME.radius.lg, backgroundColor: active ? THEME.colors.teal : 'transparent' }}
               >
                 <Text style={{ fontSize: 13, fontFamily: THEME.fonts.sansMedium, color: active ? THEME.colors.background : THEME.colors.textMuted }}>
                   {t.icon} {t.label}
@@ -733,7 +853,7 @@ export default function AdminDashboard() {
           </View>
         ) : (
           <>
-            {tab === 'today' && <TodayTab analytics={analytics} todaysAppointments={todaysAppointments} />}
+            {tab === 'today' && <TodayTab pulse={pulse} loading={pulseLoading} todaysAppointments={todaysAppointments} />}
             {tab === 'week'  && <WeekTab analytics={analytics} />}
             {tab === 'month' && <MonthTab analytics={analytics} />}
           </>
